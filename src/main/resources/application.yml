@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: Dajanggan
+
+  # .env import
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+cloud:
+  aws:
+    s3:
+      bucket: ${AWS_S3_BUCKET} # ?? ??
+    stack.auto: false
+    region.static: ${AWS_REGION} # ?? ??
+    credentials:
+      access-key: ${AWS_IAM_ACCESS_KEY}
+      secret-key: ${AWS_IAM_SECRET_KEY}
+mybatis:
+  # Mapper XML ??
+  mapper-locations: classpath:mapper/**/*.xml
+
+  # Type Alias ???
+  type-aliases-package: com.dajanggan.domains
+
+  # MyBatis ??
+  configuration:
+    map-underscore-to-camel-case: true   # snake_case ? camelCase ?? ??
+    jdbc-type-for-null: NULL             # NULL ?? ??
+    default-fetch-size: 100              # ?? Fetch ??
+    default-statement-timeout: 30        # ?? ???? (30?)
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl  # ??
+    lazy-loading-enabled: false          # Lazy Loading ????
+    aggressive-lazy-loading: false
+
+# PostgreSQL ?? ?? ??
+postgres:
+  stats:
+    reset-detection: true                # ?? ?? ?? ???
+    snapshot-interval: 300               # ??? ?? (?)
+
+# ?? ??
+logging:
+  level:
+    com.dajanggan: DEBUG
+    com.dajanggan.domain.engine: DEBUG
+    org.apache.ibatis: DEBUG             # MyBatis ?? ??
+    com.zaxxer.hikari: INFO              # HikariCP ??
+
+server:
+  port: 8080
