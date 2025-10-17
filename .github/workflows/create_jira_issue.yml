@@ -1,4 +1,5 @@
 name: Create Jira issue
+
 on:
   issues:
     types:
@@ -12,19 +13,23 @@ jobs:
   create-issue:
     name: Create Jira issue
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Login
+      # 1. Jira 로그인
+      - name: Login to Jira
         uses: atlassian/gajira-login@v3
         env:
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
 
-      - name: Checkout main code
+      # 2. 메인 코드 체크아웃
+      - name: Checkout main branch
         uses: actions/checkout@v4
         with:
           ref: main
 
+      # 3. GitHub Issue 내용 파싱
       - name: Issue Parser
         id: issue-parser
         uses: stefanbuck/github-issue-parser@v3
@@ -34,9 +39,10 @@ jobs:
       - name: Log Issue Parser
         run: |
           echo "parentKey: ${{ steps.issue-parser.outputs.issueparser_parentKey }}"
-          echo "branch:    ${{ steps.issue-parser.outputs.issueparser_branch }}"
-          echo "json:      ${{ steps.issue-parser.outputs.jsonString }}"
+          echo "branch: ${{ steps.issue-parser.outputs.issueparser_branch }}"
+          echo "json: ${{ steps.issue-parser.outputs.jsonString }}"
 
+      # 4. Markdown → Jira Syntax 변환
       - name: Convert markdown to Jira Syntax
         id: md2jira
         uses: peter-evans/jira2md@v1
@@ -44,46 +50,81 @@ jobs:
           input-text: |
             ### Github Issue Link
             - ${{ github.event.issue.html_url }}
-
+            
             ${{ github.event.issue.body }}
           mode: md2jira
 
-      - name: Create Issue
+      # 5. Jira 이슈 생성
+      - name: Create Jira Issue
         id: create
         uses: atlassian/gajira-create@v3
         with:
-          project: KIT
+          project: DJ
           issuetype: Task
           summary: '${{ github.event.issue.title }}'
           description: '${{ steps.md2jira.outputs.output-text }}'
-      - name: Log created issue
-        run: echo "Jira Issue ${{ steps.issue-parser.outputs.issueparser_parentKey }}/${{ steps.create.outputs.issue }} was created"
 
-      - name: Checkout develop code
+      - name: Log created issue
+        run: echo "Jira Issue Created - ${{ steps.create.outputs.issue }}"
+
+      # 6. develop 브랜치 최신 상태로 체크아웃
+      - name: Checkout develop branch
         uses: actions/checkout@v4
         with:
           ref: develop
+          fetch-depth: 0
 
+      # 7. 브랜치 생성 (feature prefix 자동 추가)
       - name: Create branch with Ticket number
         run: |
           ISSUE_NUMBER="${{ steps.create.outputs.issue }}"
           ISSUE_TITLE="${{ steps.issue-parser.outputs.issueparser_branch }}"
-          BRANCH_NAME="${ISSUE_NUMBER}-$(echo "${ISSUE_TITLE}" | sed 's/ /-/g')"
+          
+          # issueparser_branch가 비어있을 때 이슈 제목으로 대체
+          if [ -z "$ISSUE_TITLE" ]; then
+            ISSUE_TITLE="${{ github.event.issue.title }}"
+          fi
+          
+          BRANCH_PREFIX="feature"
+          
+          # 한글 및 특수문자 제거, 영문/숫자/하이픈만 남기기
+          SANITIZED_TITLE=$(echo "${ISSUE_TITLE}" | \
+            sed 's/\[//g; s/\]//g' | \
+            sed 's/[^a-zA-Z0-9가-힣 _-]//g' | \
+            sed 's/[가-힣]//g' | \
+            sed 's/ \+/-/g' | \
+            sed 's/^-\+//; s/-\+$//' | \
+            tr '[:upper:]' '[:lower:]' | \
+            sed 's/-\+/-/g')
+          
+          # 제목이 완전히 비었으면 기본값 사용
+          if [ -z "$SANITIZED_TITLE" ]; then
+            SANITIZED_TITLE="issue"
+          fi
+          
+          BRANCH_NAME="${BRANCH_PREFIX}/${ISSUE_NUMBER}-${SANITIZED_TITLE}"
+          
+          echo "Creating branch: ${BRANCH_NAME}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "${BRANCH_NAME}"
-          git push origin "${BRANCH_NAME}"
+          git push origin "refs/heads/${BRANCH_NAME}"
 
-      - name: Update issue title
+      # 8. GitHub Issue 제목 업데이트
+      - name: Update GitHub Issue title
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'update-issue'
           token: ${{ secrets.GITHUB_TOKEN }}
           title: '[${{ steps.create.outputs.issue }}] ${{ github.event.issue.title }}'
 
+      # 9. Jira 링크 코멘트 추가
       - name: Add comment with Jira issue link
         uses: actions-cool/issues-helper@v3
         with:
           actions: 'create-comment'
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.issue.number }}
-          body: 'Jira Issue Created: [${{ steps.create.outputs.issue }}](${{ secrets.JIRA_BASE_URL }}/browse/${{ steps.create.outputs.issue }})'
-
+          body: |
+            Jira Issue Created: [${{ steps.create.outputs.issue }}](${{ secrets.JIRA_BASE_URL }}/browse/${{ steps.create.outputs.issue }})
