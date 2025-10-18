@@ -1,5 +1,5 @@
 name: Create Jira issue
-on:
+'on':
   issues:
     types:
       - opened
