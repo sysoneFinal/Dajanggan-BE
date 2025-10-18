@@ -78,7 +78,7 @@ jobs:
       - name: Create branch with Ticket number
         run: |
           ISSUE_NUMBER="${{ steps.create.outputs.issue }}"
-          ISSUE_TITLE="${{ steps.issue-parser.outputs.issueparser_branch-name }}"
+          ISSUE_TITLE="${{ steps.issue-parser.outputs.issueparser_branch_name }}"
           
           # issueparser_branch가 비어있을 때 이슈 제목으로 대체
           if [ -z "$ISSUE_TITLE" ]; then
