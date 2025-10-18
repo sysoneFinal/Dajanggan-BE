@@ -7,3 +7,6 @@ import org.apache.ibatis.annotations.Mapper;
 public interface InstanceRepository {
     void insert(Instance instance);
 }
+
+
+
