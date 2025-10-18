@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dajanggan.domain.instance.repository.InstanceRepository">
+
+    <insert id="insert" parameterType="com.dajanggan.domain.instance.domain.Instance" useGeneratedKeys="true" keyProperty="instanceId">
+        INSERT INTO monitor_instance (
+            instance_name, host, dbname, port,
+            username, secret_ref, sslmode, is_enabled,
+            slack_enabled, slack_channel, slack_mention, slack_webhook_url,
+            collection_interval
+        ) VALUES (
+                     #{instanceName}, #{host}, #{dbname}, #{port},
+                     #{username}, #{secretRef}, #{sslmode}, #{isEnabled},
+                     #{slackEnabled}, #{slackChannel}, #{slackMention}, #{slackWebhookUrl},
+                     #{collectionInterval}
+                 )
+    </insert>
+
+</mapper>
