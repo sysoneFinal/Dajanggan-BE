@@ -84,14 +84,20 @@ jobs:
           BRANCH_TYPE="${{ steps.issue-parser.outputs.issueparser_branchtype }}"
           BRANCH_NAME_INPUT="${{ steps.issue-parser.outputs.issueparser_branchname }}"
           
+          echo "DEBUG: ISSUE_NUMBER=${ISSUE_NUMBER}"
+          echo "DEBUG: BRANCH_TYPE=${BRANCH_TYPE}"
+          echo "DEBUG: BRANCH_NAME_INPUT=${BRANCH_NAME_INPUT}"
+          
           # 브랜치 타입이 비어있으면 기본값 사용
           if [ -z "$BRANCH_TYPE" ]; then
             BRANCH_TYPE="feature"
+            echo "BRANCH_TYPE was empty, using default: feature"
           fi
           
           # 브랜치명이 비어있으면 "issue" 사용
           if [ -z "$BRANCH_NAME_INPUT" ]; then
             BRANCH_NAME_INPUT="issue"
+            echo "BRANCH_NAME_INPUT was empty, using default: issue"
           fi
           
           # 영문/숫자/하이픈/언더스코어만 남기고 정리
@@ -102,9 +108,12 @@ jobs:
             tr '[:upper:]' '[:lower:]' | \
             sed 's/-\+/-/g')
           
+          echo "DEBUG: SANITIZED_NAME=${SANITIZED_NAME}"
+          
           # 정리 후에도 비어있으면 기본값
           if [ -z "$SANITIZED_NAME" ]; then
             SANITIZED_NAME="issue"
+            echo "SANITIZED_NAME was empty after cleaning, using default: issue"
           fi
           
           BRANCH_NAME="${BRANCH_TYPE}/${ISSUE_NUMBER}-${SANITIZED_NAME}"
