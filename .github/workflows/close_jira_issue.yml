@@ -31,4 +31,4 @@ jobs:
         uses: atlassian/gajira-transition@v3
         with:
           issue: ${{ env.JIRA_KEY }}
-          transition: Done   # <- Jira 워크플로에서 실제 트랜지션 이름 확인 필요
+          transition: "31"
