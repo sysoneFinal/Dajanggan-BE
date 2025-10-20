@@ -44,6 +44,8 @@ jobs:
           echo "description: ${{ steps.issue-parser.outputs.issueparser_description }}"
           echo "=== JSON Output ==="
           echo '${{ steps.issue-parser.outputs.jsonString }}'
+          echo "=== Issue Body ==="
+          echo '${{ github.event.issue.body }}'
 
       # 4. Markdown → Jira Syntax 변환
       - name: Convert markdown to Jira Syntax
@@ -81,26 +83,28 @@ jobs:
       - name: Create branch with Ticket number
         run: |
           ISSUE_NUMBER="${{ steps.create.outputs.issue }}"
-          BRANCH_TYPE="${{ steps.issue-parser.outputs.issueparser_branchtype }}"
-          BRANCH_NAME_INPUT="${{ steps.issue-parser.outputs.issueparser_branchname }}"
+          ISSUE_BODY='${{ github.event.issue.body }}'
+          
+          # Issue body에서 값 추출
+          BRANCH_TYPE=$(echo "$ISSUE_BODY" | grep -A 1 "### 브랜치 타입 선택" | tail -1 | tr -d '\r\n' | xargs)
+          BRANCH_NAME_INPUT=$(echo "$ISSUE_BODY" | grep -A 1 "### 작업 요약" | tail -1 | tr -d '\r\n' | xargs)
           
           echo "DEBUG: ISSUE_NUMBER=${ISSUE_NUMBER}"
           echo "DEBUG: BRANCH_TYPE=${BRANCH_TYPE}"
           echo "DEBUG: BRANCH_NAME_INPUT=${BRANCH_NAME_INPUT}"
           
-          # 브랜치 타입이 비어있으면 기본값 사용
-          if [ -z "$BRANCH_TYPE" ]; then
+          # 기본값 처리
+          if [ -z "$BRANCH_TYPE" ] || [ "$BRANCH_TYPE" = "_No response_" ]; then
             BRANCH_TYPE="feature"
             echo "BRANCH_TYPE was empty, using default: feature"
           fi
           
-          # 브랜치명이 비어있으면 "issue" 사용
-          if [ -z "$BRANCH_NAME_INPUT" ]; then
+          if [ -z "$BRANCH_NAME_INPUT" ] || [ "$BRANCH_NAME_INPUT" = "_No response_" ]; then
             BRANCH_NAME_INPUT="issue"
             echo "BRANCH_NAME_INPUT was empty, using default: issue"
           fi
           
-          # 영문/숫자/하이픈/언더스코어만 남기고 정리
+          # 영문/숫자/하이픈/언더스코어/공백만 남기고 정리
           SANITIZED_NAME=$(echo "${BRANCH_NAME_INPUT}" | \
             sed 's/[^a-zA-Z0-9 _-]//g' | \
             sed 's/ \+/-/g' | \
