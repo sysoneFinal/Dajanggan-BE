@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class InstanceService {
 
-    private final InstanceRepository repository;
+    private final InstanceRepository instanceRepository;
 
     @Transactional
     public Long register(InstanceDto dto) {
@@ -31,7 +31,8 @@ public class InstanceService {
                 .collectionInterval(dto.getCollectionInterval())
                 .build();
 
-        repository.insert(entity);
+        instanceRepository.insertInstance(entity);
         return entity.getInstanceId();
     }
+
 }
