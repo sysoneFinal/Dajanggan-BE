@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dajanggan.domain.instance.repository.InstanceRepository">
+
+    <!-- Entity ↔ 컬럼 매핑 -->
+    <resultMap id="InstanceResultMap" type="com.dajanggan.domain.instance.domain.Instance">
+        <id     property="instanceId"       column="instance_id"/>
+        <result property="instanceName"     column="instance_name"/>
+        <result property="host"             column="host"/>
+        <result property="dbname"           column="dbname"/>
+        <result property="port"             column="port"/>
+        <result property="username"         column="username"/>
+        <result property="secretRef"        column="secret_ref"/>
+        <result property="sslmode"          column="sslmode"/>
+        <result property="isEnabled"        column="is_enabled"/>
+        <result property="slackEnabled"     column="slack_enabled"/>
+        <result property="slackChannel"     column="slack_channel"/>
+        <result property="slackMention"     column="slack_mention"/>
+        <result property="slackWebhookUrl"  column="slack_webhook_url"/>
+        <result property="collectionInterval" column="collection_interval"/>
+    </resultMap>
+
+    <!-- INSERT: PK auto 증가 (& Entity.instanceId 세팅) -->
+    <insert id="insertInstance" parameterType="com.dajanggan.domain.instance.domain.Instance"
+            useGeneratedKeys="true" keyProperty="instanceId">
+        INSERT INTO monitor_instance (
+            instance_name, host, dbname, port, username, secret_ref, sslmode,
+            is_enabled, slack_enabled, slack_channel, slack_mention, slack_webhook_url,
+            collection_interval
+        ) VALUES (
+                     #{instanceName}, #{host}, #{dbname}, #{port}, #{username}, #{secretRef}, #{sslmode},
+                     #{isEnabled}, #{slackEnabled}, #{slackChannel}, #{slackMention}, #{slackWebhookUrl},
+                     #{collectionInterval}
+                 )
+    </insert>
+
+</mapper>
