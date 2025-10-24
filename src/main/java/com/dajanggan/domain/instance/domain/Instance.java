@@ -1,6 +1,9 @@
 package com.dajanggan.domain.instance.domain;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
+
+import java.time.OffsetDateTime;
 
 @Data
 @NoArgsConstructor
@@ -14,11 +17,15 @@ public class Instance {
     private Integer port;
     private String username;
     private String secretRef;
+    private String version;
     private String sslmode;
     private Boolean isEnabled;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
     private Boolean slackEnabled;
     private String slackChannel;
     private String slackMention;
     private String slackWebhookUrl;
     private Integer collectionInterval;
+
 }

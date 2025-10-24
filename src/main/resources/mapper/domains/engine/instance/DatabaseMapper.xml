@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.instance.repository.DatabaseRepository">
+
+    <!-- ✅ resultMap 정의 -->
+    <resultMap id="DatabaseDtoMap" type="com.dajanggan.domain.instance.dto.DatabaseDto">
+        <result property="databaseName" column="database_name"/>
+        <result property="isEnabled" column="is_enabled"/>
+        <result property="connections" column="connections"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="cacheHitRate" column="cache_hit_rate"/>
+        <result property="updatedAt" column="updated_at"/>
+        <!-- instanceId도 필요하면 추가 -->
+        <result property="instanceId" column="instance_id"/>
+    </resultMap>
+
+    <!-- ✅ 쿼리 예시 -->
+    <select id="findByInstanceIds" parameterType="list" resultMap="DatabaseDtoMap">
+        SELECT
+        instance_id,
+        database_name,
+        is_enabled,
+        connections,
+        size_bytes,
+        cache_hit_rate,
+        updated_at
+        FROM monitor_database
+        WHERE instance_id IN
+        <foreach collection="list" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="findByInstanceId" parameterType="long" resultMap="DatabaseDtoMap">
+        SELECT
+            instance_id,
+            database_name,
+            is_enabled,
+            connections,
+            size_bytes,
+            cache_hit_rate,
+            updated_at
+        FROM monitor_database
+        WHERE instance_id = #{instanceId}
+    </select>
+
+</mapper>

@@ -3,8 +3,12 @@ package com.dajanggan.domain.instance.dto;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
+import java.time.OffsetDateTime;
+
 @Data
 public class InstanceDto {
+    @NotBlank
+    private Long instanceId;
 
     @NotBlank
     private String instanceName;
@@ -26,11 +30,17 @@ public class InstanceDto {
     @NotBlank
     private String secretRef;
 
+    @NotNull
+    private String version;
+
     @Pattern(regexp = "disable|allow|prefer|require|verify-ca|verify-full")
     private String sslmode = "require";
 
     @NotNull
     private Boolean isEnabled = true;
+
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
 
     @NotNull
     private Boolean slackEnabled = false;
