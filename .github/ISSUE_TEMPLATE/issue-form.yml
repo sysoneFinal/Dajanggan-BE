@@ -17,6 +17,7 @@ body:
         - refactor
         - style
         - chore
+        - cicd
     validations:
       required: true
 
