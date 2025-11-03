@@ -26,6 +26,5 @@ public class Instance {
     private String slackChannel;
     private String slackMention;
     private String slackWebhookUrl;
-    private Integer collectionInterval;
 
 }

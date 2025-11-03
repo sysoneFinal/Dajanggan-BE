@@ -10,9 +10,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
-import java.time.OffsetDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -39,7 +36,6 @@ public class InstanceService {
                 .slackChannel(dto.getSlackChannel())
                 .slackMention(dto.getSlackMention())
                 .slackWebhookUrl(dto.getSlackWebhookUrl())
-                .collectionInterval(dto.getCollectionInterval())
                 .build();
 
         instanceRepository.insertInstance(entity);
@@ -75,8 +71,12 @@ public class InstanceService {
                 .slackChannel(dto.getSlackChannel())
                 .slackMention(dto.getSlackMention())
                 .slackWebhookUrl(dto.getSlackWebhookUrl())
-                .collectionInterval(dto.getCollectionInterval())
                 .build();
+
+        int rows = instanceRepository.updateInstance(current);
+        if (rows != 1) {
+            throw new IllegalStateException("업데이트 대상이 없거나 변경 실패: id=" + id);
+        }
         instanceRepository.updateInstance(changed);
     }
 
@@ -87,7 +87,7 @@ public class InstanceService {
     }
 
     public List<InstanceWithDatabasesDto> findAllWithDatabases() {
-        // ✅ 1) 인스턴스 조회 (엔티티)
+        // 1) 인스턴스 조회 (엔티티)
         List<Instance> instances = instanceRepository.findAll();
         if (instances.isEmpty()) return List.of();
 
@@ -112,8 +112,5 @@ public class InstanceService {
 
     public List<DatabaseDto> findDatabases(Long instanceId) {
         return databaseRepository.findByInstanceId(instanceId);
-        // 엔티티 반환인 경우:
-        // return databaseRepository.findByInstanceId(instanceId)
-        //         .stream().map(DtoMappers::toDatabaseDto).toList();
     }
 }

@@ -16,7 +16,7 @@ public class InstanceWithDatabasesDto {
     private String version;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
-    private Long uptimeMs; // 계산 필드(선택)
+    private Long uptimeMs;
 
     // 하위 Database 목록
     private List<DatabaseDto> databases;

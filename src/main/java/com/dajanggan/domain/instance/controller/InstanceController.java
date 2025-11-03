@@ -22,7 +22,6 @@ import java.util.Map;
 public class InstanceController {
 
     private final InstanceService instanceService;
-    private final DatabaseService databaseService; // with-db 조회용 (서비스 계층에 합치는 게 이상적)
 
     // 등록
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -52,7 +51,6 @@ public class InstanceController {
     // 모두 조회 (include=databases 인 경우: 인스턴스 + DB 목록까지)
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE, params = "include=databases")
     public ResponseEntity<List<InstanceWithDatabasesDto>> listWithDatabases() {
-        // 서비스에 통합 메서드가 있으면 그걸 쓰세요. (예: instanceService.findAllWithDatabases())
         return ResponseEntity.ok(instanceService.findAllWithDatabases());
     }
 
@@ -60,6 +58,7 @@ public class InstanceController {
     @PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Void> update(@PathVariable Long id, @Valid @RequestBody InstanceDto req) {
         instanceService.update(id, req);
+
         return ResponseEntity.noContent().build();
     }
 

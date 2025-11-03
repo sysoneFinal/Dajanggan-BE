@@ -12,21 +12,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public final class DtoMappers {
-    private DtoMappers() {}
-
-    public static InstanceDto toInstanceDto(Instance e) {
-        InstanceDto d = new InstanceDto();
-        d.setInstanceId(e.getInstanceId());
-        d.setInstanceName(e.getInstanceName());
-        d.setHost(e.getHost());
-        d.setPort(e.getPort());
-        d.setIsEnabled(Boolean.TRUE.equals(e.getIsEnabled()));
-        d.setVersion(e.getVersion());
-        d.setCreatedAt(e.getCreatedAt());
-        d.setUpdatedAt(e.getUpdatedAt());
-        return d;
-    }
-
     public static DatabaseDto toDatabaseDto(Database s) {
         DatabaseDto d = new DatabaseDto();
         d.setDatabaseName(s.getDatabaseName());

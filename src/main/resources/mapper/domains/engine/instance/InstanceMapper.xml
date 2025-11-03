@@ -20,7 +20,6 @@
         <result property="slackChannel"     column="slack_channel"/>
         <result property="slackMention"     column="slack_mention"/>
         <result property="slackWebhookUrl"  column="slack_webhook_url"/>
-        <result property="collectionInterval" column="collection_interval"/>
     </resultMap>
 
     <!-- INSERT: PK auto 증가 (& Entity.instanceId 세팅) -->
@@ -28,12 +27,11 @@
             useGeneratedKeys="true" keyProperty="instanceId">
         INSERT INTO monitor_instance (
             instance_name, host, dbname, port, username, secret_ref, sslmode,
-            is_enabled, slack_enabled, slack_channel, slack_mention, slack_webhook_url,
-            collection_interval
+            is_enabled, slack_enabled, slack_channel, slack_mention, slack_webhook_url
         ) VALUES (
                      #{instanceName}, #{host}, #{dbname}, #{port}, #{username}, #{secretRef}, #{sslmode},
-                     #{isEnabled}, #{slackEnabled}, #{slackChannel}, #{slackMention}, #{slackWebhookUrl},
-                     #{collectionInterval}
+                     #{isEnabled}, #{slackEnabled}, #{slackChannel}, #{slackMention}, #{slackWebhookUrl}
+
                  )
     </insert>
 
@@ -58,8 +56,7 @@
             slack_enabled = #{slackEnabled},
             slack_channel = #{slackChannel},
             slack_mention = #{slackMention},
-            slack_webhook_url   = #{slackWebhookUrl},
-            collection_interval = #{collectionInterval}
+            slack_webhook_url   = #{slackWebhookUrl}
         where instance_id = #{instanceId}
     </update>
 
