@@ -18,8 +18,6 @@ public interface InstanceRepository {
     int updateInstance(Instance entity);
 
     int deleteById(@Param("id") Long id);
-
-    boolean existsByName(@Param("instanceName") String instanceName);
 }
 
 

@@ -3,7 +3,6 @@ package com.dajanggan.domain.instance.service;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.dto.DatabaseDto;
-import com.dajanggan.domain.instance.dto.InstanceDto;
 import com.dajanggan.domain.instance.dto.InstanceWithDatabasesDto;
 
 import java.time.Duration;

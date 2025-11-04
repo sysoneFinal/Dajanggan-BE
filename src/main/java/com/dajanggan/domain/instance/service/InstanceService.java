@@ -109,8 +109,4 @@ public class InstanceService {
                 .map(i -> DtoMappers.toInstanceWithDbDto(i, dbMap.getOrDefault(i.getInstanceId(), List.of())))
                 .toList();
     }
-
-    public List<DatabaseDto> findDatabases(Long instanceId) {
-        return databaseRepository.findByInstanceId(instanceId);
-    }
 }
