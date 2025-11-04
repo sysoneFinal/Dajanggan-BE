@@ -10,7 +10,7 @@ COPY src ./src
 # 빌드 (테스트 제외)
 RUN gradle build --no-daemon -x test
 # Run stage
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk-alpine
 WORKDIR /app
 # 빌드된 JAR 파일 복사
 COPY --from=build /app/build/libs/*.jar app.jar
