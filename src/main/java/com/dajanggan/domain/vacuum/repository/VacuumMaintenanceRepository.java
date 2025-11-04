@@ -1,5 +1,6 @@
 package com.dajanggan.domain.vacuum.repository;
 
+import com.dajanggan.domain.vacuum.dto.VacuumHistoryRawDto;
 import com.dajanggan.domain.vacuum.dto.VacuumRawDto;
 import com.dajanggan.domain.vacuum.dto.VacuumTrendDto;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class VacuumMaintenanceRepository {
 
     private final VacuumRawMapper rawMapper;
     private final VacuumTrendMapper trendMapper;
+    private final VacuumHistoryMapper historyMapper;
 
     // ========== KPI 지표 ==========
 
@@ -67,5 +69,16 @@ public class VacuumMaintenanceRepository {
 
     public List<Integer> getSessionProgressHistory(String databaseId, int limit) {
         return rawMapper.getSessionProgressHistory(databaseId, limit);
+    }
+
+    // ========== History 데이터 ==========
+
+    public List<VacuumHistoryRawDto> getVacuumHistoryList(
+            LocalDateTime start, LocalDateTime end) {
+        return historyMapper.getVacuumHistoryList(start, end);
+    }
+
+    public Integer getVacuumFrequency(Long databaseId, int hours) {
+        return historyMapper.getVacuumFrequency(databaseId, hours);
     }
 }
