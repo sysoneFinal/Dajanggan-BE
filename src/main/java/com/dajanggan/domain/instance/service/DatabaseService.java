@@ -12,7 +12,12 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class DatabaseService {
+
     private final DatabaseRepository databaseRepository;
+
+    public List<DatabaseDto> findAll(){
+        return databaseRepository.findAll();
+    }
 
     // 인스턴스별 DB 목록
     public List<DatabaseDto> getByInstanceId(Long instanceId) {
