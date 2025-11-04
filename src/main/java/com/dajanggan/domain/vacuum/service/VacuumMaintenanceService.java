@@ -7,7 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,6 +28,7 @@ import java.util.stream.Collectors;
 public class VacuumMaintenanceService {
 
     private final VacuumMaintenanceRepository repository;
+    private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     /**
      * 대시보드 전체 데이터 조회
@@ -46,6 +49,118 @@ public class VacuumMaintenanceService {
     }
 
     /**
+     * Vacuum History 목록 조회
+     */
+    public List<VacuumHistoryDto> getVacuumHistory(VacuumHistoryRequestDto request) {
+        int hours = request.getHours() != null ? request.getHours() : 24;
+        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime startTime = endTime.minusHours(hours);
+
+        log.info("Vacuum History 조회: {} ~ {}, status={}", startTime, endTime, request.getStatus());
+
+        List<VacuumHistoryRawDto> rawList = repository.getVacuumHistoryList(startTime, endTime);
+
+        return rawList.stream()
+                .map(raw -> convertToHistoryDto(raw, hours))
+                .filter(dto -> filterByStatus(dto, request.getStatus()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Raw DTO → History DTO 변환
+     */
+    private VacuumHistoryDto convertToHistoryDto(VacuumHistoryRawDto raw, int hours) {
+        // 빈도 계산
+        Integer frequency = repository.getVacuumFrequency(raw.getDatabaseId(), hours);
+        String frequencyStr = formatFrequency(frequency, hours);
+
+        // 상태 판단 (bloat 비율 > 5% 또는 dead tuples > 100K → 주의)
+        String status = determineStatus(raw);
+
+        return VacuumHistoryDto.builder()
+                .table(String.valueOf(raw.getDatabaseId()))
+                .lastVacuum(formatDateTime(raw.getLastVacuum()))
+                .lastAutovacuum(formatDateTime(raw.getLastAutovacuum()))
+                .deadTuples(formatTuples(raw.getDeadTuples()))
+                .modSinceAnalyze(formatTuples(raw.getModSinceAnalyze()))
+                .bloatPct(formatBloatPct(raw.getBloatRatio()))
+                .tableSize(formatBytes(raw.getTableSize()))
+                .frequency(frequencyStr)
+                .status(status)
+                .build();
+    }
+
+    /**
+     * 상태 필터링
+     */
+    private boolean filterByStatus(VacuumHistoryDto dto, String statusFilter) {
+        if (statusFilter == null || statusFilter.isEmpty()) {
+            return true;
+        }
+        return dto.getStatus().equals(statusFilter);
+    }
+
+    /**
+     * 상태 판단 로직
+     */
+    private String determineStatus(VacuumHistoryRawDto raw) {
+        // bloat 비율 > 5% 또는 dead tuples > 100K → 주의
+        if (raw.getBloatRatio() != null && raw.getBloatRatio() > 0.05) {
+            return "주의";
+        }
+        if (raw.getDeadTuples() != null && raw.getDeadTuples() > 100_000) {
+            return "주의";
+        }
+        return "정상";
+    }
+
+    /**
+     * 빈도 포맷팅
+     */
+    private String formatFrequency(Integer count, int hours) {
+        if (count == null || count == 0) {
+            return "0회";
+        }
+
+        // 일 단위 빈도 계산
+        if (hours >= 24) {
+            int perDay = (int) Math.round(count * 24.0 / hours);
+            return perDay + "회/일";
+        }
+
+        return count + "회/" + hours + "h";
+    }
+
+    /**
+     * DateTime 포맷팅
+     */
+    private String formatDateTime(Timestamp timestamp) {
+        if (timestamp == null) return "-";
+        return timestamp.toLocalDateTime().format(DATETIME_FORMATTER);
+    }
+
+    /**
+     * Bloat 비율 포맷팅
+     */
+    private String formatBloatPct(Double ratio) {
+        if (ratio == null) return "0.0%";
+        return String.format("%.1f%%", ratio * 100);
+    }
+
+    /**
+     * 바이트 크기 포맷팅
+     */
+    private String formatBytes(Long bytes) {
+        if (bytes == null) return "0 B";
+        if (bytes >= 1_073_741_824) return String.format("%.0f GB", bytes / 1_073_741_824.0);
+        if (bytes >= 1_048_576) return String.format("%.0f MB", bytes / 1_048_576.0);
+        if (bytes >= 1_024) return String.format("%.0f KB", bytes / 1_024.0);
+        return bytes + " B";
+    }
+
+    // ========== 기존 메서드들 ==========
+
+    /**
      * KPI 지표 계산
      */
     private KpiDto buildKpiMetrics(LocalDateTime start, LocalDateTime end) {
@@ -56,7 +171,6 @@ public class VacuumMaintenanceService {
         Integer maxWorkers = repository.getMaxWorkers();
         Integer activeWorkers = repository.getActiveWorkers();
 
-        // null-safe 처리 추가
         int maxWorkersValue = (maxWorkers != null) ? maxWorkers : 0;
         int activeWorkersValue = (activeWorkers != null) ? activeWorkers : 0;
 
