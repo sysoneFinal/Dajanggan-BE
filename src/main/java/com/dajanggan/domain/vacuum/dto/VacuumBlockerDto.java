@@ -5,17 +5,18 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
+/**
+ * Vacuum Blocker DTO
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class VacuumSessionDto {
+public class VacuumBlockerDto {
     private String table;
-    private String phase;
-    private String deadTuples;
-    private String trigger;
-    private String elapsed;
-    private List<Integer> progressSeries;
+    private String pid;
+    private String lockType;
+    private String txAge;
+    private String blocked_seconds;
+    private String status;
 }

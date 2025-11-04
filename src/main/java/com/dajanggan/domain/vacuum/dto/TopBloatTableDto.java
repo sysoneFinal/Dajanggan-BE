@@ -5,17 +5,16 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
+/**
+ * Top Bloat Tables DTO
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class VacuumSessionDto {
+public class TopBloatTableDto {
     private String table;
-    private String phase;
-    private String deadTuples;
-    private String trigger;
-    private String elapsed;
-    private List<Integer> progressSeries;
+    private String bloat;
+    private String tableSize;
+    private String deadTuple;
 }

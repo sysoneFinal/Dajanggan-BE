@@ -3,6 +3,7 @@ package com.dajanggan.domain.vacuum.controller;
 import com.dajanggan.domain.vacuum.dto.VacuumDashboardDto;
 import com.dajanggan.domain.vacuum.dto.VacuumHistoryDto;
 import com.dajanggan.domain.vacuum.dto.VacuumHistoryRequestDto;
+import com.dajanggan.domain.vacuum.dto.VacuumRiskDto;
 import com.dajanggan.domain.vacuum.service.VacuumMaintenanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -62,5 +63,19 @@ public class VacuumMaintenanceController {
         List<VacuumHistoryDto> history = vacuumMaintenanceService.getVacuumHistory(request);
 
         return ResponseEntity.ok(history);
+    }
+
+    /**
+     * Vacuum Risk 페이지 데이터 조회
+     * GET /api/vacuum/risk?hours=24
+     */
+    @GetMapping("/risk")
+    public ResponseEntity<VacuumRiskDto> getRisk(
+            @RequestParam(defaultValue = "24") int hours) {
+
+        log.info("GET /api/vacuum/risk - hours: {}", hours);
+        VacuumRiskDto risk = vacuumMaintenanceService.getVacuumRiskData(hours);
+
+        return ResponseEntity.ok(risk);
     }
 }
