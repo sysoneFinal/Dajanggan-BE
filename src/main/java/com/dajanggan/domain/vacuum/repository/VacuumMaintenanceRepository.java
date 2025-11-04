@@ -1,8 +1,6 @@
 package com.dajanggan.domain.vacuum.repository;
 
-import com.dajanggan.domain.vacuum.dto.VacuumHistoryRawDto;
-import com.dajanggan.domain.vacuum.dto.VacuumRawDto;
-import com.dajanggan.domain.vacuum.dto.VacuumTrendDto;
+import com.dajanggan.domain.vacuum.dto.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -19,6 +17,7 @@ import java.util.List;
 public class VacuumMaintenanceRepository {
 
     private final VacuumRawMapper rawMapper;
+    private final VacuumRiskMapper riskMapper;
     private final VacuumTrendMapper trendMapper;
     private final VacuumHistoryMapper historyMapper;
 
@@ -80,5 +79,25 @@ public class VacuumMaintenanceRepository {
 
     public Integer getVacuumFrequency(Long databaseId, int hours) {
         return historyMapper.getVacuumFrequency(databaseId, hours);
+    }
+
+
+    // ========== Risk 데이터 ==========
+
+    public List<BlockersPerHourRawDto> getBlockersPerHour(
+            LocalDateTime start, LocalDateTime end, int buckets) {
+        return riskMapper.getBlockersPerHour(start, end, buckets);
+    }
+
+    public List<TopBloatRawDto> getTopBloatTables(int limit) {
+        return riskMapper.getTopBloatTables(limit);
+    }
+
+    public List<VacuumBlockerDetailRawDto> getVacuumBlockers() {
+        return riskMapper.getVacuumBlockers();
+    }
+
+    public List<WraparoundProgressRawDto> getWraparoundProgress() {
+        return riskMapper.getWraparoundProgress();
     }
 }

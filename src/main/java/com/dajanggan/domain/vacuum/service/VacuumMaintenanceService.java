@@ -296,4 +296,131 @@ public class VacuumMaintenanceService {
         if (seconds >= 60) return String.format("%dm", seconds / 60);
         return String.format("%ds", seconds);
     }
+
+    /**
+     * Vacuum Risk 페이지 데이터 조회
+     */
+    public VacuumRiskDto getVacuumRiskData(int hours) {
+        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime startTime = endTime.minusHours(hours);
+
+        log.info("Vacuum Risk 조회: {} ~ {}", startTime, endTime);
+
+        return VacuumRiskDto.builder()
+                .blockers(buildBlockersChart(startTime, endTime))
+                .autovacuum(buildAutovacuumChart(startTime, endTime))
+                .wraparound(buildWraparoundChart())
+                .bloat(buildTopBloatTables(3))
+                .vacuumblockers(buildVacuumBlockers())
+                .build();
+    }
+
+    /**
+     * Blockers per Hour 차트
+     */
+    private ChartDto buildBlockersChart(LocalDateTime start, LocalDateTime end) {
+        List<BlockersPerHourRawDto> blockers = repository.getBlockersPerHour(start, end, 24);
+
+        List<String> labels = new ArrayList<>();
+        List<Double> data = new ArrayList<>();
+
+        for (BlockersPerHourRawDto b : blockers) {
+            labels.add(b.getHourLabel());
+            data.add(b.getBlockersCount() != null ? b.getBlockersCount().doubleValue() : 0.0);
+        }
+
+        return ChartDto.builder()
+                .data(Collections.singletonList(data))
+                .labels(labels)
+                .build();
+    }
+
+    /**
+     * Wraparound Progress 차트
+     */
+    private ChartDto buildWraparoundChart() {
+        List<WraparoundProgressRawDto> wraparound = repository.getWraparoundProgress();
+
+        List<String> labels = new ArrayList<>();
+        List<Double> data = new ArrayList<>();
+
+        for (WraparoundProgressRawDto w : wraparound) {
+            labels.add(String.valueOf(w.getDatabaseId()));
+            data.add(w.getWraparoundProgressPct() != null ? w.getWraparoundProgressPct() : 0.0);
+        }
+
+        return ChartDto.builder()
+                .data(Collections.singletonList(data))
+                .labels(labels)
+                .build();
+    }
+
+    /**
+     * Top Bloat Tables 목록
+     */
+    private List<TopBloatTableDto> buildTopBloatTables(int limit) {
+        List<TopBloatRawDto> rawList = repository.getTopBloatTables(limit);
+
+        return rawList.stream()
+                .map(this::convertToTopBloatDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Vacuum Blockers 목록
+     */
+    private List<VacuumBlockerDto> buildVacuumBlockers() {
+        List<VacuumBlockerDetailRawDto> rawList = repository.getVacuumBlockers();
+
+        return rawList.stream()
+                .map(this::convertToVacuumBlockerDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Raw → TopBloatTableDto 변환
+     */
+    private TopBloatTableDto convertToTopBloatDto(TopBloatRawDto raw) {
+        return TopBloatTableDto.builder()
+                .table(String.valueOf(raw.getDatabaseId()))
+                .bloat(formatBloatPct(raw.getBloatRatio()))
+                .tableSize(formatBytes(raw.getTableSize()))
+                .deadTuple(formatTuples(raw.getDeadTuples()))
+                .build();
+    }
+
+    /**
+     * Raw → VacuumBlockerDto 변환
+     */
+    private VacuumBlockerDto convertToVacuumBlockerDto(VacuumBlockerDetailRawDto raw) {
+        return VacuumBlockerDto.builder()
+                .table(String.valueOf(raw.getDatabaseId()))
+                .pid(String.valueOf(raw.getPid()))
+                .lockType(raw.getLockType() != null ? raw.getLockType() : "Unknown")
+                .txAge(formatDuration(raw.getTransactionAge()))
+                .blocked_seconds(formatDuration(raw.getBlockDuration()))
+                .status(raw.getQueryState() != null ? raw.getQueryState() : "unknown")
+                .build();
+    }
+
+    /**
+     * Duration 포맷팅 (초 → "Xh Ym" 형식)
+     */
+    private String formatDuration(Long seconds) {
+        if (seconds == null || seconds == 0) return "0s";
+
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+
+        if (hours > 0 && minutes > 0) {
+            return String.format("%dh %dm", hours, minutes);
+        } else if (hours > 0) {
+            return String.format("%dh", hours);
+        } else if (minutes > 0) {
+            return String.format("%dm", minutes);
+        } else {
+            return String.format("%ds", seconds);
+        }
+    }
+
 }
