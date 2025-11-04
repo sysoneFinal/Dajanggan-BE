@@ -55,8 +55,13 @@ public class VacuumMaintenanceService {
 
         Integer maxWorkers = repository.getMaxWorkers();
         Integer activeWorkers = repository.getActiveWorkers();
-        double utilization = maxWorkers > 0
-                ? (activeWorkers * 100.0 / maxWorkers)
+
+        // null-safe 처리 추가
+        int maxWorkersValue = (maxWorkers != null) ? maxWorkers : 0;
+        int activeWorkersValue = (activeWorkers != null) ? activeWorkers : 0;
+
+        double utilization = maxWorkersValue > 0
+                ? (activeWorkersValue * 100.0 / maxWorkersValue)
                 : 0.0;
 
         return KpiDto.builder()

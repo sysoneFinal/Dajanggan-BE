@@ -15,7 +15,7 @@
             heap_blks_total as heapBlksTotal,
             heap_blks_scanned as heapBlksScanned,
             heap_blks_vacuumed as heapBlksVacuumed,
-            (heap_blks_total - heap_blks_scanned) as deadTupleTotal
+            COALESCE(n_dead_tup, 0) as deadTupleTotal
         FROM vacuum_raw_metrics
         WHERE session_phase IS NOT NULL
           AND session_phase != 'completed'
@@ -25,9 +25,9 @@
 
     <!-- 세션 진행률 히스토리 -->
     <select id="getSessionProgressHistory" resultType="java.lang.Integer">
-        SELECT CAST(session_progress AS SIGNED) as progress
+        SELECT CAST(session_progress AS INTEGER) as progress
         FROM vacuum_raw_metrics
-        WHERE database_id = #{databaseId}
+        WHERE database_id = CAST(#{databaseId} AS BIGINT)
           AND session_progress IS NOT NULL
         ORDER BY created_at DESC
             LIMIT #{limit}
@@ -35,16 +35,18 @@
 
     <!-- 최대 Worker 수 -->
     <select id="getMaxWorkers" resultType="java.lang.Integer">
-        SELECT max_workers
+        SELECT COALESCE(max_workers, 0) as max_workers
         FROM vacuum_raw_metrics
+        WHERE max_workers IS NOT NULL
         ORDER BY created_at DESC
             LIMIT 1
     </select>
 
     <!-- 현재 활성 Worker 수 -->
     <select id="getActiveWorkers" resultType="java.lang.Integer">
-        SELECT active_workers
+        SELECT COALESCE(active_workers, 0) as active_workers
         FROM vacuum_raw_metrics
+        WHERE active_workers IS NOT NULL
         ORDER BY created_at DESC
             LIMIT 1
     </select>
