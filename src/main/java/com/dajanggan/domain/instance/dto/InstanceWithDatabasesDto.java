@@ -19,6 +19,6 @@ public class InstanceWithDatabasesDto {
     private Long uptimeMs;
 
     // 하위 Database 목록
-    private List<DatabaseDto> databases;
+    private List<DatabaseResponse> databases;
 
 }

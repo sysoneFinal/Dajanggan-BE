@@ -5,7 +5,7 @@ import lombok.Data;
 import java.time.OffsetDateTime;
 
 @Data
-public class DatabaseDto {
+public class DatabaseResponse {
     private Long databaseId;
     private Long instanceId;
     private String databaseName;

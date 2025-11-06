@@ -1,7 +1,7 @@
 package com.dajanggan.domain.instance.service;
 
 import com.dajanggan.domain.instance.domain.Database;
-import com.dajanggan.domain.instance.dto.DatabaseDto;
+import com.dajanggan.domain.instance.dto.DatabaseResponse;
 import com.dajanggan.domain.instance.dto.InstanceResponse;
 import com.dajanggan.domain.instance.dto.InstanceWithDatabasesDto;
 
@@ -11,8 +11,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public final class DtoMappers {
-    public static DatabaseDto toDatabaseDto(Database s) {
-        DatabaseDto d = new DatabaseDto();
+    public static DatabaseResponse toDatabaseDto(Database s) {
+        DatabaseResponse d = new DatabaseResponse();
         d.setDatabaseName(s.getDatabaseName());
         d.setConnections(s.getConnections());
         d.setSizeBytes(s.getSizeBytes());
