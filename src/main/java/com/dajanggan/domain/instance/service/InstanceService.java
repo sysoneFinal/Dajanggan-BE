@@ -25,13 +25,8 @@ public class InstanceService {
     @Transactional
     public InstanceResponse create(InstanceCreateRequest dto) {
         // 1. request -> entity
-        Instance entity = Instance.builder()
-                .instanceName(dto.getInstanceName())
-                .host(dto.getHost())
-                .port(dto.getPort())
-                .userName(dto.getUserName())
-                .secretRef(dto.getSecretRef())
-                .build();
+        Instance entity = dto.toEntity();
+
         // 2. db 저장
         instanceRepository.createInstance(entity);
 

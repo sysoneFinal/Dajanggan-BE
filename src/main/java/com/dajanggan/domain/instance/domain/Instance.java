@@ -1,5 +1,6 @@
 package com.dajanggan.domain.instance.domain;
 
+import com.dajanggan.domain.instance.dto.InstanceUpdateRequest;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
