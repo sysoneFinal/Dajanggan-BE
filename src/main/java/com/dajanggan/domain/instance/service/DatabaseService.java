@@ -1,7 +1,5 @@
 package com.dajanggan.domain.instance.service;
 
-
-import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.dto.DatabaseDto;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,10 +12,6 @@ import java.util.List;
 public class DatabaseService {
 
     private final DatabaseRepository databaseRepository;
-
-    public List<DatabaseDto> findAll(){
-        return databaseRepository.findAll();
-    }
 
     // 인스턴스별 DB 목록
     public List<DatabaseDto> getByInstanceId(Long instanceId) {

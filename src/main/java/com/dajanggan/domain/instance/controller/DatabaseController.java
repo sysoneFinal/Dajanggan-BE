@@ -15,7 +15,7 @@ class DatabaseController {
 
     private final DatabaseService databaseService;
 
-    // 인스턴스별 DB 목록
+    // 인스턴스별 DB 목록 조회
     @GetMapping
     public List<DatabaseDto> list(@PathVariable Long instanceId) {
         return databaseService.getByInstanceId(instanceId);
