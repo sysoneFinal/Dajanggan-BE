@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://34.22.66.12:5432/monitoring_system
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    com.yourpackage: DEBUG

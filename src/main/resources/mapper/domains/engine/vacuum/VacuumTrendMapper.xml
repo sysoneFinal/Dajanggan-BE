@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumTrendMapper">
+
+    <!-- KPI: 평균 지연시간 -->
+    <select id="getAvgDelaySeconds" resultType="java.lang.Double">
+        SELECT AVG(avg_delay_seconds)
+        FROM vacuum_trend_metrics
+        WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+    </select>
+
+    <!-- KPI: 평균 Duration -->
+    <select id="getAvgVacuumDuration" resultType="java.lang.Double">
+        SELECT AVG(avg_vacuum_duration_seconds)
+        FROM vacuum_trend_metrics
+        WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+    </select>
+
+    <!-- KPI: 총 Dead Tuple 처리량 -->
+    <select id="getTotalDeadTuples" resultType="java.lang.Long">
+        SELECT SUM(dead_tuple_total)
+        FROM vacuum_trend_metrics
+        WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+    </select>
+
+    <!-- 차트: Dead Tuple 증가 vs 처리 -->
+    <select id="getDeadTupleTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+        SELECT
+            TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
+            AVG(dead_tuple_increase_rate_pm) as deadTupleIncreaseRate,
+            AVG(dead_tuple_processing_rate_pm) as avgProgress
+        FROM vacuum_trend_metrics
+        WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY DATE_TRUNC('hour', collected_at)
+        ORDER BY DATE_TRUNC('hour', collected_at)
+            LIMIT #{buckets}
+    </select>
+
+    <!-- 차트: Autovacuum Cost Delay & Workers -->
+    <select id="getAutovacuumTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+        SELECT
+            TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
+            AVG(avg_cost_delay_ms) as avgCostDelayMs,
+            AVG(worker_utilization_pct) as activeWorkers
+        FROM vacuum_trend_metrics
+        WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY DATE_TRUNC('hour', collected_at)
+        ORDER BY DATE_TRUNC('hour', collected_at)
+            LIMIT #{buckets}
+    </select>
+
+    <!-- 차트: Latency Trend -->
+    <select id="getLatencyTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+        SELECT
+            TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
+            AVG(avg_delay_seconds) as avgDelaySeconds
+        FROM vacuum_trend_metrics
+        WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY DATE_TRUNC('hour', collected_at)
+        ORDER BY DATE_TRUNC('hour', collected_at)
+            LIMIT #{buckets}
+    </select>
+
+</mapper>

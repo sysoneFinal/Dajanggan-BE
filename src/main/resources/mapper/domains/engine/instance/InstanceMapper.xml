@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dajanggan.domain.instance.repository.InstanceRepository">
+
+    <!-- Entity ↔ 컬럼 매핑 -->
+    <resultMap id="InstanceResultMap" type="com.dajanggan.domain.instance.domain.Instance">
+        <id     property="instanceId"       column="instance_id"/>
+        <result property="instanceName"     column="instance_name"/>
+        <result property="host"             column="host"/>
+        <result property="dbname"           column="dbname"/>
+        <result property="port"             column="port"/>
+        <result property="username"         column="username"/>
+        <result property="secretRef"        column="secret_ref"/>
+        <result property="sslmode"          column="sslmode"/>
+        <result property="isEnabled"        column="is_enabled"/>
+        <result property="createdAt"          column="created_at"/>
+        <result property="updatedAt"          column="updated_at"/>
+        <result property="slackEnabled"     column="slack_enabled"/>
+        <result property="slackChannel"     column="slack_channel"/>
+        <result property="slackMention"     column="slack_mention"/>
+        <result property="slackWebhookUrl"  column="slack_webhook_url"/>
+    </resultMap>
+
+    <!-- INSERT: PK auto 증가 (& Entity.instanceId 세팅) -->
+    <insert id="insertInstance" parameterType="com.dajanggan.domain.instance.domain.Instance"
+            useGeneratedKeys="true" keyProperty="instanceId">
+        INSERT INTO monitor_instance (
+            instance_name, host, dbname, port, username, secret_ref, sslmode,
+            is_enabled, slack_enabled, slack_channel, slack_mention, slack_webhook_url
+        ) VALUES (
+                     #{instanceName}, #{host}, #{dbname}, #{port}, #{username}, #{secretRef}, #{sslmode},
+                     #{isEnabled}, #{slackEnabled}, #{slackChannel}, #{slackMention}, #{slackWebhookUrl}
+
+                 )
+    </insert>
+
+    <select id="findById" resultMap="InstanceResultMap">
+        select * from monitor_instance where instance_id = #{id}
+    </select>
+
+    <select id="findAll" resultMap="InstanceResultMap">
+        select * from monitor_instance order by instance_id desc
+    </select>
+
+    <update id="updateInstance" parameterType="com.dajanggan.domain.instance.domain.Instance">
+        update monitor_instance
+        set instance_name = #{instanceName},
+            host          = #{host},
+            dbname        = #{dbname},
+            port          = #{port},
+            username      = #{username},
+            secret_ref    = #{secretRef},
+            sslmode       = #{sslmode},
+            is_enabled    = #{isEnabled},
+            slack_enabled = #{slackEnabled},
+            slack_channel = #{slackChannel},
+            slack_mention = #{slackMention},
+            slack_webhook_url   = #{slackWebhookUrl}
+        where instance_id = #{instanceId}
+    </update>
+
+    <delete id="deleteById">
+        delete from monitor_instance where instance_id = #{id}
+    </delete>
+
+    <select id="existsByName" resultType="boolean">
+        select exists(
+            select 1 from monitor_instance where instance_name = #{instanceName}
+        )
+    </select>
+
+</mapper>

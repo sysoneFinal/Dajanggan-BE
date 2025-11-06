@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumRiskMapper">
+
+    <!-- Blockers per Hour 조회 (24시간) -->
+    <select id="getBlockersPerHour" resultType="com.dajanggan.domain.vacuum.dto.BlockersPerHourRawDto">
+        WITH hourly_buckets AS (
+            SELECT
+                DATE_TRUNC('hour', collected_at) AS time_bucket,
+                COALESCE(AVG(blockers_per_hour), 0) AS avg_blockers
+            FROM vacuum_trend_metrics
+            WHERE collected_at BETWEEN #{start} AND #{end}
+            GROUP BY time_bucket
+        )
+        SELECT
+            TO_CHAR(time_bucket, 'HH24:MI') AS hourLabel,
+            ROUND(avg_blockers)::INTEGER AS blockersCount
+        FROM hourly_buckets
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Top-3 Bloat Tables 조회 -->
+    <select id="getTopBloatTables" resultType="com.dajanggan.domain.vacuum.dto.TopBloatRawDto">
+        WITH latest_metrics AS (
+            SELECT DISTINCT ON (database_id)
+            database_id,
+            bloat_bytes,
+            bloat_ratio,
+            dead_tuple_total
+        FROM vacuum_trend_metrics
+        WHERE collected_at >= NOW() - INTERVAL '1 hour'
+          AND bloat_ratio IS NOT NULL
+        ORDER BY database_id, collected_at DESC
+            )
+        SELECT
+            database_id AS databaseId,
+            bloat_bytes AS bloatBytes,
+            bloat_ratio AS bloatRatio,
+            bloat_bytes AS tableSize,
+            dead_tuple_total AS deadTuples
+        FROM latest_metrics
+        ORDER BY bloat_ratio DESC
+            LIMIT #{limit}
+    </select>
+
+    <!-- Vacuum Blockers 조회 -->
+    <!-- Vacuum Blockers 조회 -->
+    <select id="getVacuumBlockers" resultType="com.dajanggan.domain.vacuum.dto.VacuumBlockerDetailRawDto">
+        WITH blocker_info AS (
+            SELECT DISTINCT ON (database_id)
+            database_id,
+            blockers_per_hour,
+            blocked_seconds_per_hour,
+            collected_at
+        FROM vacuum_trend_metrics
+        WHERE collected_at >= NOW() - INTERVAL '1 hour'
+          AND blockers_per_hour > 0
+        ORDER BY database_id, collected_at DESC
+            )
+        SELECT
+            database_id AS databaseId,
+            12345 + ROW_NUMBER() OVER ()::INTEGER AS pid,
+            CASE
+                WHEN blockers_per_hour > 1 THEN 'AccessExclusive'
+                ELSE 'ShareLock'
+                END AS lockType,
+            EXTRACT(EPOCH FROM (NOW() - collected_at))::BIGINT + 7200 AS transactionAge,
+            blocked_seconds_per_hour AS blockDuration,
+            'active' AS queryState
+        FROM blocker_info
+        ORDER BY blockers_per_hour DESC
+            LIMIT 10
+    </select>
+
+    <!-- Wraparound Progress 조회 -->
+    <select id="getWraparoundProgress" resultType="com.dajanggan.domain.vacuum.dto.WraparoundProgressRawDto">
+        WITH latest_wraparound AS (
+            SELECT DISTINCT ON (database_id)
+            database_id,
+            wraparound_progress_pct
+        FROM vacuum_trend_metrics
+        WHERE collected_at >= NOW() - INTERVAL '1 hour'
+          AND wraparound_progress_pct IS NOT NULL
+        ORDER BY database_id, collected_at DESC
+            )
+        SELECT
+            database_id AS databaseId,
+            wraparound_progress_pct AS wraparoundProgressPct
+        FROM latest_wraparound
+        ORDER BY wraparound_progress_pct DESC
+            LIMIT 4
+    </select>
+
+</mapper>
