@@ -1,5 +1,6 @@
 package com.dajanggan.domain.instance.domain;
 
+import com.dajanggan.domain.instance.dto.InstanceUpdateRequest;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
@@ -15,16 +16,16 @@ public class Instance {
     private String host;
     private String dbname;
     private Integer port;
-    private String username;
+    private String status;
+    private String userName;
     private String secretRef;
-    private String version;
     private String sslmode;
-    private Boolean isEnabled;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private Boolean slackEnabled;
     private String slackChannel;
     private String slackMention;
     private String slackWebhookUrl;
+    private String version;
 
 }

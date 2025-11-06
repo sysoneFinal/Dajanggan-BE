@@ -12,13 +12,13 @@ public class InstanceWithDatabasesDto {
     private String instanceName;
     private String host;
     private Integer port;
-    private Boolean isEnabled;
+    private String userName;
     private String version;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private Long uptimeMs;
 
     // 하위 Database 목록
-    private List<DatabaseDto> databases;
+    private List<DatabaseResponse> databases;
 
 }
