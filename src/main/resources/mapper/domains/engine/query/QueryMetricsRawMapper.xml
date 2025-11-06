@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.query.repository.QueryMetricsRawRepository">
+
+    <!-- ResultMap 정의 -->
+    <resultMap id="QueryMetricsRawResultMap" type="com.dajanggan.domain.query.domain.QueryMetricsRaw">
+        <id property="queryMetricId" column="query_metric_id"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="queryId" column="query_id"/>
+        <result property="queryHash" column="query_hash"/>
+        <result property="queryText" column="query_text"/>
+        <result property="shortQuery" column="short_query"/>
+        <result property="queryType" column="query_type"/>
+        <result property="executionCount" column="execution_count"/>
+        <result property="ioBlocks" column="io_blocks"/>
+        <result property="explainPlan" column="explain_plan"/>
+        <result property="planningTimeMs" column="planning_time_ms"/>
+        <result property="executionTimeMs" column="execution_time_ms"/>
+        <result property="cpuUsagePercent" column="cpu_usage_percent"/>
+        <result property="memoryUsageMb" column="memory_usage_mb"/>
+        <result property="username" column="username"/>
+        <result property="applicationName" column="application_name"/>
+        <result property="clientAddr" column="client_addr"/>
+        <result property="state" column="state"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="cpuRank" column="cpu_rank"/>
+        <result property="memoryRank" column="memory_rank"/>
+    </resultMap>
+
+    <!-- 공통 컬럼 정의 -->
+    <sql id="queryMetricsColumns">
+        query_metric_id, database_id, collected_at, query_id, query_hash,
+        query_text, short_query, query_type, execution_count, io_blocks,
+        explain_plan, planning_time_ms, execution_time_ms, cpu_usage_percent,
+        memory_usage_mb, username, application_name, client_addr, state,
+        created_at, cpu_rank, memory_rank
+    </sql>
+
+    <!-- 1. 전체 쿼리 메트릭스 조회 -->
+    <select id="findAll" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 2. ID로 쿼리 메트릭스 조회 -->
+    <select id="findById" parameterType="long" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        WHERE query_metric_id = #{queryMetricId}
+    </select>
+
+    <!-- 3. 데이터베이스 ID로 쿼리 메트릭스 목록 조회 -->
+    <select id="findByDatabaseId" parameterType="long" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        WHERE database_id = #{databaseId}
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 4. 쿼리 타입별 조회 -->
+    <select id="findByQueryType" parameterType="string" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        WHERE query_type = #{queryType}
+        ORDER BY execution_time_ms DESC
+    </select>
+
+    <!-- 5. 슬로우 쿼리 조회 (실행 시간 기준) -->
+    <select id="findSlowQueries" parameterType="double" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        WHERE execution_time_ms >= #{thresholdMs}
+        ORDER BY execution_time_ms DESC
+    </select>
+
+    <!-- 6. CPU 사용량 상위 N개 조회 -->
+    <select id="findTopByCpuUsage" parameterType="int" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        WHERE cpu_usage_percent IS NOT NULL
+        ORDER BY cpu_usage_percent DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 7. 메모리 사용량 상위 N개 조회 -->
+    <select id="findTopByMemoryUsage" parameterType="int" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        WHERE memory_usage_mb IS NOT NULL
+        ORDER BY memory_usage_mb DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 8. 쿼리 메트릭스 등록 -->
+    <insert id="insert" parameterType="com.dajanggan.domain.query.domain.QueryMetricsRaw" useGeneratedKeys="true" keyProperty="queryMetricId">
+        INSERT INTO query_metrics_raw (
+            database_id, collected_at, query_id, query_hash, query_text,
+            short_query, query_type, execution_count, io_blocks, explain_plan,
+            planning_time_ms, execution_time_ms, cpu_usage_percent, memory_usage_mb,
+            username, application_name, client_addr, state, cpu_rank, memory_rank
+        ) VALUES (
+                     #{databaseId}, #{collectedAt}, #{queryId}, #{queryHash}, #{queryText},
+                     #{shortQuery}, #{queryType}, #{executionCount}, #{ioBlocks}, #{explainPlan},
+                     #{planningTimeMs}, #{executionTimeMs}, #{cpuUsagePercent}, #{memoryUsageMb},
+                     #{username}, #{applicationName}, #{clientAddr}, #{state}, #{cpuRank}, #{memoryRank}
+                 )
+    </insert>
+
+    <!-- 9. 쿼리 메트릭스 수정 -->
+    <update id="update" parameterType="com.dajanggan.domain.query.domain.QueryMetricsRaw">
+        UPDATE query_metrics_raw
+        SET database_id = #{databaseId},
+            collected_at = #{collectedAt},
+            query_id = #{queryId},
+            query_hash = #{queryHash},
+            query_text = #{queryText},
+            short_query = #{shortQuery},
+            query_type = #{queryType},
+            execution_count = #{executionCount},
+            io_blocks = #{ioBlocks},
+            explain_plan = #{explainPlan},
+            planning_time_ms = #{planningTimeMs},
+            execution_time_ms = #{executionTimeMs},
+            cpu_usage_percent = #{cpuUsagePercent},
+            memory_usage_mb = #{memoryUsageMb},
+            username = #{username},
+            application_name = #{applicationName},
+            client_addr = #{clientAddr},
+            state = #{state},
+            cpu_rank = #{cpuRank},
+            memory_rank = #{memoryRank}
+        WHERE query_metric_id = #{queryMetricId}
+    </update>
+
+    <!-- 10. 쿼리 메트릭스 삭제 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM query_metrics_raw
+        WHERE query_metric_id = #{queryMetricId}
+    </delete>
+
+    <!-- 11. 전체 쿼리 메트릭스 개수 조회 -->
+    <select id="count" resultType="int">
+        SELECT COUNT(*)
+        FROM query_metrics_raw
+    </select>
+
+    <!-- 12. 데이터베이스별 쿼리 메트릭스 개수 조회 -->
+    <select id="countByDatabaseId" parameterType="long" resultType="int">
+        SELECT COUNT(*)
+        FROM query_metrics_raw
+        WHERE database_id = #{databaseId}
+    </select>
+
+</mapper>
