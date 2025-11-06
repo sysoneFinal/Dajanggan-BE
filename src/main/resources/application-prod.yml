@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://34.22.66.12:5432/monitoring_system
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${GOOGLE_DB_URL}
+    username: ${GOOGLE_DB_USERNAME}
+    password: ${GOOGLE_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
 server:
