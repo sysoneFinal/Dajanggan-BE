@@ -12,15 +12,6 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
-cloud:
-  aws:
-    s3:
-      bucket: ${AWS_S3_BUCKET} # ?? ??
-    stack.auto: false
-    region.static: ${AWS_REGION} # ?? ??
-    credentials:
-      access-key: ${AWS_IAM_ACCESS_KEY}
-      secret-key: ${AWS_IAM_SECRET_KEY}
 mybatis:
   # Mapper XML ??
   mapper-locations: classpath:mapper/**/*.xml
@@ -38,19 +29,18 @@ mybatis:
     lazy-loading-enabled: false          # Lazy Loading ????
     aggressive-lazy-loading: false
 
-# PostgreSQL ?? ?? ??
+# PostgreSQL
 postgres:
   stats:
-    reset-detection: true                # ?? ?? ?? ???
-    snapshot-interval: 300               # ??? ?? (?)
+    reset-detection: true
+    snapshot-interval: 300
 
-# ?? ??
 logging:
   level:
     com.dajanggan: DEBUG
     com.dajanggan.domain.engine: DEBUG
-    org.apache.ibatis: DEBUG             # MyBatis ?? ??
-    com.zaxxer.hikari: INFO              # HikariCP ??
+    org.apache.ibatis: DEBUG
+    com.zaxxer.hikari: INFO
 
 server:
   port: 8080
