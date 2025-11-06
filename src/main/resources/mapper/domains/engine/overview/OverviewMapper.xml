@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dajanggan.domain.overview.repository.OverviewRepository">
+    
+    <insert id="saveDashboardLayout" parameterType="com.dajanggan.domain.overview.dto.DashboardSaveRequest">
+        INSERT INTO user_dashboard (instance_id, user_layout, created_at)
+        VALUES ( #{instanceId}, CAST(#{userLayout} AS JSONB) )
+        ON CONFLICT (instance_id)
+        DO UPDATE
+        SET user_layout = CAST(#{userLayout} AS JSONB),
+            updated_at = now();
+    </insert>
+
+</mapper>
