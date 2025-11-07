@@ -9,15 +9,11 @@ import java.util.Optional;
 
 @Mapper
 public interface InstanceRepository {
-    void insertInstance(Instance instance);
-
+    void createInstance(Instance instance);
     Optional<Instance> findById(@Param("id") Long id);
-
     List<Instance> findAll();
-
-    int updateInstance(Instance entity);
-
-    int deleteById(@Param("id") Long id);
+    int updateInstance(Instance instance);
+    void deleteById(@Param("id") Long id);
 }
 
 

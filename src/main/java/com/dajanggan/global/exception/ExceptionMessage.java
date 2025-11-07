@@ -17,7 +17,8 @@ public enum ExceptionMessage {
     DB_CONNECTION_FAILED("데이터베이스 연결에 실패했습니다."),
     DB_QUERY_EXECUTION_FAILED("쿼리 실행 중 오류가 발생했습니다."),
     INVALID_DB_CONFIGURATION("유효하지 않은 데이터베이스 설정입니다."),
-    DB_INSTANCE_NOT_FOUND("데이터베이스 인스턴스를 찾을 수 없습니다."),
+    INSTANCE_NOT_FOUND("인스턴스를 찾을 수 없습니다."),
+    DATABASE_NOT_FOUND("데이터베이스를 찾을 수 없습니다."),
 
     // DB 모니터링 데이터 수집 관련
     DB_METRIC_COLLECTION_FAILED("DB 메트릭 수집 중 오류가 발생했습니다."),
@@ -97,6 +98,11 @@ public enum ExceptionMessage {
     // 데이터 처리 관련
     DATA_PARSING_FAILED("데이터 파싱 중 오류가 발생했습니다."),
     DATA_SERIALIZATION_FAILED("데이터 직렬화 중 오류가 발생했습니다."),
+
+    // Dashboard 관련 예외
+    INVALID_DASHBOARD_JSON("대시보드 JSON 형식이 유효하지 않습니다."),
+    INVALID_WIDGET_STRUCTURE("위젯 구조가 올바르지 않습니다."),
+    WIDGET_COUNT_EXCEEDED("허용된 위젯 개수를 초과했습니다."),
     ;
 
     private final String message;
