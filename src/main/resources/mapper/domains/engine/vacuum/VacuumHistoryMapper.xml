@@ -5,7 +5,8 @@
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumHistoryMapper">
 
     <!-- Vacuum History 목록 조회 -->
-    <select id="getVacuumHistoryList" resultType="com.dajanggan.domain.vacuum.dto.VacuumHistoryRawDto">
+    <!-- Vacuum History 목록 조회 -->
+    <select id="getVacuumHistoryList" resultType="com.dajanggan.domain.vacuum.dto.VacuumHistoryDto$Raw">
         SELECT
             database_id AS databaseId,
             last_vacuum AS lastVacuum,
@@ -14,6 +15,8 @@
             n_mod_since_analyze AS modSinceAnalyze,
             bloat_bytes AS bloatBytes,
             bloat_ratio AS bloatRatio,
+            -- table_size_bytes는 vacuum_trend_metrics에 없음
+            -- 필요하다면 vacuum_raw_metrics의 relsize_total_bytes 사용
             vacuum_count_24h AS vacuumCount24h,
             autovacuum_count_24h AS autovacuumCount24h
         FROM vacuum_trend_metrics

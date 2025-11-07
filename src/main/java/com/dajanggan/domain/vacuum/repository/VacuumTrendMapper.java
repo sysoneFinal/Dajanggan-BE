@@ -1,16 +1,12 @@
 package com.dajanggan.domain.vacuum.repository;
 
-import com.dajanggan.domain.vacuum.dto.VacuumTrendDto;
+import com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * Vacuum Trend Metrics Mapper
- * - vacuum_trend_metrics 테이블 접근
- */
 @Mapper
 public interface VacuumTrendMapper {
 
@@ -30,20 +26,20 @@ public interface VacuumTrendMapper {
             @Param("endTime") LocalDateTime endTime
     );
 
-    // 차트 데이터
-    List<VacuumTrendDto> getDeadTupleTrend(
+    // 차트 데이터 - VacuumTrendRaw 반환
+    List<VacuumMaintenanceDto.VacuumTrendRaw> getDeadTupleTrend(
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("buckets") int buckets
     );
 
-    List<VacuumTrendDto> getAutovacuumTrend(
+    List<VacuumMaintenanceDto.VacuumTrendRaw> getAutovacuumTrend(
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("buckets") int buckets
     );
 
-    List<VacuumTrendDto> getLatencyTrend(
+    List<VacuumMaintenanceDto.VacuumTrendRaw> getLatencyTrend(
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("buckets") int buckets

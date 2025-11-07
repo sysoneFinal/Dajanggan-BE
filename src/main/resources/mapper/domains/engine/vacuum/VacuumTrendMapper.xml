@@ -26,7 +26,7 @@
     </select>
 
     <!-- 차트: Dead Tuple 증가 vs 처리 -->
-    <select id="getDeadTupleTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+    <select id="getDeadTupleTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumTrendRaw">
         SELECT
             TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
             AVG(dead_tuple_increase_rate_pm) as deadTupleIncreaseRate,
@@ -39,7 +39,7 @@
     </select>
 
     <!-- 차트: Autovacuum Cost Delay & Workers -->
-    <select id="getAutovacuumTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+    <select id="getAutovacuumTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumTrendRaw">
         SELECT
             TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
             AVG(avg_cost_delay_ms) as avgCostDelayMs,
@@ -52,7 +52,7 @@
     </select>
 
     <!-- 차트: Latency Trend -->
-    <select id="getLatencyTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+    <select id="getLatencyTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumTrendRaw">
         SELECT
             TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
             AVG(avg_delay_seconds) as avgDelaySeconds

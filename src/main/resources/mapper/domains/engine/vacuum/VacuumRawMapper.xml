@@ -5,7 +5,7 @@
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumRawMapper">
 
     <!-- 현재 실행 중인 Vacuum 세션 -->
-    <select id="getCurrentVacuumSessions" resultType="com.dajanggan.domain.vacuum.dto.VacuumRawDto">
+    <select id="getCurrentVacuumSessions" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumSessionRaw">
         SELECT
             database_id as databaseId,
             session_phase as sessionPhase,

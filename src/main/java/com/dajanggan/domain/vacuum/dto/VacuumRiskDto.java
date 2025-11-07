@@ -4,21 +4,91 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
 import java.util.List;
 
-/**
- * Vacuum Risk 페이지 응답 DTO
- * - 프론트엔드 DashboardData 타입과 매핑
- */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class VacuumRiskDto {
-    private ChartDto blockers;
-    private ChartDto autovacuum;
-    private ChartDto wraparound;
-    private List<TopBloatTableDto> bloat;
-    private List<VacuumBlockerDto> vacuumblockers;
+
+    // ========== Raw DTOs ==========
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BlockersPerHourRaw {
+        private String hourLabel;
+        private Integer blockersCount;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WraparoundProgressRaw {
+        private Long databaseId;
+        private Double wraparoundProgressPct;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TopBloatRaw {
+        private Long databaseId;
+        private Long bloatBytes;
+        private Double bloatRatio;
+        private Long deadTuples;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class VacuumBlockerDetailRaw {
+        private Long databaseId;
+        private Integer pid;
+        private String lockType;
+        private Long transactionAge;
+        private Long blockDuration;
+        private String queryState;
+    }
+
+    // ========== Response DTOs ==========
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Response {
+        private Chart blockers;
+        private Chart autovacuum;
+        private Chart wraparound;
+        private List<TopBloatTable> bloat;
+        private List<VacuumBlocker> vacuumblockers;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Chart {
+        private List<? extends List<? extends Number>> data;
+        private List<String> labels;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TopBloatTable {
+        private String table;
+        private String bloat;
+        private String deadTuple;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class VacuumBlocker {
+        private String table;
+        private String pid;
+        private String lockType;
+        private String txAge;
+        private String blocked_seconds;
+        private String status;
+    }
 }

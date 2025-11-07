@@ -1,11 +1,9 @@
 package com.dajanggan.domain.vacuum.service;
 
-
 import com.dajanggan.domain.vacuum.domain.VacuumRawMetrics;
 import com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics;
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDto;
-import com.dajanggan.domain.vacuum.repository.VacuumRawMetricsMapper;
-import com.dajanggan.domain.vacuum.repository.VacuumTrendMetricsMapper;
+import com.dajanggan.domain.vacuum.repository.VacuumBloatRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,14 +14,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Vacuum Bloat Service
+ * - Bloat 페이지 전용 서비스
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class VacuumBloatService {
 
-    private final VacuumRawMetricsMapper rawMetricsMapper;
-    private final VacuumTrendMetricsMapper trendMetricsMapper;
+    private final VacuumBloatRepository repository;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("M/d");
@@ -31,10 +32,10 @@ public class VacuumBloatService {
     /**
      * 대시보드 전체 데이터 조회
      */
-    public VacuumBloatDto.DashboardResponse getDashboardData(String databaseId) {
+    public VacuumBloatDto.Response getDashboardData(String databaseId) {
         LocalDateTime now = LocalDateTime.now();
 
-        return VacuumBloatDto.DashboardResponse.builder()
+        return VacuumBloatDto.Response.builder()
                 .xminHorizonMonitor(getXminHorizonData(databaseId, now.minusDays(7), now))
                 .bloatTrend(getBloatTrendData(databaseId, 30))
                 .bloatDistribution(getBloatDistributionData(databaseId))
@@ -44,10 +45,11 @@ public class VacuumBloatService {
 
     /**
      * Xmin Horizon Monitor 데이터 조회
-     * 최근 7일간의 시간별 Xmin Horizon Age 추이를 반환
      */
-    public VacuumBloatDto.XminHorizonMonitor getXminHorizonData(String databaseId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<VacuumRawMetrics> metrics = rawMetricsMapper.findXminHorizonData(databaseId, startTime, endTime);
+    public VacuumBloatDto.XminHorizonMonitor getXminHorizonData(
+            String databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+
+        List<VacuumRawMetrics> metrics = repository.findXminHorizonData(databaseId, startTime, endTime);
 
         // 24시간 단위로 집계 (00:00 ~ 23:00)
         Map<Integer, List<VacuumRawMetrics>> groupedByHour = metrics.stream()
@@ -96,7 +98,7 @@ public class VacuumBloatService {
      */
     public VacuumBloatDto.BloatTrend getBloatTrendData(String databaseId, int days) {
         LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        List<VacuumTrendMetrics> metrics = trendMetricsMapper.findBloatTrendData(databaseId, startDate);
+        List<VacuumTrendMetrics> metrics = repository.findBloatTrendData(databaseId, startDate);
 
         // 일별로 그룹핑
         Map<String, List<VacuumTrendMetrics>> groupedByDate = metrics.stream()
@@ -132,7 +134,7 @@ public class VacuumBloatService {
      */
     public VacuumBloatDto.BloatDistribution getBloatDistributionData(String databaseId) {
         LocalDateTime since = LocalDateTime.now().minusHours(24);
-        List<Map<String, Object>> distribution = trendMetricsMapper.findBloatDistribution(databaseId, since);
+        List<Map<String, Object>> distribution = repository.findBloatDistribution(databaseId, since);
 
         // 범위 순서대로 정렬
         List<String> orderedLabels = Arrays.asList("0-5%", "5-10%", "10-15%", "15-20%", "20-30%", "30%+");
@@ -161,14 +163,14 @@ public class VacuumBloatService {
         LocalDateTime last30d = now.minusDays(30);
 
         // 1. 총 Bloat 크기
-        Long totalBloatBytes = trendMetricsMapper.calculateTotalBloat(databaseId, last24h);
+        Long totalBloatBytes = repository.calculateTotalBloat(databaseId, last24h);
         String tableBloat = formatBytes(totalBloatBytes != null ? totalBloatBytes : 0L);
 
         // 2. Critical 테이블 수 (Bloat Ratio >= 15%)
-        Long criticalCount = trendMetricsMapper.countCriticalTables(databaseId, last24h);
+        Long criticalCount = repository.countCriticalTables(databaseId, last24h);
 
         // 3. Bloat 증가량 (30일 전과 현재 비교)
-        Long bloat30dAgo = trendMetricsMapper.calculateTotalBloat(databaseId, last30d);
+        Long bloat30dAgo = repository.calculateTotalBloat(databaseId, last30d);
         Long bloatGrowthBytes = (totalBloatBytes != null ? totalBloatBytes : 0L) -
                 (bloat30dAgo != null ? bloat30dAgo : 0L);
         String bloatGrowth = (bloatGrowthBytes >= 0 ? "+" : "") + formatBytes(bloatGrowthBytes);
