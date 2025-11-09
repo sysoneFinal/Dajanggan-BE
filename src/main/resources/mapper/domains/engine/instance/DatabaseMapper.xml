@@ -18,6 +18,7 @@
     <select id="findByInstanceIds" parameterType="list" resultMap="DatabaseDtoMap">
         SELECT
         instance_id,
+        database_id,
         database_name,
         is_enabled,
         connections,
@@ -34,6 +35,7 @@
     <select id="findByInstanceId" parameterType="long" resultMap="DatabaseDtoMap">
         SELECT
             instance_id,
+            database_id,
             database_name,
             is_enabled,
             connections,
