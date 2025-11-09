@@ -30,4 +30,7 @@ public class TimeSeriesDto {
     
     // 버퍼 처리량
     private Long buffersCheckpoint;        // 버퍼 처리량
+    
+    // Checkpoint 간격
+    private Double avgIntervalMinutes;     // 평균 간격 (분)
 }

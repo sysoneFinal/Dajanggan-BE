@@ -3,6 +3,9 @@ package com.dajanggan.domain.engine.checkpoint.service;
 import com.dajanggan.domain.engine.checkpoint.dto.CheckpointDashboardDto;
 import com.dajanggan.domain.engine.checkpoint.dto.CheckpointRawDto;
 import com.dajanggan.domain.engine.checkpoint.dto.TimeSeriesDto;
+import com.dajanggan.domain.engine.checkpoint.dto.CheckpointListRequest;
+import com.dajanggan.domain.engine.checkpoint.dto.CheckpointListResponse;
+import com.dajanggan.domain.engine.checkpoint.dto.CheckpointListDto;
 import com.dajanggan.domain.engine.checkpoint.repository.CheckpointRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -85,6 +88,7 @@ public class CheckpointService {
                 .walGeneration(buildWalGeneration(timeSeriesData))
                 .processTime(buildProcessTime(timeSeriesData))
                 .buffer(buildBuffer(timeSeriesData))
+                .checkpointInterval(buildCheckpointInterval(timeSeriesData))
                 .recentStats(buildRecentStats(recentStats, previousStats))
                 .build();
     }
@@ -251,6 +255,41 @@ public class CheckpointService {
     }
 
     /**
+     * CheckpointInterval 구성 (Checkpoint 간격 추이)
+     */
+    private CheckpointDashboardDto.CheckpointInterval buildCheckpointInterval(List<TimeSeriesDto> timeSeriesData) {
+        List<String> categories = extractTimeLabels(timeSeriesData);
+        List<Double> data = timeSeriesData.stream()
+                .map(ts -> ts.getAvgIntervalMinutes() != null ? 
+                          Math.round(ts.getAvgIntervalMinutes() * 10.0) / 10.0 : 0.0)
+                .collect(Collectors.toList());
+
+        double average = data.stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
+        
+        double max = data.stream()
+                .mapToDouble(Double::doubleValue)
+                .max()
+                .orElse(0.0);
+        
+        double min = data.stream()
+                .filter(d -> d > 0.0)  // 0을 제외하고 최소값 계산
+                .mapToDouble(Double::doubleValue)
+                .min()
+                .orElse(0.0);
+
+        return CheckpointDashboardDto.CheckpointInterval.builder()
+                .categories(categories)
+                .data(data)
+                .average(Math.round(average * 10.0) / 10.0)
+                .max(Math.round(max * 10.0) / 10.0)
+                .min(Math.round(min * 10.0) / 10.0)
+                .build();
+    }
+
+    /**
      * RecentStats 구성 (최근 5분 평균 통계)
      */
     private CheckpointDashboardDto.RecentStats buildRecentStats(
@@ -263,31 +302,33 @@ public class CheckpointService {
 
         return CheckpointDashboardDto.RecentStats.builder()
                 .buffersWritten(buildMetricWithDiff(
-                        recentStats.getBuffersCheckpoint() != null ? 
+                        recentStats.getBuffersCheckpoint() != null ?
                             recentStats.getBuffersCheckpoint().doubleValue() : 0.0,
-                        previousStats != null && previousStats.getBuffersCheckpoint() != null ? 
+                        previousStats != null && previousStats.getBuffersCheckpoint() != null ?
                             previousStats.getBuffersCheckpoint().doubleValue() : 0.0
                 ))
                 .avgTotalProcessTime(buildMetricWithDiff(
-                        recentStats.getTotalTime() != null ? 
+                        recentStats.getTotalTime() != null ?
                             Math.round(recentStats.getTotalTime() / 1000.0 * 100.0) / 100.0 : 0.0,
-                        previousStats != null && previousStats.getTotalTime() != null ? 
+                        previousStats != null && previousStats.getTotalTime() != null ?
                             Math.round(previousStats.getTotalTime() / 1000.0 * 100.0) / 100.0 : 0.0
                 ))
                 .checkpointDistance(buildMetricWithDiff(
-                        85.0, // TODO: 실제 계산 로직 필요
-                        80.0
+                        recentStats.getCheckpointDistance() != null ?
+                            recentStats.getCheckpointDistance().doubleValue() : 0.0,
+                        previousStats != null && previousStats.getCheckpointDistance() != null ?
+                            previousStats.getCheckpointDistance().doubleValue() : 0.0
                 ))
                 .checkpointInterval(buildMetricWithDiff(
-                        recentStats.getCheckpointInterval() != null ? 
+                        recentStats.getCheckpointInterval() != null ?
                             Math.round(recentStats.getCheckpointInterval() * 10.0) / 10.0 : 0.0,
-                        previousStats != null && previousStats.getCheckpointInterval() != null ? 
+                        previousStats != null && previousStats.getCheckpointInterval() != null ?
                             Math.round(previousStats.getCheckpointInterval() * 10.0) / 10.0 : 0.0
                 ))
                 .avgWalGenerationSpeed(buildMetricWithDiff(
-                        recentStats.getAvgWalGenerationSpeed() != null ? 
+                        recentStats.getAvgWalGenerationSpeed() != null ?
                             Math.round(recentStats.getAvgWalGenerationSpeed() * 10.0) / 10.0 : 0.0,
-                        previousStats != null && previousStats.getAvgWalGenerationSpeed() != null ? 
+                        previousStats != null && previousStats.getAvgWalGenerationSpeed() != null ?
                             Math.round(previousStats.getAvgWalGenerationSpeed() * 10.0) / 10.0 : 0.0
                 ))
                 .build();
@@ -297,7 +338,7 @@ public class CheckpointService {
      * MetricWithDiff 생성
      */
     private CheckpointDashboardDto.MetricWithDiff buildMetricWithDiff(
-            Double current, 
+            Double current,
             Double previous
     ) {
         double diff = current - previous;
@@ -332,5 +373,221 @@ public class CheckpointService {
         return timeSeriesData.stream()
                 .map(TimeSeriesDto::getTimeLabel)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Checkpoint 리스트 조회 (필터링 + 페이징)
+     * @param request 리스트 요청 파라미터
+     * @return 페이징된 리스트 응답
+     */
+    public CheckpointListResponse getCheckpointList(CheckpointListRequest request) {
+        log.info("Fetching checkpoint list for instance: {}, period: {}", 
+                request.getInstanceId(), request.getPeriod());
+
+        // 1. 시간 범위 계산
+        OffsetDateTime endTime = OffsetDateTime.now();
+        OffsetDateTime startTime = endTime.minusHours(request.getPeriodInHours());
+
+        // 2. 리스트 데이터 조회
+        List<CheckpointRawDto> rawList = checkpointRepository.selectCheckpointList(
+                request.getInstanceId(),
+                startTime,
+                endTime,
+                request.getTypes(),
+                request.getOffset(),
+                request.getLimit()
+        );
+
+        // 3. 총 개수 조회
+        Long totalElements = checkpointRepository.countCheckpointList(
+                request.getInstanceId(),
+                startTime,
+                endTime,
+                request.getTypes()
+        );
+
+        // 4. DTO 변환 및 상태 판단
+        List<CheckpointListDto> dataList = rawList.stream()
+                .map(this::convertToListDto)
+                .collect(Collectors.toList());
+
+        // 5. 상태 필터 적용 (백엔드에서 추가 필터링)
+        if (request.getStatuses() != null && !request.getStatuses().isEmpty()) {
+            dataList = dataList.stream()
+                    .filter(dto -> request.getStatuses().contains(dto.getStatus()))
+                    .collect(Collectors.toList());
+        }
+
+        // 6. 페이징 정보 계산
+        int size = request.getLimit();
+        int totalPages = (int) Math.ceil((double) totalElements / size);
+        int currentPage = request.getPage() != null ? request.getPage() : 1;
+
+        // 7. 응답 생성
+        return CheckpointListResponse.builder()
+                .data(dataList)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .currentPage(currentPage)
+                .size(size)
+                .success(true)
+                .build();
+    }
+
+    /**
+     * CheckpointRawDto를 CheckpointListDto로 변환
+     */
+    private CheckpointListDto convertToListDto(CheckpointRawDto raw) {
+        // 1. 기본 시간 변환 (ms -> 초)
+        Double writeTime = raw.getCheckpointWriteTime() != null ? 
+                Math.round(raw.getCheckpointWriteTime() / 1000.0 * 10.0) / 10.0 : 0.0;
+        Double syncTime = raw.getCheckpointSyncTime() != null ? 
+                Math.round(raw.getCheckpointSyncTime() / 1000.0 * 10.0) / 10.0 : 0.0;
+        Double totalTime = raw.getTotalTime() != null ? 
+                Math.round(raw.getTotalTime() / 1000.0 * 10.0) / 10.0 : 0.0;
+
+        // 2. WAL 생성량 변환 (bytes -> GB)
+        String walGenerated = formatWalSize(raw.getWalBytes());
+
+        // 3. Checkpoint 간격 포맷팅
+        String checkpointDistance = formatCheckpointDistance(raw.getIntervalMinutes());
+
+        // 4. 요청 비율 계산
+        Double requestRatio = raw.getRequestRatio() != null ? raw.getRequestRatio() : 0.0;
+
+        // 5. Backend 비율 계산
+        Double backendRatio = calculateBackendRatio(
+                raw.getBuffersBackend(),
+                raw.getBuffersCheckpoint()
+        );
+
+        // 6. 상태 판단
+        String status = determineStatus(
+                totalTime,
+                requestRatio,
+                raw.getIntervalMinutes(),
+                backendRatio
+        );
+
+        return CheckpointListDto.builder()
+                .id(raw.getCheckpointRawId())
+                .timestamp(raw.getCollectedAt())
+                .type(raw.getCheckpointType())
+                .writeTime(writeTime)
+                .syncTime(syncTime)
+                .totalTime(totalTime)
+                .walGenerated(walGenerated)
+                .walFilesAdded(raw.getWalFilesAdded())
+                .walFilesRemoved(raw.getWalFilesRemoved())
+                .checkpointDistance(checkpointDistance)
+                .buffersWritten(raw.getBuffersCheckpoint() != null ? raw.getBuffersCheckpoint() : 0L)
+                .buffersBackend(raw.getBuffersBackend() != null ? raw.getBuffersBackend() : 0L)
+                .avgBuffersPerSec(raw.getAvgBuffersPerSec() != null ? raw.getAvgBuffersPerSec() : 0L)
+                .status(status)
+                .build();
+    }
+
+    /**
+     * WAL 크기 포맷팅 (bytes -> GB/MB)
+     */
+    private String formatWalSize(Long walBytes) {
+        if (walBytes == null || walBytes == 0) {
+            return "0GB";
+        }
+
+        double gb = walBytes / (1024.0 * 1024.0 * 1024.0);
+        if (gb >= 1.0) {
+            return String.format("%.1fGB", gb);
+        }
+
+        double mb = walBytes / (1024.0 * 1024.0);
+        return String.format("%.1fMB", mb);
+    }
+
+    /**
+     * Checkpoint 간격 포맷팅 (분)
+     */
+    private String formatCheckpointDistance(Double intervalMinutes) {
+        if (intervalMinutes == null || intervalMinutes == 0) {
+            return "-";
+        }
+
+        long minutes = Math.round(intervalMinutes);
+        if (minutes < 60) {
+            return minutes + "분";
+        }
+
+        long hours = minutes / 60;
+        long remainingMinutes = minutes % 60;
+        
+        if (remainingMinutes == 0) {
+            return hours + "시간";
+        }
+        
+        return hours + "시간 " + remainingMinutes + "분";
+    }
+
+    /**
+     * Backend 비율 계산
+     */
+    private Double calculateBackendRatio(Long buffersBackend, Long buffersCheckpoint) {
+        if (buffersBackend == null || buffersCheckpoint == null || buffersCheckpoint == 0) {
+            return 0.0;
+        }
+
+        return Math.round((double) buffersBackend / buffersCheckpoint * 1000.0) / 10.0;
+    }
+
+    /**
+     * 상태 판단 (정상/주의/위험)
+     * 
+     * 위험 조건:
+     * - totalTime > 60초
+     * - requestedRatio > 30%
+     * - interval < 3분
+     * - backendRatio > 5%
+     * 
+     * 주의 조건:
+     * - totalTime > 30초
+     * - requestedRatio > 10%
+     * - interval < 5분
+     * - backendRatio > 1%
+     */
+    private String determineStatus(
+            Double totalTime,
+            Double requestRatio,
+            Double intervalMinutes,
+            Double backendRatio
+    ) {
+        // 위험: 하나라도 위험 조건 충족
+        if (totalTime != null && totalTime > 60.0) {
+            return "위험";
+        }
+        if (requestRatio != null && requestRatio > 30.0) {
+            return "위험";
+        }
+        if (intervalMinutes != null && intervalMinutes < 3.0) {
+            return "위험";
+        }
+        if (backendRatio != null && backendRatio > 5.0) {
+            return "위험";
+        }
+
+        // 주의: 하나라도 주의 조건 충족
+        if (totalTime != null && totalTime > 30.0) {
+            return "주의";
+        }
+        if (requestRatio != null && requestRatio > 10.0) {
+            return "주의";
+        }
+        if (intervalMinutes != null && intervalMinutes < 5.0) {
+            return "주의";
+        }
+        if (backendRatio != null && backendRatio > 1.0) {
+            return "주의";
+        }
+
+        // 정상
+        return "정상";
     }
 }

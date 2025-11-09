@@ -34,6 +34,7 @@ public class CheckpointDashboardDto {
         private WalGeneration walGeneration;
         private ProcessTime processTime;
         private Buffer buffer;
+        private CheckpointInterval checkpointInterval;
         private RecentStats recentStats;
     }
 
@@ -128,6 +129,21 @@ public class CheckpointDashboardDto {
     }
 
     /**
+     * Checkpoint 간격 추이 (24시간)
+     */
+    @Getter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CheckpointInterval {
+        private List<String> categories;   // 시간 라벨
+        private List<Double> data;         // 각 시간대별 간격 (분)
+        private Double average;            // 평균 간격
+        private Double max;                // 최대 간격
+        private Double min;                // 최소 간격
+    }
+
+    /**
      * 최근 5분 평균 통계 (요약 카드용)
      */
     @Getter
@@ -144,6 +160,7 @@ public class CheckpointDashboardDto {
 
     /**
      * 현재 값과 변화량
+     * TODO: 추후 고도화 시 사용 (변화량 추가)
      */
     @Getter
     @Builder

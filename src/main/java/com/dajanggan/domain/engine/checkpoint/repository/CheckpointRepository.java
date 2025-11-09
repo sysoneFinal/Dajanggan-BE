@@ -71,4 +71,32 @@ public interface CheckpointRepository {
      */
     CheckpointRaw selectLatestCheckpointRaw(@Param("instanceId") Long instanceId);
 
+    /**
+     * Checkpoint 리스트 조회 (필터링 + 페이징)
+     * @param instanceId 인스턴스 ID
+     * @param startTime 시작 시간
+     * @param endTime 종료 시간
+     * @param types 타입 필터 (timed, requested)
+     * @param offset 페이징 오프셋
+     * @param limit 페이징 리밋
+     */
+    List<CheckpointRawDto> selectCheckpointList(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("types") List<String> types,
+            @Param("offset") Integer offset,
+            @Param("limit") Integer limit
+    );
+
+    /**
+     * Checkpoint 리스트 총 개수 조회 (필터링)
+     */
+    Long countCheckpointList(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("types") List<String> types
+    );
+
 }

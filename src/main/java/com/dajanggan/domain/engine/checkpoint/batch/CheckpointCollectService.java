@@ -74,6 +74,12 @@ public class CheckpointCollectService {
         Double currentWriteTime = getDoubleValue(currentStats.get("checkpoint_write_time"));
         Double currentSyncTime = getDoubleValue(currentStats.get("checkpoint_sync_time"));
         Long currentBuffersCheckpoint = getLongValue(currentStats.get("buffers_checkpoint"));
+        Long currentBuffersBackend = getLongValue(currentStats.get("buffers_backend"));
+        
+        // 실시간 계산 값 (누적이 아닌 현재 상태)
+        Double checkpointDistancePercent = getDoubleValue(currentStats.get("checkpoint_distance_percent"));
+        Long avgBuffersPerSec = getLongValue(currentStats.get("avg_buffers_per_sec"));
+        Long walFilesTotal = getLongValue(currentStats.get("wal_files_total"));
 
         // 이전 데이터가 없으면 현재 값 그대로 저장 (초기 수집)
         if (previousRaw == null) {
@@ -85,7 +91,13 @@ public class CheckpointCollectService {
                     currentCheckpointsReq,
                     currentWriteTime,
                     currentSyncTime,
-                    currentBuffersCheckpoint
+                    currentBuffersCheckpoint,
+                    currentBuffersBackend,
+                    checkpointDistancePercent,
+                    avgBuffersPerSec,
+                    walFilesTotal,
+                    0L,  // wal_files_added (초기)
+                    0L   // wal_files_removed (초기)
             );
         }
 
@@ -95,6 +107,7 @@ public class CheckpointCollectService {
         Double diffWriteTime = currentWriteTime - previousRaw.getCheckpointWriteTime();
         Double diffSyncTime = currentSyncTime - previousRaw.getCheckpointSyncTime();
         Long diffBuffersCheckpoint = currentBuffersCheckpoint - previousRaw.getBuffersCheckpoint();
+        Long diffBuffersBackend = currentBuffersBackend - previousRaw.getBuffersBackend();
 
         // stats_reset 체크 (PostgreSQL이 통계를 리셋한 경우)
         if (diffCheckpointsTimed < 0 || diffCheckpointsReq < 0) {
@@ -106,7 +119,13 @@ public class CheckpointCollectService {
                     currentCheckpointsReq,
                     currentWriteTime,
                     currentSyncTime,
-                    currentBuffersCheckpoint
+                    currentBuffersCheckpoint,
+                    currentBuffersBackend,
+                    checkpointDistancePercent,
+                    avgBuffersPerSec,
+                    walFilesTotal,
+                    0L,
+                    0L
             );
         }
 
@@ -123,7 +142,13 @@ public class CheckpointCollectService {
                 diffCheckpointsReq,
                 diffWriteTime,
                 diffSyncTime,
-                diffBuffersCheckpoint
+                diffBuffersCheckpoint,
+                diffBuffersBackend,
+                checkpointDistancePercent,
+                avgBuffersPerSec,
+                walFilesTotal,
+                0L,  // WAL 파일 추가/제거는 다른 로직에서 계산 필요
+                0L
         );
     }
 
@@ -137,12 +162,18 @@ public class CheckpointCollectService {
             Long checkpointsReq,
             Double writeTime,
             Double syncTime,
-            Long buffersCheckpoint
+            Long buffersCheckpoint,
+            Long buffersBackend,
+            Double checkpointDistancePercent,
+            Long avgBuffersPerSec,
+            Long walFilesTotal,
+            Long walFilesAdded,
+            Long walFilesRemoved
     ) {
         // Checkpoint 타입 결정
         String checkpointType = (checkpointsReq != null && checkpointsReq > 0) ? "requested" : "timed";
 
-        // WAL bytes 계산 (임시로 버퍼 * 8KB로 추정)
+        // WAL bytes 계산 (버퍼 * 8KB - PostgreSQL 기본 블록 크기)
         Long walBytes = buffersCheckpoint != null ? buffersCheckpoint * 8192 : 0L;
 
         return CheckpointRaw.builder()
@@ -154,7 +185,13 @@ public class CheckpointCollectService {
                 .checkpointWriteTime(writeTime != null ? writeTime : 0.0)
                 .checkpointSyncTime(syncTime != null ? syncTime : 0.0)
                 .buffersCheckpoint(buffersCheckpoint != null ? buffersCheckpoint : 0L)
+                .buffersBackend(buffersBackend != null ? buffersBackend : 0L)
+                .avgBuffersPerSec(avgBuffersPerSec != null ? avgBuffersPerSec : 0L)
                 .walBytes(walBytes)
+                .walFilesAdded(walFilesAdded != null ? walFilesAdded : 0L)
+                .walFilesRemoved(walFilesRemoved != null ? walFilesRemoved : 0L)
+                .checkpointDistance(checkpointDistancePercent != null ? 
+                                   checkpointDistancePercent.longValue() : 0L)
                 .build();
     }
 

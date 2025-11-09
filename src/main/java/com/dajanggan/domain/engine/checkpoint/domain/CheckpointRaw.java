@@ -26,7 +26,12 @@ public class CheckpointRaw {
     private Double checkpointWriteTime;     // Write 시간 (ms)
     private Double checkpointSyncTime;      // Sync 시간 (ms)
     private Long buffersCheckpoint;         // 기록된 버퍼 수
+    private Long buffersBackend;            // Backend에서 작성한 버퍼 수
+    private Long avgBuffersPerSec;          // 평균 버퍼/초
     private Long walBytes;                  // WAL 생성량 (bytes)
+    private Long walFilesAdded;             // WAL 파일 추가 수
+    private Long walFilesRemoved;           // WAL 파일 제거 수
+    private Long checkpointDistance;        // Checkpoint 거리 (%)
     private OffsetDateTime createdAt;       // 생성 시각
 
 }
