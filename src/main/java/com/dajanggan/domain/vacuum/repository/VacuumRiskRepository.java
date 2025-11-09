@@ -11,22 +11,21 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VacuumRiskRepository {
 
-    private final VacuumRiskMapper riskMapper;
+    private final VacuumRiskMapper mapper;
 
-    public List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(
-            OffsetDateTime start, OffsetDateTime end, int buckets) {
-        return riskMapper.getBlockersPerHour(start, end, buckets);
+    public List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(Long dbId, OffsetDateTime start, OffsetDateTime end) {
+        return mapper.getBlockersPerHour(dbId, start, end);
     }
 
-    public List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(int limit) {
-        return riskMapper.getTopBloatTables(limit);
+    public List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(Long dbId, int limit, OffsetDateTime start, OffsetDateTime end) {
+        return mapper.getTopBloatTables(dbId, limit, start, end);
     }
 
-    public List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers() {
-        return riskMapper.getVacuumBlockers();
+    public List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers(Long dbId, OffsetDateTime start, OffsetDateTime end) {
+        return mapper.getVacuumBlockers(dbId, start, end);
     }
 
-    public List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress() {
-        return riskMapper.getWraparoundProgress();
+    public List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress(Long dbId, OffsetDateTime start, OffsetDateTime end) {
+        return mapper.getWraparoundProgress(dbId, start, end);
     }
 }

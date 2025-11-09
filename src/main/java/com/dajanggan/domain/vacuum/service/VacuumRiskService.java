@@ -1,208 +1,144 @@
 package com.dajanggan.domain.vacuum.service;
 
 import com.dajanggan.domain.vacuum.dto.VacuumRiskDto;
-import com.dajanggan.domain.vacuum.repository.VacuumRiskMapper;
+import com.dajanggan.domain.vacuum.repository.VacuumRiskRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class VacuumRiskService {
 
-    private final VacuumRiskMapper mapper;
+    private final VacuumRiskRepository repo;
 
-    public VacuumRiskDto.Response getRiskData(int hours) {
-        OffsetDateTime endTime = OffsetDateTime.now(ZoneId.systemDefault());
-        OffsetDateTime startTime = endTime.minusHours(hours);
+    /* ------- window 기본값: 최근 24h ------- */
+    private OffsetDateTime[] window(OffsetDateTime start, OffsetDateTime end) {
+        var e = (end != null) ? end : OffsetDateTime.now();
+        var s = (start != null) ? start : e.minusHours(24);
+        return new OffsetDateTime[]{s, e};
+    }
 
-        log.info("Vacuum Risk 조회: {} ~ {}", startTime, endTime);
+    /* ------- 집계(Dashboard) ------- */
+    public VacuumRiskDto.Response getRiskData(Long databaseId, int hours) {
+        var e = OffsetDateTime.now();
+        var s = e.minusHours(Math.max(hours, 1));
 
-        try {
-            return VacuumRiskDto.Response.builder()
-                    .blockers(buildBlockersChart(startTime, endTime))
-                    .wraparound(buildWraparoundChart())
-                    .bloat(buildTopBloatTables(3))
-                    .vacuumblockers(buildVacuumBlockers())
-                    .build();
-        } catch (Exception e) {
-            log.error("Risk 데이터 조회 실패", e);
-            throw new RuntimeException("Risk 데이터 조회 실패: " + e.getMessage(), e);
+        var blockers = getBlockersPerHour(databaseId, s, e);
+        var bloatTop = getTopBloatTables(databaseId, 3, s, e);
+        var blockersDtl = getVacuumBlockers(databaseId, s, e);
+        var wrap = getWraparoundProgress(databaseId, s, e);
+
+        // Blockers per hour → ChartDto
+        var blockersChart = new VacuumRiskDto.ChartDto();
+        blockersChart.setLabels(blockers.stream().map(VacuumRiskDto.BlockersPerHourRaw::getHourLabel).toList());
+        blockersChart.setData(List.of(blockers.stream().map(VacuumRiskDto.BlockersPerHourRaw::getBlockersCount).map(n -> (Number) n).toList()));
+
+        // Wraparound → ChartDto
+        var wrapChart = new VacuumRiskDto.ChartDto();
+        wrapChart.setLabels(wrap.stream().map(r -> "DB " + r.getDatabaseId()).toList());
+        wrapChart.setData(List.of(wrap.stream().map(VacuumRiskDto.WraparoundProgressRaw::getWraparoundProgressPct).map(n -> (Number) n).toList()));
+
+        // Top bloat rows (포맷)
+        var bloatRows = bloatTop.stream().map(r -> {
+            var row = new VacuumRiskDto.TopBloatTableDto();
+            row.setTable(r.getTableName());
+            row.setBloat(percent(r.getBloatRatio()));
+            row.setDeadTuple(formatK(r.getDeadTuples()));
+            return row;
+        }).toList();
+
+        // Vacuum blockers rows (포맷)
+        var vbRows = blockersDtl.stream().map(v -> {
+            var row = new VacuumRiskDto.VacuumBlockerDto();
+            row.setTable(v.getTableName());
+            row.setPid(String.valueOf(v.getPid()));
+            row.setLockType(v.getLockType());
+            row.setTxAge(humanSec(v.getTransactionAge()));
+            row.setBlocked_seconds(humanSec(v.getBlockDuration()));
+            row.setStatus(v.getQueryState());
+            return row;
+        }).toList();
+
+        // (선택) 산포도
+        var scatter = getTransactionScatter(databaseId, s, e);
+
+        var resp = new VacuumRiskDto.Response();
+        resp.setBlockers(blockersChart);
+        resp.setWraparound(wrapChart);
+        resp.setBloat(bloatRows);
+        resp.setVacuumblockers(vbRows);
+        resp.setTransactionScatter(scatter);
+        return resp;
+    }
+
+    /* ------- 개별 API ------- */
+
+    public List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(Long dbId, OffsetDateTime start, OffsetDateTime end) {
+        var w = window(start, end);
+        return repo.getBlockersPerHour(dbId, w[0], w[1]);
+    }
+
+    public List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(Long dbId, Integer limit, OffsetDateTime start, OffsetDateTime end) {
+        var w = window(start, end);
+        int lim = (limit == null || limit <= 0) ? 10 : limit;
+        return repo.getTopBloatTables(dbId, lim, w[0], w[1]);
+    }
+
+    public List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers(Long dbId, OffsetDateTime start, OffsetDateTime end) {
+        var w = window(start, end);
+        return repo.getVacuumBlockers(dbId, w[0], w[1]);
+    }
+
+    public List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress(Long dbId, OffsetDateTime start, OffsetDateTime end) {
+        var w = window(start, end);
+        return repo.getWraparoundProgress(dbId, w[0], w[1]);
+    }
+
+    /** 산포도: x=txAgeSec, y=blockedSec */
+    public VacuumRiskDto.ScatterDto getTransactionScatter(Long dbId, OffsetDateTime start, OffsetDateTime end) {
+        var w = window(start, end);
+        var list = repo.getVacuumBlockers(dbId, w[0], w[1]);
+
+        var points = new ArrayList<List<Long>>(list.size());
+        for (var v : list) {
+            if (v.getTransactionAge() == null || v.getBlockDuration() == null) continue;
+            points.add(List.of(v.getTransactionAge(), v.getBlockDuration()));
         }
+
+        var dto = new VacuumRiskDto.ScatterDto();
+        dto.setLabels(List.of("txAgeSec", "blockedSec"));
+        dto.setData(points);
+        return dto;
     }
 
-    private VacuumRiskDto.Chart buildBlockersChart(OffsetDateTime start, OffsetDateTime end) {
-        try {
-            List<VacuumRiskDto.BlockersPerHourRaw> blockers = mapper.getBlockersPerHour(start, end, 24);
-
-            log.info("Blockers 조회 결과: {} 건", blockers != null ? blockers.size() : 0);
-
-            if (blockers == null || blockers.isEmpty()) {
-                log.warn("Blockers 데이터가 비어있습니다.");
-                return VacuumRiskDto.Chart.builder()
-                        .data(Collections.singletonList(Collections.emptyList()))
-                        .labels(Collections.emptyList())
-                        .build();
-            }
-
-            List<String> labels = new ArrayList<>();
-            List<Double> data = new ArrayList<>();
-
-            for (VacuumRiskDto.BlockersPerHourRaw b : blockers) {
-                labels.add(b.getHourLabel() != null ? b.getHourLabel() : "N/A");
-                data.add(b.getBlockersCount() != null ? b.getBlockersCount().doubleValue() : 0.0);
-            }
-
-            log.debug("Blockers Chart - labels: {}, data: {}", labels.size(), data.size());
-
-            return VacuumRiskDto.Chart.builder()
-                    .data(Collections.singletonList(data))
-                    .labels(labels)
-                    .build();
-        } catch (Exception e) {
-            log.error("Blockers Chart 생성 실패", e);
-            return VacuumRiskDto.Chart.builder()
-                    .data(Collections.singletonList(Collections.emptyList()))
-                    .labels(Collections.emptyList())
-                    .build();
-        }
+    /* ------- helpers ------- */
+    private static String humanSec(Long sec) {
+        if (sec == null || sec <= 0) return "0s";
+        long h = sec / 3600;
+        long m = (sec % 3600) / 60;
+        long s = sec % 60;
+        if (h > 0) return String.format("%dh %dm", h, m);
+        if (m > 0) return (s > 0) ? String.format("%dm %ds", m, s) : String.format("%dm", m);
+        return String.format("%ds", s);
     }
 
-    private VacuumRiskDto.Chart buildWraparoundChart() {
-        try {
-            List<VacuumRiskDto.WraparoundProgressRaw> wraparound = mapper.getWraparoundProgress();
-
-            log.info("Wraparound 조회 결과: {} 건", wraparound != null ? wraparound.size() : 0);
-
-            if (wraparound == null || wraparound.isEmpty()) {
-                log.warn("Wraparound 데이터가 비어있습니다.");
-                return VacuumRiskDto.Chart.builder()
-                        .data(Collections.singletonList(Collections.emptyList()))
-                        .labels(Collections.emptyList())
-                        .build();
-            }
-
-            List<String> labels = new ArrayList<>();
-            List<Double> data = new ArrayList<>();
-
-            for (VacuumRiskDto.WraparoundProgressRaw w : wraparound) {
-                labels.add("DB-" + (w.getDatabaseId() != null ? w.getDatabaseId() : "N/A"));
-                data.add(w.getWraparoundProgressPct() != null ? w.getWraparoundProgressPct() : 0.0);
-            }
-
-            log.debug("Wraparound Chart - labels: {}, data: {}", labels.size(), data.size());
-
-            return VacuumRiskDto.Chart.builder()
-                    .data(Collections.singletonList(data))
-                    .labels(labels)
-                    .build();
-        } catch (Exception e) {
-            log.error("Wraparound Chart 생성 실패", e);
-            return VacuumRiskDto.Chart.builder()
-                    .data(Collections.singletonList(Collections.emptyList()))
-                    .labels(Collections.emptyList())
-                    .build();
-        }
-    }
-
-    private List<VacuumRiskDto.TopBloatTable> buildTopBloatTables(int limit) {
-        try {
-            List<VacuumRiskDto.TopBloatRaw> rawList = mapper.getTopBloatTables(limit);
-
-            log.info("Top Bloat 조회 결과: {} 건", rawList != null ? rawList.size() : 0);
-
-            if (rawList == null || rawList.isEmpty()) {
-                log.warn("Top Bloat 데이터가 비어있습니다.");
-                return Collections.emptyList();
-            }
-
-            return rawList.stream()
-                    .map(this::convertToTopBloatDto)
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            log.error("Top Bloat Tables 조회 실패", e);
-            return Collections.emptyList();
-        }
-    }
-
-    private List<VacuumRiskDto.VacuumBlocker> buildVacuumBlockers() {
-        try {
-            List<VacuumRiskDto.VacuumBlockerDetailRaw> rawList = mapper.getVacuumBlockers();
-
-            log.info("Vacuum Blockers 조회 결과: {} 건", rawList != null ? rawList.size() : 0);
-
-            if (rawList == null || rawList.isEmpty()) {
-                log.warn("Vacuum Blockers 데이터가 비어있습니다.");
-                return Collections.emptyList();
-            }
-
-            return rawList.stream()
-                    .map(this::convertToVacuumBlockerDto)
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            log.error("Vacuum Blockers 조회 실패", e);
-            return Collections.emptyList();
-        }
-    }
-
-    private VacuumRiskDto.TopBloatTable convertToTopBloatDto(VacuumRiskDto.TopBloatRaw raw) {
-        String tableName = raw.getTableName() != null ? raw.getTableName() : "unknown";
-        return VacuumRiskDto.TopBloatTable.builder()
-                .table(tableName)
-                .bloat(formatBloatPct(raw.getBloatRatio()))
-                .deadTuple(formatTuples(raw.getDeadTuples()))
-                .build();
-    }
-
-    private VacuumRiskDto.VacuumBlocker convertToVacuumBlockerDto(VacuumRiskDto.VacuumBlockerDetailRaw raw) {
-        String tableName = raw.getTableName() != null ? raw.getTableName() : "unknown";
-        return VacuumRiskDto.VacuumBlocker.builder()
-                .table(tableName)
-                .pid(String.valueOf(raw.getPid() != null ? raw.getPid() : 0))
-                .lockType(raw.getLockType() != null ? raw.getLockType() : "Unknown")
-                .txAge(formatDuration(raw.getTransactionAge()))
-                .blocked_seconds(formatDuration(raw.getBlockDuration()))
-                .status(raw.getQueryState() != null ? raw.getQueryState() : "unknown")
-                .build();
-    }
-
-    private String formatDuration(Long seconds) {
-        if (seconds == null || seconds == 0) return "0s";
-
-        long hours = seconds / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs = seconds % 60;
-
-        if (hours > 0 && minutes > 0) {
-            return String.format("%dh %dm", hours, minutes);
-        } else if (hours > 0) {
-            return String.format("%dh", hours);
-        } else if (minutes > 0) {
-            return String.format("%dm", minutes);
-        } else {
-            return String.format("%ds", secs);
-        }
-    }
-
-    private String formatBloatPct(Double ratio) {
+    private static String percent(Double ratio) {
         if (ratio == null) return "0.0%";
-        return String.format("%.1f%%", ratio * 100);
+        return String.format("%.1f%%", ratio * 100.0);
     }
 
-    private String formatTuples(Long count) {
-        if (count == null || count == 0) return "0";
-        if (count >= 1_000_000) return String.format("%.1fM", count / 1_000_000.0);
-        if (count >= 1_000) return String.format("%.1fK", count / 1_000.0);
-        return String.valueOf(count);
+    private static String formatK(Long n) {
+        if (n == null) return "0";
+        double v = n;
+        if (v >= 1_000_000_000) return String.format("%.1fB", v / 1_000_000_000);
+        if (v >= 1_000_000)     return String.format("%.1fM", v / 1_000_000);
+        if (v >= 1_000)         return String.format("%.1fK", v / 1_000);
+        return String.valueOf(n);
     }
 }
