@@ -22,12 +22,14 @@ public class VacuumHistoryController {
 
     @GetMapping("/history")
     public ResponseEntity<List<VacuumHistoryDto.Response>> getHistory(
+            @RequestParam(required = false) Long databaseId,  // databaseId 추가
             @RequestParam(required = false) Integer hours,
             @RequestParam(required = false) String status) {
 
-        log.info("GET /api/vacuum/history - hours: {}, status: {}", hours, status);
+        log.info("GET /api/vacuum/history - databaseId: {}, hours: {}, status: {}",
+                databaseId, hours, status);
 
-        VacuumHistoryDto.Request request = new VacuumHistoryDto.Request(hours, status);
+        VacuumHistoryDto.Request request = new VacuumHistoryDto.Request(databaseId, hours, status);
         List<VacuumHistoryDto.Response> history = vacuumHistoryService.getVacuumHistory(request);
 
         return ResponseEntity.ok(history);

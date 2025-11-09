@@ -10,13 +10,12 @@ import java.util.List;
 @Mapper
 public interface VacuumHistoryMapper {
 
-    // Vacuum History 목록 조회
     List<VacuumHistoryDto.Raw> getVacuumHistoryList(
+            @Param("databaseId") Long databaseId,
             @Param("start") OffsetDateTime start,
             @Param("end") OffsetDateTime end
     );
 
-    // 특정 테이블의 최근 vacuum 빈도 계산
     Integer getVacuumFrequency(
             @Param("databaseId") Long databaseId,
             @Param("hours") int hours

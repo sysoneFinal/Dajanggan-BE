@@ -23,13 +23,15 @@ public class VacuumHistoryService {
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     public List<VacuumHistoryDto.Response> getVacuumHistory(VacuumHistoryDto.Request request) {
-        int hours = request.getHours() != null ? request.getHours() : 24;
+        int hours = request.getHours() != null ? request.getHours() : 168; // 기본 7일
         OffsetDateTime endTime = OffsetDateTime.now();
         OffsetDateTime startTime = endTime.minusHours(hours);
 
-        log.info("Vacuum History 조회: {} ~ {}, status={}", startTime, endTime, request.getStatus());
+        log.info("Vacuum History 조회: databaseId={}, {} ~ {}, status={}",
+                request.getDatabaseId(), startTime, endTime, request.getStatus());
 
-        List<VacuumHistoryDto.Raw> rawList = repository.getVacuumHistoryList(startTime, endTime);
+        List<VacuumHistoryDto.Raw> rawList = repository.getVacuumHistoryList(
+                request.getDatabaseId(), startTime, endTime);
 
         return rawList.stream()
                 .map(raw -> convertToHistoryDto(raw, hours))
@@ -46,7 +48,7 @@ public class VacuumHistoryService {
         String status = determineStatus(raw);
 
         return VacuumHistoryDto.Response.builder()
-                .table(String.valueOf(raw.getDatabaseId()))
+                .table(raw.getTableName() != null ? raw.getTableName() : "DB_" + raw.getDatabaseId())
                 .lastVacuum(formatDateTime(raw.getLastVacuum()))
                 .lastAutovacuum(formatDateTime(raw.getLastAutovacuum()))
                 .deadTuples(formatTuples(raw.getDeadTuples()))
@@ -97,14 +99,6 @@ public class VacuumHistoryService {
     private String formatBloatPct(Double ratio) {
         if (ratio == null) return "0.0%";
         return String.format("%.1f%%", ratio * 100);
-    }
-
-    private String formatBytes(Long bytes) {
-        if (bytes == null) return "0 B";
-        if (bytes >= 1_073_741_824) return String.format("%.0f GB", bytes / 1_073_741_824.0);
-        if (bytes >= 1_048_576) return String.format("%.0f MB", bytes / 1_048_576.0);
-        if (bytes >= 1_024) return String.format("%.0f KB", bytes / 1_024.0);
-        return bytes + " B";
     }
 
     private String formatTuples(Long count) {

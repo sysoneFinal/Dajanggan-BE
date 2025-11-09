@@ -13,6 +13,7 @@ public class VacuumHistoryDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Request {
+        private Long databaseId;
         private Integer hours;        // 시간 필터 (1, 6, 24, 168)
         private String status;        // 상태 필터 ("정상", "주의", null=전체)
     }
@@ -23,6 +24,7 @@ public class VacuumHistoryDto {
     @AllArgsConstructor
     public static class Raw {
         private Long databaseId;
+        private String tableName;
         private Timestamp lastVacuum;
         private Timestamp lastAutovacuum;
         private Long deadTuples;
