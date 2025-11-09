@@ -17,7 +17,8 @@ public enum ExceptionMessage {
     DB_CONNECTION_FAILED("데이터베이스 연결에 실패했습니다."),
     DB_QUERY_EXECUTION_FAILED("쿼리 실행 중 오류가 발생했습니다."),
     INVALID_DB_CONFIGURATION("유효하지 않은 데이터베이스 설정입니다."),
-    DB_INSTANCE_NOT_FOUND("데이터베이스 인스턴스를 찾을 수 없습니다."),
+    INSTANCE_NOT_FOUND("인스턴스를 찾을 수 없습니다."),
+    DATABASE_NOT_FOUND("데이터베이스를 찾을 수 없습니다."),
 
     // DB 모니터링 데이터 수집 관련
     DB_METRIC_COLLECTION_FAILED("DB 메트릭 수집 중 오류가 발생했습니다."),
