@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -17,8 +18,8 @@ public interface VacuumRiskMapper {
      * Blockers per Hour 조회 (24시간)
      */
     List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end,
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end,
             @Param("buckets") int buckets
     );
 

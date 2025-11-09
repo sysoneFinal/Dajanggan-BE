@@ -12,10 +12,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * Vacuum History Controller
- * - Vacuum History 페이지 데이터 제공
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/vacuum")
@@ -24,14 +20,6 @@ public class VacuumHistoryController {
 
     private final VacuumHistoryService vacuumHistoryService;
 
-    /**
-     * Vacuum History 목록 조회
-     * GET /api/vacuum/history?hours=24&status=주의
-     *
-     * @param hours 조회 기간 (1, 6, 24, 168 등)
-     * @param status 상태 필터 ("정상", "주의", null=전체)
-     * @return Vacuum History 목록
-     */
     @GetMapping("/history")
     public ResponseEntity<List<VacuumHistoryDto.Response>> getHistory(
             @RequestParam(required = false) Integer hours,

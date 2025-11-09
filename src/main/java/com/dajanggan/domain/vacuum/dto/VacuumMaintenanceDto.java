@@ -30,7 +30,7 @@ public class VacuumMaintenanceDto {
         private Long heapBlksTotal;
         private Long heapBlksScanned;
         private Long heapBlksVacuumed;
-        private Long deadTupleTotal;
+        private Long deadTupleTotal; //  trend dto
     }
 
     // ========== Response DTOs ==========
@@ -41,7 +41,7 @@ public class VacuumMaintenanceDto {
     public static class Kpi {
         private Double avgDelay;           // 평균 지연시간
         private Double avgDuration;        // 평균 Duration
-        private Double totalDeadTuple;     // 총 Dead Tuple (M)
+        private Double deadTupleTotal;     // 총 Dead Tuple (M)
         private Integer autovacuumWorker;  // Worker 활동률 (%)
     }
 

@@ -25,11 +25,13 @@ public class VacuumRiskDto {
         private Double wraparoundProgressPct;
     }
 
+    // VacuumRiskDto.java에 추가
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TopBloatRaw {
         private Long databaseId;
+        private String tableName;
         private Long bloatBytes;
         private Double bloatRatio;
         private Long deadTuples;
@@ -40,6 +42,7 @@ public class VacuumRiskDto {
     @AllArgsConstructor
     public static class VacuumBlockerDetailRaw {
         private Long databaseId;
+        private String tableName;  // 추가
         private Integer pid;
         private String lockType;
         private Long transactionAge;

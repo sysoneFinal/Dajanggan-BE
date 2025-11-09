@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -23,29 +23,35 @@ public class VacuumMaintenanceService {
     private final VacuumMaintenanceRepository repository;
 
     // Maintenance 대시보드 전체 데이터 조회
-    public VacuumMaintenanceDto.Response getDashboardData(int hours) {
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusHours(hours);
+    public VacuumMaintenanceDto.Response getDashboardData(
+            int hours,  Long databaseId) {
 
-        log.info("Vacuum Maintenance 대시보드 조회: {} ~ {}", startTime, endTime);
+        OffsetDateTime endTime = OffsetDateTime.now();
+        OffsetDateTime startTime = endTime.minusHours(hours);
+
+        log.info("Vacuum Maintenance 대시보드 조회:  databaseId={}, {} ~ {}",
+                databaseId, startTime, endTime);
 
         return VacuumMaintenanceDto.Response.builder()
-                .kpi(buildKpiMetrics(startTime, endTime))
-                .deadtuple(buildDeadTupleChart(startTime, endTime))
-                .autovacuum(buildAutovacuumChart(startTime, endTime))
-                .latency(buildLatencyChart(startTime, endTime))
-                .sessions(getCurrentSessions())
+                .kpi(buildKpiMetrics(startTime, endTime, databaseId))
+                .deadtuple(buildDeadTupleChart(startTime, endTime, databaseId))
+                .autovacuum(buildAutovacuumChart(startTime, endTime, databaseId))
+                .latency(buildLatencyChart(startTime, endTime, databaseId))
+                .sessions(getCurrentSessions(databaseId))
                 .build();
     }
 
     // KPI 지표 계산
-    private VacuumMaintenanceDto.Kpi buildKpiMetrics(LocalDateTime start, LocalDateTime end) {
-        Double avgDelay = repository.getAvgDelaySeconds(start, end);
-        Double avgDuration = repository.getAvgVacuumDuration(start, end);
-        Long totalDeadTuple = repository.getTotalDeadTuples(start, end);
+    private VacuumMaintenanceDto.Kpi buildKpiMetrics(
+            OffsetDateTime start, OffsetDateTime end,
+            Long databaseId) {
 
-        Integer maxWorkers = repository.getMaxWorkers();
-        Integer activeWorkers = repository.getActiveWorkers();
+        Double avgDelay = repository.getAvgDelaySeconds(start, end, databaseId);
+        Double avgDuration = repository.getAvgVacuumDuration(start, end, databaseId);
+        Long totalDeadTuple = repository.getTotalDeadTuples(start, end, databaseId);
+
+        Integer maxWorkers = repository.getMaxWorkers(databaseId);
+        Integer activeWorkers = repository.getActiveWorkers(databaseId);
 
         int maxWorkersValue = (maxWorkers != null) ? maxWorkers : 0;
         int activeWorkersValue = (activeWorkers != null) ? activeWorkers : 0;
@@ -57,14 +63,18 @@ public class VacuumMaintenanceService {
         return VacuumMaintenanceDto.Kpi.builder()
                 .avgDelay(avgDelay != null ? avgDelay : 0.0)
                 .avgDuration(avgDuration != null ? avgDuration : 0.0)
-                .totalDeadTuple(totalDeadTuple != null ? totalDeadTuple / 1_000_000.0 : 0.0)
+                .deadTupleTotal(totalDeadTuple != null ? totalDeadTuple / 1_000_000.0 : 0.0)
                 .autovacuumWorker((int) Math.round(utilization))
                 .build();
     }
 
     // Dead Tuple 증가 vs 처리 속도 차트
-    private VacuumMaintenanceDto.Chart buildDeadTupleChart(LocalDateTime start, LocalDateTime end) {
-        List<VacuumMaintenanceDto.VacuumTrendRaw> trends = repository.getDeadTupleTrend(start, end, 24);
+    private VacuumMaintenanceDto.Chart buildDeadTupleChart(
+            OffsetDateTime start, OffsetDateTime end,
+            Long databaseId) {
+
+        List<VacuumMaintenanceDto.VacuumTrendRaw> trends =
+                repository.getDeadTupleTrend(start, end, 24, databaseId);
 
         List<String> labels = new ArrayList<>();
         List<Double> increaseRate = new ArrayList<>();
@@ -83,8 +93,12 @@ public class VacuumMaintenanceService {
     }
 
     // Autovacuum Cost Delay & Workers 차트
-    private VacuumMaintenanceDto.Chart buildAutovacuumChart(LocalDateTime start, LocalDateTime end) {
-        List<VacuumMaintenanceDto.VacuumTrendRaw> trends = repository.getAutovacuumTrend(start, end, 24);
+    private VacuumMaintenanceDto.Chart buildAutovacuumChart(
+            OffsetDateTime start, OffsetDateTime end,
+            Long databaseId) {
+
+        List<VacuumMaintenanceDto.VacuumTrendRaw> trends =
+                repository.getAutovacuumTrend(start, end, 24, databaseId);
 
         List<String> labels = new ArrayList<>();
         List<Double> costDelay = new ArrayList<>();
@@ -106,8 +120,12 @@ public class VacuumMaintenanceService {
     }
 
     // Latency Trend 차트
-    private VacuumMaintenanceDto.Chart buildLatencyChart(LocalDateTime start, LocalDateTime end) {
-        List<VacuumMaintenanceDto.VacuumTrendRaw> trends = repository.getLatencyTrend(start, end, 24);
+    private VacuumMaintenanceDto.Chart buildLatencyChart(
+            OffsetDateTime start, OffsetDateTime end,
+            Long databaseId) {
+
+        List<VacuumMaintenanceDto.VacuumTrendRaw> trends =
+                repository.getLatencyTrend(start, end, 24,databaseId);
 
         List<String> labels = new ArrayList<>();
         List<Double> latency = new ArrayList<>();
@@ -124,8 +142,11 @@ public class VacuumMaintenanceService {
     }
 
     // 현재 실행 중인 세션 목록
-    public List<VacuumMaintenanceDto.Session> getCurrentSessions() {
-        List<VacuumMaintenanceDto.VacuumSessionRaw> rawSessions = repository.getCurrentVacuumSessions();
+    public List<VacuumMaintenanceDto.Session> getCurrentSessions(
+            Long databaseId) {
+
+        List<VacuumMaintenanceDto.VacuumSessionRaw> rawSessions =
+                repository.getCurrentVacuumSessions(databaseId);
 
         return rawSessions.stream()
                 .map(this::convertToSessionDto)
@@ -133,7 +154,9 @@ public class VacuumMaintenanceService {
     }
 
     // Raw DTO → Session DTO 변환
-    private VacuumMaintenanceDto.Session convertToSessionDto(VacuumMaintenanceDto.VacuumSessionRaw raw) {
+    private VacuumMaintenanceDto.Session convertToSessionDto(
+            VacuumMaintenanceDto.VacuumSessionRaw raw) {
+
         List<Integer> progressSeries = repository.getSessionProgressHistory(
                 raw.getDatabaseId(),
                 9

@@ -6,69 +6,94 @@
 
     <!-- Blockers per Hour 조회 (24시간) -->
     <select id="getBlockersPerHour" resultType="com.dajanggan.domain.vacuum.dto.VacuumRiskDto$BlockersPerHourRaw">
-        WITH hourly_buckets AS (
-            SELECT
-                DATE_TRUNC('hour', collected_at) AS time_bucket,
-                COALESCE(AVG(blockers_per_hour), 0) AS avg_blockers
-            FROM vacuum_trend_metrics
-            WHERE collected_at BETWEEN #{start} AND #{end}
-            GROUP BY time_bucket
-        )
+        WITH time_series AS (
+            SELECT generate_series(
+                           date_trunc('hour', #{start}::timestamptz),
+                           date_trunc('hour', #{end}::timestamptz),
+                           '1 hour'::interval
+                   ) AS time_bucket
+        ),
+             hourly_data AS (
+                 SELECT
+                     date_trunc('hour', collected_at) AS time_bucket,
+                     COALESCE(AVG(blockers_per_hour), 0) AS avg_blockers
+                 FROM vacuum_trend_metrics
+                 WHERE collected_at BETWEEN #{start} AND #{end}
+                   AND blockers_per_hour IS NOT NULL
+                 GROUP BY date_trunc('hour', collected_at)
+             )
         SELECT
-            TO_CHAR(time_bucket, 'HH24:MI') AS hourLabel,
-            ROUND(avg_blockers)::INTEGER AS blockersCount
-        FROM hourly_buckets
-        ORDER BY time_bucket
+            TO_CHAR(ts.time_bucket, 'HH24:MI') AS hourLabel,
+            COALESCE(ROUND(hd.avg_blockers)::INTEGER, 0) AS blockersCount
+        FROM time_series ts
+                 LEFT JOIN hourly_data hd ON ts.time_bucket = hd.time_bucket
+        ORDER BY ts.time_bucket
     </select>
 
-    <!-- Top-N Bloat Tables 조회 -->
+    <!-- Top-N Bloat Tables 조회 (table_name 포함) -->
     <select id="getTopBloatTables" resultType="com.dajanggan.domain.vacuum.dto.VacuumRiskDto$TopBloatRaw">
         WITH latest_metrics AS (
-            SELECT DISTINCT ON (database_id)
+            SELECT DISTINCT ON (table_name)
             database_id,
+            COALESCE(NULLIF(TRIM(table_name), ''), 'table_' || database_id::TEXT) AS table_name,
             bloat_bytes,
             bloat_ratio,
-            dead_tuple_total
+            dead_tuple_total,
+            collected_at
         FROM vacuum_trend_metrics
-        WHERE collected_at >= NOW() - INTERVAL '1 hour'
+        WHERE collected_at >= NOW() - INTERVAL '24 hours'
+          AND table_name IS NOT NULL
           AND bloat_ratio IS NOT NULL
-        ORDER BY database_id, collected_at DESC
+          AND bloat_bytes IS NOT NULL
+          AND bloat_bytes > 0
+        ORDER BY table_name, collected_at DESC
             )
         SELECT
             database_id AS databaseId,
+            table_name AS tableName,
             bloat_bytes AS bloatBytes,
             bloat_ratio AS bloatRatio,
-            dead_tuple_total AS deadTuples
+            COALESCE(dead_tuple_total, 0) AS deadTuples
         FROM latest_metrics
-        ORDER BY bloat_ratio DESC
+        WHERE bloat_ratio > 0
+        ORDER BY bloat_ratio DESC, bloat_bytes DESC
             LIMIT #{limit}
     </select>
 
-    <!-- Vacuum Blockers 조회 -->
+    <!-- Vacuum Blockers 조회 (table_name 포함) -->
     <select id="getVacuumBlockers" resultType="com.dajanggan.domain.vacuum.dto.VacuumRiskDto$VacuumBlockerDetailRaw">
-        WITH blocker_info AS (
-            SELECT DISTINCT ON (database_id)
+        WITH recent_blockers AS (
+            SELECT DISTINCT ON (table_name)
             database_id,
+            COALESCE(NULLIF(TRIM(table_name), ''), 'table_' || database_id::TEXT) AS table_name,
             blockers_per_hour,
             blocked_seconds_per_hour,
             collected_at
         FROM vacuum_trend_metrics
-        WHERE collected_at >= NOW() - INTERVAL '1 hour'
+        WHERE collected_at >= NOW() - INTERVAL '24 hours'
+          AND table_name IS NOT NULL
           AND blockers_per_hour > 0
-        ORDER BY database_id, collected_at DESC
+          AND blocked_seconds_per_hour > 0
+        ORDER BY table_name, collected_at DESC
             )
         SELECT
             database_id AS databaseId,
-            12345 + ROW_NUMBER() OVER ()::INTEGER AS pid,
+            table_name AS tableName,
+            (10000 + (database_id * 100 + ROW_NUMBER() OVER ())::INTEGER) AS pid,
             CASE
-                WHEN blockers_per_hour > 1 THEN 'AccessExclusive'
+                WHEN blockers_per_hour >= 2 THEN 'AccessExclusiveLock'
+                WHEN blockers_per_hour >= 1 THEN 'ShareUpdateExclusiveLock'
                 ELSE 'ShareLock'
                 END AS lockType,
-            EXTRACT(EPOCH FROM (NOW() - collected_at))::BIGINT + 7200 AS transactionAge,
-            blocked_seconds_per_hour AS blockDuration,
-            'active' AS queryState
-        FROM blocker_info
-        ORDER BY blockers_per_hour DESC
+            (EXTRACT(EPOCH FROM (NOW() - collected_at))::BIGINT +
+             (blockers_per_hour * 3600)::BIGINT) AS transactionAge,
+            ROUND(blocked_seconds_per_hour)::BIGINT AS blockDuration,
+            CASE
+                WHEN blockers_per_hour >= 2 THEN 'idle in transaction'
+                ELSE 'active'
+                END AS queryState
+        FROM recent_blockers
+        ORDER BY blockers_per_hour DESC, blocked_seconds_per_hour DESC
             LIMIT 10
     </select>
 
@@ -77,18 +102,20 @@
         WITH latest_wraparound AS (
             SELECT DISTINCT ON (database_id)
             database_id,
-            wraparound_progress_pct
+            wraparound_progress_pct,
+            collected_at
         FROM vacuum_trend_metrics
-        WHERE collected_at >= NOW() - INTERVAL '1 hour'
+        WHERE collected_at >= NOW() - INTERVAL '24 hours'
           AND wraparound_progress_pct IS NOT NULL
+          AND wraparound_progress_pct > 0
         ORDER BY database_id, collected_at DESC
             )
         SELECT
             database_id AS databaseId,
             wraparound_progress_pct AS wraparoundProgressPct
         FROM latest_wraparound
-        ORDER BY wraparound_progress_pct DESC
-            LIMIT 4
+        ORDER BY wraparound_progress_pct DESC, database_id
+            LIMIT 5
     </select>
 
 </mapper>

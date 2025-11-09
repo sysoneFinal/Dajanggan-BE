@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 /**
  * vacuum_raw_metrics 테이블 도메인
@@ -19,8 +20,8 @@ public class VacuumRawMetrics {
     // 기본 정보
     private Long vacuumRawMetricsId;
     private Long databaseId;
-    private LocalDateTime collectedAt;
-    private LocalDateTime createdAt;
+    private OffsetDateTime collectedAt;
+    private OffsetDateTime createdAt;
 
     // Vacuum 세션 정보
     private Long backendXid;
@@ -28,7 +29,7 @@ public class VacuumRawMetrics {
     private String sessionTrigger;
     private String sessionPhase;
     private Double sessionProgress;
-    private LocalDateTime sessionStartedAt;
+    private OffsetDateTime sessionStartedAt;
     private Integer elapsedSeconds;
 
     // 대기 이벤트
@@ -60,8 +61,8 @@ public class VacuumRawMetrics {
     private Long nLiveTup;
 
     // Vacuum 이력
-    private LocalDateTime lastVacuum;
-    private LocalDateTime lastAutovacuum;
+    private OffsetDateTime lastVacuum;
+    private OffsetDateTime lastAutovacuum;
     private Long nModSinceAnalyze;
 
     // 테이블 크기 정보

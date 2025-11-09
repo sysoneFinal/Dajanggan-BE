@@ -12,10 +12,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * Vacuum Maintenance Controller
- * - VacuumPage.tsx 대시보드 데이터 제공
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/vacuum")
@@ -24,24 +20,31 @@ public class VacuumMaintenanceController {
 
     private final VacuumMaintenanceService vacuumMaintenanceService;
 
-    /**
-     * 대시보드 전체 데이터 조회
-     * GET /api/vacuum/dashboard?hours=24
-     */
     @GetMapping("/dashboard")
     public ResponseEntity<VacuumMaintenanceDto.Response> getDashboard(
-            @RequestParam(defaultValue = "24") int hours) {
+            @RequestParam(defaultValue = "1000") int hours,
+            @RequestParam(required = false) Long databaseId) {
 
-        VacuumMaintenanceDto.Response dashboard = vacuumMaintenanceService.getDashboardData(hours);
+        log.info("Dashboard 조회 요청 - databaseId: {}, hours: {}",
+                databaseId, hours);
+
+
+        VacuumMaintenanceDto.Response dashboard =
+                vacuumMaintenanceService.getDashboardData(hours,databaseId);
+
         return ResponseEntity.ok(dashboard);
     }
 
-    /**
-     * 실시간 세션 목록만 조회
-     * GET /api/vacuum/sessions
-     */
     @GetMapping("/sessions")
-    public ResponseEntity<List<VacuumMaintenanceDto.Session>> getCurrentSessions() {
-        return ResponseEntity.ok(vacuumMaintenanceService.getCurrentSessions());
+    public ResponseEntity<List<VacuumMaintenanceDto.Session>> getCurrentSessions(
+            @RequestParam(required = false) Long databaseId) {
+
+        log.info("Sessions 조회 요청 - databaseId: {}",
+                databaseId);
+
+
+        return ResponseEntity.ok(
+                vacuumMaintenanceService.getCurrentSessions(databaseId)
+        );
     }
 }

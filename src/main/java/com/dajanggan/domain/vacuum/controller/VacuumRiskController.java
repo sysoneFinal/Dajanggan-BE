@@ -10,10 +10,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * Vacuum Risk Controller
- * - Vacuum Risk 페이지 데이터 제공
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/vacuum")
@@ -22,13 +18,6 @@ public class VacuumRiskController {
 
     private final VacuumRiskService vacuumRiskService;
 
-    /**
-     * Vacuum Risk 페이지 데이터 조회
-     * GET /api/vacuum/risk?hours=24
-     *
-     * @param hours 조회 기간 (시간)
-     * @return Vacuum Risk 데이터 (Blockers, Wraparound, Bloat, VacuumBlockers)
-     */
     @GetMapping("/risk")
     public ResponseEntity<VacuumRiskDto.Response> getRisk(
             @RequestParam(defaultValue = "24") int hours) {

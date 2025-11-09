@@ -2,97 +2,110 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<!-- VacuumBloatMapper.xml - Raw + Trend Metrics 통합 -->
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumBloatMapper">
-   <!-- 특정 시간 범위의 Xmin Horizon 데이터 조회 -->
+
+    <!-- 특정 시간 범위의 Xmin Horizon 데이터 조회 -->
     <select id="findXminHorizonData" resultType="com.dajanggan.domain.vacuum.domain.VacuumRawMetrics">
         SELECT
-            vacuum_raw_metrics_id AS vacuumRawMetricsId,
-            database_id AS databaseId,
-            collected_at AS collectedAt,
-            created_at AS createdAt,
-            backend_pid AS backendPid,
-            blocker_xmin_horizon AS blockerXminHorizon,
-            tuples_deleted AS tuplesDeleted,
-            elapsed_seconds AS elapsedSeconds
+        vacuum_raw_metrics_id AS vacuumRawMetricsId,
+        database_id AS databaseId,
+        collected_at AS collectedAt,
+        created_at AS createdAt,
+        backend_pid AS backendPid,
+        blocker_xmin_horizon AS blockerXminHorizon,
+        tuples_deleted AS tuplesDeleted,
+        elapsed_seconds AS elapsedSeconds
         FROM vacuum_raw_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         ORDER BY collected_at ASC
     </select>
 
     <!-- 최근 데이터 조회 -->
     <select id="findRecentMetrics" resultType="com.dajanggan.domain.vacuum.domain.VacuumRawMetrics">
         SELECT
-            vacuum_raw_metrics_id AS vacuumRawMetricsId,
-            database_id AS databaseId,
-            collected_at AS collectedAt,
-            blocker_xmin_horizon AS blockerXminHorizon,
-            tuples_deleted AS tuplesDeleted,
-            elapsed_seconds AS elapsedSeconds
+        vacuum_raw_metrics_id AS vacuumRawMetricsId,
+        database_id AS databaseId,
+        collected_at AS collectedAt,
+        blocker_xmin_horizon AS blockerXminHorizon,
+        tuples_deleted AS tuplesDeleted,
+        elapsed_seconds AS elapsedSeconds
         FROM vacuum_raw_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND collected_at >= #{since}
+        WHERE collected_at >= #{since}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         ORDER BY collected_at DESC
     </select>
 
     <!-- Blocker Xmin Horizon이 있는 최신 데이터 조회 -->
     <select id="findLatestWithBlockerXmin" resultType="com.dajanggan.domain.vacuum.domain.VacuumRawMetrics">
         SELECT
-            vacuum_raw_metrics_id AS vacuumRawMetricsId,
-            database_id AS databaseId,
-            collected_at AS collectedAt,
-            blocker_xmin_horizon AS blockerXminHorizon
+        vacuum_raw_metrics_id AS vacuumRawMetricsId,
+        database_id AS databaseId,
+        collected_at AS collectedAt,
+        blocker_xmin_horizon AS blockerXminHorizon
         FROM vacuum_raw_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND blocker_xmin_horizon IS NOT NULL
+        WHERE blocker_xmin_horizon IS NOT NULL
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         ORDER BY collected_at DESC
+        LIMIT 100
     </select>
 
     <!-- Dead Tuple 카운트가 높은 테이블 조회 -->
     <select id="findTablesWithHighDeadTuples" resultType="com.dajanggan.domain.vacuum.domain.VacuumRawMetrics">
         SELECT
-            vacuum_raw_metrics_id AS vacuumRawMetricsId,
-            database_id AS databaseId,
-            n_dead_tup AS nDeadTup,
-            n_live_tup AS nLiveTup
+        vacuum_raw_metrics_id AS vacuumRawMetricsId,
+        database_id AS databaseId,
+        n_dead_tup AS nDeadTup,
+        n_live_tup AS nLiveTup
         FROM vacuum_raw_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND n_dead_tup > #{threshold}
+        WHERE n_dead_tup > #{threshold}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         ORDER BY n_dead_tup DESC
+        LIMIT 100
     </select>
-
-    <!-- ========== Trend Metrics ========== -->
 
     <!-- 최근 N일간의 Bloat Trend 데이터 조회 -->
     <select id="findBloatTrendData" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
         SELECT
-            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
-            database_id AS databaseId,
-            collected_at AS collectedAt,
-            bloat_bytes AS bloatBytes,
-            bloat_ratio AS bloatRatio
+        vacuum_trend_metrics_id AS vacuumTrendMetricsId,
+        database_id AS databaseId,
+        collected_at AS collectedAt,
+        bloat_bytes AS bloatBytes,
+        bloat_ratio AS bloatRatio
         FROM vacuum_trend_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND collected_at >= #{startDate}
+        WHERE collected_at >= #{startDate}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         ORDER BY collected_at ASC
     </select>
 
     <!-- Bloat Ratio 기준 테이블 분포 조회 -->
     <select id="findBloatDistribution" resultType="map">
         SELECT
-            CASE
-                WHEN bloat_ratio &lt; 0.05 THEN '0-5%'
-                WHEN bloat_ratio &lt; 0.10 THEN '5-10%'
-                WHEN bloat_ratio &lt; 0.15 THEN '10-15%'
-                WHEN bloat_ratio &lt; 0.20 THEN '15-20%'
-                WHEN bloat_ratio &lt; 0.30 THEN '20-30%'
-                ELSE '30%+'
-                END as range,
-            COUNT(*) as count
+        CASE
+        WHEN bloat_ratio &lt; 0.05 THEN '0-5%'
+        WHEN bloat_ratio &lt; 0.10 THEN '5-10%'
+        WHEN bloat_ratio &lt; 0.15 THEN '10-15%'
+        WHEN bloat_ratio &lt; 0.20 THEN '15-20%'
+        WHEN bloat_ratio &lt; 0.30 THEN '20-30%'
+        ELSE '30%+'
+        END as range,
+        COUNT(*) as count
         FROM vacuum_trend_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND collected_at >= #{since}
+        WHERE collected_at >= #{since}
+        AND bloat_ratio IS NOT NULL
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         GROUP BY range
         ORDER BY MIN(bloat_ratio)
     </select>
@@ -101,62 +114,77 @@
     <select id="calculateTotalBloat" resultType="long">
         SELECT COALESCE(SUM(bloat_bytes), 0)
         FROM vacuum_trend_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND collected_at >= #{since}
+        WHERE collected_at >= #{since}
+        AND bloat_bytes IS NOT NULL
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
     </select>
 
-    <!-- Critical 테이블 수 조회 -->
+    <!-- Critical 테이블 수 조회 (Bloat Ratio >= 15%) -->
     <select id="countCriticalTables" resultType="long">
-        SELECT COUNT(*)
+        SELECT COUNT(DISTINCT database_id)
         FROM vacuum_trend_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND bloat_ratio >= 0.15
-          AND collected_at >= #{since}
+        WHERE bloat_ratio >= 0.15
+        AND collected_at >= #{since}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
     </select>
 
     <!-- 일별 데이터 조회 -->
     <select id="findDailyMetrics" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
         SELECT
-            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
-            database_id AS databaseId,
-            collected_at AS collectedAt,
-            bloat_bytes AS bloatBytes,
-            bloat_ratio AS bloatRatio
+        vacuum_trend_metrics_id AS vacuumTrendMetricsId,
+        database_id AS databaseId,
+        collected_at AS collectedAt,
+        bloat_bytes AS bloatBytes,
+        bloat_ratio AS bloatRatio
         FROM vacuum_trend_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND collected_at >= #{startDate}
+        WHERE collected_at >= #{startDate}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         ORDER BY collected_at ASC
     </select>
 
     <!-- Wraparound 진행률이 높은 테이블 조회 -->
     <select id="findTablesWithHighWraparoundProgress" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
         SELECT
-            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
-            database_id AS databaseId,
-            wraparound_progress_pct AS wraparoundProgressPct
+        vacuum_trend_metrics_id AS vacuumTrendMetricsId,
+        database_id AS databaseId,
+        wraparound_progress_pct AS wraparoundProgressPct
         FROM vacuum_trend_metrics
-        WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-          AND wraparound_progress_pct > #{threshold}
+        WHERE wraparound_progress_pct > #{threshold}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
         ORDER BY wraparound_progress_pct DESC
+        LIMIT 100
     </select>
 
     <!-- 최신 데이터만 조회 -->
     <select id="findLatestMetrics" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
         WITH latest AS (
-            SELECT database_id, MAX(collected_at) as max_collected_at
-            FROM vacuum_trend_metrics
-            WHERE (#{databaseId} IS NULL OR database_id = CAST(#{databaseId} AS BIGINT))
-            GROUP BY database_id
+        SELECT
+        database_id,
+        MAX(collected_at) as max_collected_at
+        FROM vacuum_trend_metrics
+        WHERE 1=1
+        <if test="databaseId != null">
+            AND database_id = #{databaseId, jdbcType=BIGINT}
+        </if>
+        GROUP BY database_id
         )
         SELECT
-            v.vacuum_trend_metrics_id AS vacuumTrendMetricsId,
-            v.database_id AS databaseId,
-            v.collected_at AS collectedAt,
-            v.bloat_bytes AS bloatBytes,
-            v.bloat_ratio AS bloatRatio
+        v.vacuum_trend_metrics_id AS vacuumTrendMetricsId,
+        v.database_id AS databaseId,
+        v.collected_at AS collectedAt,
+        v.bloat_bytes AS bloatBytes,
+        v.bloat_ratio AS bloatRatio
         FROM vacuum_trend_metrics v
-                 INNER JOIN latest ON v.database_id = latest.database_id
-            AND v.collected_at = latest.max_collected_at
+        INNER JOIN latest ON v.database_id = latest.database_id
+        AND v.collected_at = latest.max_collected_at
     </select>
 
 </mapper>

@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 /**
  * vacuum_trend_metrics 테이블 도메인
@@ -20,8 +21,8 @@ public class VacuumTrendMetrics {
     // 기본 정보
     private Long vacuumTrendMetricsId;
     private Long databaseId;
-    private LocalDateTime collectedAt;
-    private LocalDateTime createdAt;
+    private OffsetDateTime collectedAt;
+    private OffsetDateTime createdAt;
 
     // 버킷 정보
     private Integer bucketWidthSeconds;
@@ -52,8 +53,8 @@ public class VacuumTrendMetrics {
     private BigDecimal bloatRatio;
 
     // Vacuum 이력
-    private LocalDateTime lastVacuum;
-    private LocalDateTime lastAutovacuum;
+    private OffsetDateTime lastVacuum;
+    private OffsetDateTime lastAutovacuum;
 
     // Worker 활용률
     private BigDecimal workerUtilizationPct;

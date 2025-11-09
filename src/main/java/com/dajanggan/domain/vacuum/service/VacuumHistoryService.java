@@ -8,15 +8,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Vacuum History Service
- * - History 페이지만 담당
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -26,13 +22,10 @@ public class VacuumHistoryService {
     private final VacuumHistoryRepository repository;
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    /**
-     * Vacuum History 목록 조회
-     */
     public List<VacuumHistoryDto.Response> getVacuumHistory(VacuumHistoryDto.Request request) {
         int hours = request.getHours() != null ? request.getHours() : 24;
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusHours(hours);
+        OffsetDateTime endTime = OffsetDateTime.now();
+        OffsetDateTime startTime = endTime.minusHours(hours);
 
         log.info("Vacuum History 조회: {} ~ {}, status={}", startTime, endTime, request.getStatus());
 
@@ -44,9 +37,6 @@ public class VacuumHistoryService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Raw DTO → History DTO 변환
-     */
     private VacuumHistoryDto.Response convertToHistoryDto(VacuumHistoryDto.Raw raw, int hours) {
         // 빈도 계산
         Integer frequency = repository.getVacuumFrequency(raw.getDatabaseId(), hours);
@@ -67,9 +57,6 @@ public class VacuumHistoryService {
                 .build();
     }
 
-    /**
-     * 상태 필터링
-     */
     private boolean filterByStatus(VacuumHistoryDto.Response dto, String statusFilter) {
         if (statusFilter == null || statusFilter.isEmpty()) {
             return true;
@@ -77,9 +64,6 @@ public class VacuumHistoryService {
         return dto.getStatus().equals(statusFilter);
     }
 
-    /**
-     * 상태 판단 로직
-     */
     private String determineStatus(VacuumHistoryDto.Raw raw) {
         // bloat 비율 > 5% 또는 dead tuples > 100K → 주의
         if (raw.getBloatRatio() != null && raw.getBloatRatio() > 0.05) {
@@ -91,9 +75,6 @@ public class VacuumHistoryService {
         return "정상";
     }
 
-    /**
-     * 빈도 포맷팅
-     */
     private String formatFrequency(Integer count, int hours) {
         if (count == null || count == 0) {
             return "0회";
@@ -108,25 +89,16 @@ public class VacuumHistoryService {
         return count + "회/" + hours + "h";
     }
 
-    /**
-     * DateTime 포맷팅
-     */
     private String formatDateTime(Timestamp timestamp) {
         if (timestamp == null) return "-";
         return timestamp.toLocalDateTime().format(DATETIME_FORMATTER);
     }
 
-    /**
-     * Bloat 비율 포맷팅
-     */
     private String formatBloatPct(Double ratio) {
         if (ratio == null) return "0.0%";
         return String.format("%.1f%%", ratio * 100);
     }
 
-    /**
-     * 바이트 크기 포맷팅
-     */
     private String formatBytes(Long bytes) {
         if (bytes == null) return "0 B";
         if (bytes >= 1_073_741_824) return String.format("%.0f GB", bytes / 1_073_741_824.0);
@@ -135,9 +107,6 @@ public class VacuumHistoryService {
         return bytes + " B";
     }
 
-    /**
-     * Tuples 포맷팅
-     */
     private String formatTuples(Long count) {
         if (count == null) return "0";
         if (count >= 1_000_000) return String.format("%.1fM", count / 1_000_000.0);

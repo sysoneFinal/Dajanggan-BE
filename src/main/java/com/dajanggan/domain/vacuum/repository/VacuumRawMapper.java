@@ -9,26 +9,18 @@ import java.util.List;
 @Mapper
 public interface VacuumRawMapper {
 
-    /**
-     * 최대 Autovacuum Worker 수 조회
-     */
-    Integer getMaxWorkers();
+    Integer getMaxWorkers(
+            @Param("databaseId") Long databaseId
+    );
 
-    /**
-     * 현재 활성 Worker 수 조회
-     */
-    Integer getActiveWorkers();
+    Integer getActiveWorkers(
+            @Param("databaseId") Long databaseId
+    );
 
-    /**
-     * 현재 실행 중인 Vacuum 세션 조회
-     */
-    List<VacuumMaintenanceDto.VacuumSessionRaw> getCurrentVacuumSessions();
+    List<VacuumMaintenanceDto.VacuumSessionRaw> getCurrentVacuumSessions(
+            @Param("databaseId") Long databaseId
+    );
 
-    /**
-     * 특정 세션의 진행률 히스토리 조회
-     * @param databaseId 데이터베이스 ID
-     * @param limit 최대 조회 개수
-     */
     List<Integer> getSessionProgressHistory(
             @Param("databaseId") String databaseId,
             @Param("limit") int limit
