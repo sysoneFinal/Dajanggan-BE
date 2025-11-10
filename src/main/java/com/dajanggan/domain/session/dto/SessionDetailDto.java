@@ -5,7 +5,6 @@ import lombok.*;
 @Setter
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor
 @Getter
 public class SessionDetailDto {
 
