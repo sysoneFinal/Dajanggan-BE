@@ -115,6 +115,39 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
     }
 
     /**
+     * 🆕 최근 N분간의 쿼리 메트릭스 조회
+     */
+    @Override
+    public List<QueryMetricsRawDto> getRecentMetrics(Long databaseId, Integer minutes) {
+        logger.info("최근 {}분 데이터 조회 시작: databaseId = {}", minutes, databaseId);
+
+        if (databaseId == null) {
+            logger.warn("databaseId가 null입니다");
+            throw new IllegalArgumentException("databaseId는 필수입니다");
+        }
+
+        if (minutes == null || minutes <= 0) {
+            logger.warn("minutes가 유효하지 않습니다: {}", minutes);
+            minutes = 5; // 기본값
+        }
+
+        try {
+            List<QueryMetricsRaw> entities = queryMetricsRawRepository.findRecentByDatabaseId(databaseId, minutes);
+            List<QueryMetricsRawDto> dtos = entities.stream()
+                    .map(QueryMetricsRawDto::from)
+                    .collect(Collectors.toList());
+
+            logger.info("최근 {}분 데이터 조회 완료: databaseId = {}, 조회 건수 = {}",
+                    minutes, databaseId, dtos.size());
+            return dtos;
+
+        } catch (Exception e) {
+            logger.error("최근 {}분 데이터 조회 중 오류 발생: databaseId = {}", minutes, databaseId, e);
+            throw new RuntimeException("최근 데이터 조회 실패", e);
+        }
+    }
+
+    /**
      * 쿼리 타입별 조회
      */
     @Override

@@ -61,6 +61,15 @@
         ORDER BY created_at DESC
     </select>
 
+    <!-- 🆕 3-1. 최근 N분간의 데이터 조회 (실시간 모니터링용) -->
+    <select id="findRecentByDatabaseId" resultMap="QueryMetricsRawResultMap">
+        SELECT <include refid="queryMetricsColumns"/>
+        FROM query_metrics_raw
+        WHERE database_id = #{databaseId}
+        AND created_at >= NOW() - INTERVAL #{minutes} MINUTE
+        ORDER BY created_at DESC
+    </select>
+
     <!-- 4. 쿼리 타입별 조회 -->
     <select id="findByQueryType" parameterType="string" resultMap="QueryMetricsRawResultMap">
         SELECT <include refid="queryMetricsColumns"/>

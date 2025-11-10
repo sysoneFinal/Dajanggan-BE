@@ -123,6 +123,35 @@ public class QueryMetricsRawController {
     }
 
     /**
+     * 🆕 최근 N분 데이터 조회 (실시간 모니터링용)
+     * GET /api/query-metrics/recent?databaseId={databaseId}&minutes={minutes}
+     */
+    @GetMapping("/recent")
+    @Operation(summary = "최근 N분 데이터 조회",
+            description = "실시간 모니터링을 위한 최근 N분간의 쿼리 메트릭스를 조회합니다")
+    public ResponseEntity<Map<String, Object>> getRecentMetrics(
+            @Parameter(description = "데이터베이스 ID")
+            @RequestParam Long databaseId,
+            @Parameter(description = "조회할 시간(분 단위, 기본값: 5분)")
+            @RequestParam(defaultValue = "5") Integer minutes) {
+
+        log.info("GET /api/query-metrics/recent - databaseId: {}, minutes: {}", databaseId, minutes);
+
+        List<QueryMetricsRawDto> data = queryMetricsRawService.getRecentMetrics(databaseId, minutes);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("data", data);
+        response.put("count", data.size());
+        response.put("databaseId", databaseId);
+        response.put("minutes", minutes);
+        response.put("message", "조회 성공");
+
+        log.info("최근 {}분 데이터 조회 완료: databaseId={}, count={}", minutes, databaseId, data.size());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * 쿼리 타입별 조회
      * GET /api/query-metrics/type/{queryType}
      */

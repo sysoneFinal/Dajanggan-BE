@@ -36,6 +36,15 @@ public interface QueryMetricsRawRepository {
     List<QueryMetricsRaw> findByDatabaseId(@Param("databaseId") Long databaseId);
 
     /**
+     * 🆕 최근 N분간의 쿼리 메트릭스 조회 (실시간 모니터링용)
+     * @param databaseId 데이터베이스 ID
+     * @param minutes 조회할 시간(분)
+     * @return 최근 N분간의 쿼리 메트릭스 목록
+     */
+    List<QueryMetricsRaw> findRecentByDatabaseId(@Param("databaseId") Long databaseId,
+                                                 @Param("minutes") Integer minutes);
+
+    /**
      * 쿼리 타입별 조회
      * @param queryType 쿼리 타입 (SELECT, INSERT, UPDATE, DELETE 등)
      * @return 해당 타입의 쿼리 메트릭스 목록

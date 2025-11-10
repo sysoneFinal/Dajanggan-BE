@@ -13,11 +13,14 @@ import java.util.stream.Collectors;
 public final class DtoMappers {
     public static DatabaseDto toDatabaseDto(Database s) {
         DatabaseDto d = new DatabaseDto();
+        d.setDatabaseId(s.getDatabaseId());
+        d.setInstanceId(s.getInstanceId());
         d.setDatabaseName(s.getDatabaseName());
         d.setIsEnabled(Boolean.TRUE.equals(s.getIsEnabled()));
         d.setConnections(s.getConnections());
         d.setSizeBytes(s.getSizeBytes());
         d.setCacheHitRate(s.getCacheHitRate());
+        d.setCreatedAt(s.getCreatedAt());
         d.setUpdatedAt(s.getUpdatedAt());
         return d;
     }

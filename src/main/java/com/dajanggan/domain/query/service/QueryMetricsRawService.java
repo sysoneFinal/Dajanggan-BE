@@ -33,6 +33,14 @@ public interface QueryMetricsRawService {
     List<QueryMetricsRawDto> getQueryMetricsByDatabaseId(Long databaseId);
 
     /**
+     * 🆕 최근 N분간의 쿼리 메트릭스 조회
+     * @param databaseId 데이터베이스 ID
+     * @param minutes 조회할 시간(분)
+     * @return 최근 N분간의 쿼리 메트릭스 DTO 목록
+     */
+    List<QueryMetricsRawDto> getRecentMetrics(Long databaseId, Integer minutes);
+
+    /**
      * 쿼리 타입별 조회
      * @param queryType 쿼리 타입
      * @return 해당 타입의 쿼리 메트릭스 DTO 목록
