@@ -22,6 +22,7 @@ public class VacuumRawMetrics {
     private Long databaseId;
     private OffsetDateTime collectedAt;
     private OffsetDateTime createdAt;
+    private String tableName;
 
     // Vacuum 세션 정보
     private Long backendXid;

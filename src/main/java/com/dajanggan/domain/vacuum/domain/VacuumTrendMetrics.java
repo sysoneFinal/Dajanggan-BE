@@ -23,6 +23,7 @@ public class VacuumTrendMetrics {
     private Long databaseId;
     private OffsetDateTime collectedAt;
     private OffsetDateTime createdAt;
+    private String tableName;
 
     // 버킷 정보
     private Integer bucketWidthSeconds;

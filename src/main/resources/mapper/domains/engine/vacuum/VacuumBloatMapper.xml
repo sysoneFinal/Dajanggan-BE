@@ -245,4 +245,14 @@
         LIMIT 100
     </select>
 
+    <!-- 데이터베이스 내 테이블 목록 조회 -->
+    <select id="findTableList" resultType="String">
+        SELECT DISTINCT
+            schemaname || '.' || relname as table_name
+        FROM vacuum_trend_metrics
+        WHERE database_id = #{databaseId}
+          AND schemaname NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY table_name
+    </select>
+
 </mapper>
