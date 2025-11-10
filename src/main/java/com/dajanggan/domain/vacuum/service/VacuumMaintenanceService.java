@@ -24,7 +24,7 @@ public class VacuumMaintenanceService {
 
     // Maintenance 대시보드 전체 데이터 조회
     public VacuumMaintenanceDto.Response getDashboardData(
-            int hours,  Long databaseId) {
+            int hours,  Long databaseId, String tableName) {
 
         OffsetDateTime endTime = OffsetDateTime.now();
         OffsetDateTime startTime = endTime.minusHours(hours);
@@ -37,7 +37,7 @@ public class VacuumMaintenanceService {
                 .deadtuple(buildDeadTupleChart(startTime, endTime, databaseId))
                 .autovacuum(buildAutovacuumChart(startTime, endTime, databaseId))
                 .latency(buildLatencyChart(startTime, endTime, databaseId))
-                .sessions(getCurrentSessions(databaseId))
+                .sessions(getCurrentSessions(databaseId, tableName))
                 .build();
     }
 
@@ -143,10 +143,10 @@ public class VacuumMaintenanceService {
 
     // 현재 실행 중인 세션 목록
     public List<VacuumMaintenanceDto.Session> getCurrentSessions(
-            Long databaseId) {
+            Long databaseId, String tableName) {
 
         List<VacuumMaintenanceDto.VacuumSessionRaw> rawSessions =
-                repository.getCurrentVacuumSessions(databaseId);
+                repository.getCurrentVacuumSessions(databaseId, tableName);
 
         return rawSessions.stream()
                 .map(this::convertToSessionDto)
@@ -159,11 +159,13 @@ public class VacuumMaintenanceService {
 
         List<Integer> progressSeries = repository.getSessionProgressHistory(
                 raw.getDatabaseId(),
+                raw.getTableName(),
                 9
         );
 
         return VacuumMaintenanceDto.Session.builder()
-                .table(raw.getDatabaseId())
+                .databaseId(raw.getDatabaseId())
+                .tableName(raw.getTableName())
                 .phase(raw.getSessionPhase())
                 .deadTuples(formatTuples(raw.getDeadTupleTotal()))
                 .trigger(Boolean.TRUE.equals(raw.getAutovacuum()) ? "autovacuum" : "manual")

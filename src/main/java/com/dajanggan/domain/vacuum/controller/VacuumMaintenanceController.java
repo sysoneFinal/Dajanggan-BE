@@ -23,28 +23,28 @@ public class VacuumMaintenanceController {
     @GetMapping("/dashboard")
     public ResponseEntity<VacuumMaintenanceDto.Response> getDashboard(
             @RequestParam(defaultValue = "1000") int hours,
-            @RequestParam(required = false) Long databaseId) {
+            @RequestParam(required = false) Long databaseId, String tableName) {
 
         log.info("Dashboard 조회 요청 - databaseId: {}, hours: {}",
                 databaseId, hours);
 
 
         VacuumMaintenanceDto.Response dashboard =
-                vacuumMaintenanceService.getDashboardData(hours,databaseId);
+                vacuumMaintenanceService.getDashboardData(hours,databaseId, tableName);
 
         return ResponseEntity.ok(dashboard);
     }
 
     @GetMapping("/sessions")
     public ResponseEntity<List<VacuumMaintenanceDto.Session>> getCurrentSessions(
-            @RequestParam(required = false) Long databaseId) {
+            @RequestParam(required = false) Long databaseId, String tableName) {
 
         log.info("Sessions 조회 요청 - databaseId: {}",
                 databaseId);
 
 
         return ResponseEntity.ok(
-                vacuumMaintenanceService.getCurrentSessions(databaseId)
+                vacuumMaintenanceService.getCurrentSessions(databaseId, tableName)
         );
     }
 }
