@@ -4,6 +4,166 @@
 
 <mapper namespace="com.dajanggan.domain.event.repository.EventRepository">
 
+    <resultMap id="eventLog" type="com.dajanggan.domain.event.dto.EventLog">
+        <result property="eventId" column="event_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="instanceName" column="instance_name"/>
+        <result property="databaseName" column="db_name"/>
+        <result property="category" column="category"/>
+        <result property="eventType" column="event_type"/>
+        <result property="level" column="level"/>
+        <result property="userName" column="user_name"/>
+        <result property="resourceType" column="resource_type"/>
+        <result property="detectedAt" column="detected_at"/>
+        <result property="duration" column="duration"/>
+        <result property="description" column="description"/>
+    </resultMap>
 
+    <!--  필터 옵션  -->
+    <select id="findDistinctDatabases" parameterType="long" resultType="string">
+        SELECT DISTINCT db_name
+        FROM event_log
+        WHERE instance_id = #{instanceId}
+    </select>
+
+    <select id="findDistinctCategories" parameterType="long" resultType="string">
+        SELECT DISTINCT category
+        FROM event_log
+        WHERE instance_id = #{instanceId}
+    </select>
+
+    <!--  요약 카드  -->
+    <select id="getRecentSummary" parameterType="long" resultType="map">
+        SELECT
+        COUNT(*) FILTER (WHERE level = 'INFO') AS infoCount,
+        COUNT(*) FILTER (WHERE level = 'WARN') AS warnCount,
+        COUNT(*) FILTER (WHERE level = 'ERROR') AS errorCount,
+        COUNT(*) AS totalCount
+        FROM event_log
+        WHERE instance_id = #{instanceId}
+        AND detected_at >= (NOW() - INTERVAL '15 minutes');
+    </select>
+
+    <!--  이벤트 로그 조회  -->
+    <select id="getEventList" resultMap="eventLog" parameterType="map">
+        SELECT
+        event_id, instance_id, database_id, instance_name, db_name,
+        category, event_type, level, user_name, resource_type,
+        detected_at, duration, description
+        FROM event_log
+        WHERE instance_id = #{instanceId}
+
+        <!-- DB 필터 -->
+        <if test="dbNames != null and dbNames != ''">
+            AND db_name IN
+            <foreach item="db" collection="dbNames.split(',')" open="(" separator="," close=")">
+                #{db}
+            </foreach>
+        </if>
+
+        <!-- Category 필터 -->
+        <if test="category != null and category != ''">
+            AND category IN
+            <foreach item="cate" collection="category.split(',')" open="(" separator="," close=")">
+                #{cate}
+            </foreach>
+        </if>
+
+        <!-- Level 필터 -->
+        <if test="level != null and level != ''">
+            AND level IN
+            <foreach item="lv" collection="level.split(',')" open="(" separator="," close=")">
+                #{lv}
+            </foreach>
+        </if>
+
+        <!-- 날짜 필터 -->
+        <choose>
+            <when test="selectedTime == '최근 15분'">
+                AND detected_at >= (NOW() - INTERVAL '15 minutes')
+            </when>
+            <when test="selectedTime == '최근 30분'">
+                AND detected_at >= (NOW() - INTERVAL '30 minutes')
+            </when>
+            <when test="selectedTime == '최근 1시간'">
+                AND detected_at >= (NOW() - INTERVAL '1 hour')
+            </when>
+            <when test="selectedTime == '최근 3시간'">
+                AND detected_at >= (NOW() - INTERVAL '3 hours')
+            </when>
+            <when test="selectedTime == '최근 6시간'">
+                AND detected_at >= (NOW() - INTERVAL '6 hours')
+            </when>
+            <when test="selectedTime == '최근 12시간'">
+                AND detected_at >= (NOW() - INTERVAL '12 hours')
+            </when>
+            <when test="selectedTime == '오늘'">
+                AND detected_at >= date_trunc('day', NOW())
+            </when>
+            <otherwise>
+                AND detected_at >= (NOW() - INTERVAL '1 day')
+            </otherwise>
+        </choose>
+
+        ORDER BY detected_at DESC
+        LIMIT #{pageSize}
+        OFFSET #{offset}
+    </select>
+
+    <!--  전체 개수 조회  -->
+    <select id="getEventListCount" resultType="int" parameterType="map">
+        SELECT COUNT(*)
+        FROM event_log
+        WHERE instance_id = #{instanceId}
+
+        <if test="dbNames != null and dbNames != ''">
+            AND db_name IN
+            <foreach item="db" collection="dbNames.split(',')" open="(" separator="," close=")">
+                #{db}
+            </foreach>
+        </if>
+
+        <if test="category != null and category != ''">
+            AND category IN
+            <foreach item="cate" collection="category.split(',')" open="(" separator="," close=")">
+                #{cate}
+            </foreach>
+        </if>
+
+        <if test="level != null and level != ''">
+            AND level IN
+            <foreach item="lv" collection="level.split(',')" open="(" separator="," close=")">
+                #{lv}
+            </foreach>
+        </if>
+
+        <choose>
+            <when test="selectedTime == '최근 15분'">
+                AND detected_at >= (NOW() - INTERVAL '15 minutes')
+            </when>
+            <when test="selectedTime == '최근 30분'">
+                AND detected_at >= (NOW() - INTERVAL '30 minutes')
+            </when>
+            <when test="selectedTime == '최근 1시간'">
+                AND detected_at >= (NOW() - INTERVAL '1 hour')
+            </when>
+            <when test="selectedTime == '최근 3시간'">
+                AND detected_at >= (NOW() - INTERVAL '3 hours')
+            </when>
+            <when test="selectedTime == '최근 6시간'">
+                AND detected_at >= (NOW() - INTERVAL '6 hours')
+            </when>
+            <when test="selectedTime == '최근 12시간'">
+                AND detected_at >= (NOW() - INTERVAL '12 hours')
+            </when>
+            <when test="selectedTime == '오늘'">
+                AND detected_at >= date_trunc('day', NOW())
+            </when>
+            <otherwise>
+                AND detected_at >= (NOW() - INTERVAL '1 day')
+            </otherwise>
+        </choose>
+    </select>
 
 </mapper>
