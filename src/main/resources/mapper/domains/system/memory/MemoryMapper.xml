@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.system.memory.repository.MemoryMapper">
+
+    <!-- Memory 사용률 조회 -->
+    <select id="selectMemoryUtilization" resultType="map">
+        -- memory_agg 테이블에서 최근 데이터 조회
+        SELECT
+            ROUND(CAST(SUM(avg_buffer_usage_pct) AS NUMERIC), 2) as value,
+            SUM(avg_buffers) as usedBuffers,
+            -- 전체 버퍼 수는 설정값에서 가져와야 함 (임시로 계산)
+            (SELECT SUM(buffers) FROM memory_raw WHERE instance_id = #{instanceId} ORDER BY collected_at DESC LIMIT 1) as totalBuffers
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
+    </select>
+
+    <!-- Buffer Hit 비율 조회 -->
+    <select id="selectBufferHitRatio" resultType="map">
+        -- memory_agg 테이블에서 최근 Hit 비율 조회
+        SELECT
+            ROUND(CAST(AVG(avg_hit_ratio) AS NUMERIC), 2) as value,
+            SUM(total_heap_blks_hit) as hitCount,
+            SUM(total_heap_blks_hit + total_heap_blks_read) as totalCount
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
+    </select>
+
+    <!-- Shared Buffer 사용량 조회 -->
+    <select id="selectSharedBufferUsage" resultType="map">
+        -- Shared Buffer 사용량 조회
+        SELECT
+            ROUND(CAST(AVG(avg_buffer_usage_pct) AS NUMERIC), 2) as value,
+            SUM(avg_buffers) as activeBuffers,
+            (SELECT SUM(buffers) FROM memory_raw WHERE instance_id = #{instanceId} ORDER BY collected_at DESC LIMIT 1) as totalBuffers
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
+    </select>
+
+    <!-- Eviction Rate 시계열 데이터 조회 -->
+    <select id="selectEvictionRateTimeSeries" resultType="map">
+        -- 시간대별 eviction rate 계산
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            total_eviction_count as eviction_count
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- Fsync Rate 시계열 데이터 조회 -->
+    <select id="selectFsyncRateTimeSeries" resultType="map">
+        -- 시간대별 fsync rate
+        -- bgwriter나 checkpoint 테이블에서 가져와야 함
+        SELECT
+            TO_CHAR(b.collected_at, 'HH24:MI') as time_label,
+            b.total_backend_fsync as fsync_count
+        FROM bgwriter_agg b
+        WHERE b.instance_id = #{instanceId}
+          AND b.collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY b.collected_at
+    </select>
+
+    <!-- Dirty Buffer 추세 시계열 데이터 조회 -->
+    <select id="selectDirtyBufferTrendTimeSeries" resultType="map">
+        -- 시간대별 dirty buffer 추세
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            ROUND(CAST(AVG(avg_dirty_ratio) AS NUMERIC), 2) as dirty_ratio
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
+        ORDER BY collected_at
+    </select>
+
+    <!-- Eviction vs Flush 비교 데이터 조회 -->
+    <select id="selectEvictionFlushRatioTimeSeries" resultType="map">
+        -- Eviction vs Fsync 비교
+        SELECT
+            TO_CHAR(m.collected_at, 'HH24:MI') as time_label,
+            m.total_eviction_count as evictions,
+            b.total_backend_fsync as fsyncs
+        FROM memory_agg m
+                 LEFT JOIN bgwriter_agg b ON m.instance_id = b.instance_id
+            AND DATE_TRUNC('hour', m.collected_at) = DATE_TRUNC('hour', b.collected_at)
+        WHERE m.instance_id = #{instanceId}
+          AND m.collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY m.collected_at
+    </select>
+
+    <!-- 상위 버퍼 사용 객체 조회 -->
+    <select id="selectTopBufferObjects" resultType="map">
+        -- 버퍼를 가장 많이 사용하는 상위 객체
+        SELECT
+            relname as object_name,
+            CASE relkind
+                WHEN 'r' THEN 'table'
+                WHEN 'i' THEN 'index'
+                ELSE 'other'
+                END as object_type,
+            avg_buffers as buffer_count
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
+        ORDER BY avg_buffers DESC
+            LIMIT #{limit}
+    </select>
+
+    <!-- 요약 통계 조회 -->
+    <select id="selectSummaryStats" resultType="map">
+        -- 최근 요약 통계
+        SELECT
+            ROUND(CAST(AVG(avg_dirty_ratio) AS NUMERIC), 2) as dirtyBufferRatio,
+            -- Backend 대기 시간은 bgwriter나 session 테이블에서 가져와야 함
+            0.0 as backendWaitTime,
+            -- Work Memory는 별도 수집 필요
+            0.0 as workMemUsage,
+            -- Temp File Usage는 별도 수집 필요
+            0.0 as tempFileUsage,
+            -- Checkpoint 간격은 checkpoint 테이블에서 가져와야 함
+            0.0 as checkpointInterval
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
+    </select>
+
+    <!-- Memory 리스트 데이터 조회 -->
+    <select id="selectMemoryList" resultType="map">
+        -- Memory 객체 리스트
+        SELECT
+        memory_agg_id as id,
+        relname as objectName,
+        CASE relkind
+        WHEN 'r' THEN 'table'
+        WHEN 'i' THEN 'index'
+        ELSE 'other'
+        END as type,
+        -- 크기는 pg_relation_size로 별도 계산 필요
+        0.0 as sizeMB,
+        avg_buffers as bufferCount,
+        ROUND(CAST(avg_buffer_usage_pct AS NUMERIC), 2) as usagePercent,
+        -- Dirty count는 raw 테이블에서 가져와야 함
+        (SELECT dirty_buffers FROM memory_raw
+        WHERE instance_id = #{instanceId}
+        AND relname = memory_agg.relname
+        ORDER BY collected_at DESC LIMIT 1) as dirtyCount,
+        ROUND(CAST(avg_dirty_ratio AS NUMERIC), 2) as dirtyPercent,
+        ROUND(CAST(avg_pinned_buffers AS NUMERIC), 0) as pinnedBuffers,
+        ROUND(CAST(avg_hit_ratio AS NUMERIC), 2) as hitPercent,
+        total_access_count as accessCount,
+        total_eviction_count as evictionCount,
+        ROUND(CAST(avg_access_time_ms AS NUMERIC), 2) as avgAccessTime,
+        status
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+        AND collected_at >= NOW() - INTERVAL '5 minutes'
+        <if test="typeList != null and typeList.size() > 0">
+            AND relkind IN
+            <foreach collection="typeList" item="type" open="(" close=")" separator=",">
+                <choose>
+                    <when test="type == 'table'">
+                        'r'
+                    </when>
+                    <when test="type == 'index'">
+                        'i'
+                    </when>
+                </choose>
+            </foreach>
+        </if>
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="status" open="(" close=")" separator=",">
+                #{status}
+            </foreach>
+        </if>
+        ORDER BY avg_buffers DESC
+    </select>
+
+</mapper>
