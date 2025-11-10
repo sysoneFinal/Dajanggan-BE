@@ -1,6 +1,9 @@
 spring:
+  application:
+    name: Dajanggan
+
   datasource:
-    url: jdbc:postgresql://34.22.66.12:5432/monitoring_system
+    url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -8,7 +11,21 @@ spring:
 server:
   port: 8080
 
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.dajanggan.domains
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: NULL
+    default-fetch-size: 100
+    default-statement-timeout: 30
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    lazy-loading-enabled: false
+    aggressive-lazy-loading: false
+
 logging:
   level:
-    root: INFO
-    com.yourpackage: DEBUG
+    com.dajanggan: DEBUG
+    com.dajanggan.domain.engine: DEBUG
+    org.apache.ibatis: DEBUG
+    com.zaxxer.hikari: INFO
