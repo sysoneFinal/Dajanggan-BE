@@ -4,11 +4,10 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.dajanggan.domain.instance.repository.DatabaseRepository">
-    <resultMap id="DatabaseDtoMap" type="com.dajanggan.domain.instance.dto.DatabaseDto">
-        <id property="databaseId" column="database_id"/>
+    <resultMap id="DatabaseDtoMap" type="com.dajanggan.domain.instance.domain.Database">
+        <result property="databaseId" column="database_id"/>
         <result property="instanceId" column="instance_id"/>
         <result property="databaseName" column="database_name"/>
-        <result property="isEnabled" column="is_enabled"/>
         <result property="connections" column="connections"/>
         <result property="sizeBytes" column="size_bytes"/>
         <result property="cacheHitRate" column="cache_hit_rate"/>
@@ -20,7 +19,6 @@
         database_id,
         instance_id,
         database_name,
-        is_enabled,
         connections,
         size_bytes,
         cache_hit_rate,
@@ -37,7 +35,6 @@
             database_id,
             instance_id,
             database_name,
-            is_enabled,
             connections,
             size_bytes,
             cache_hit_rate,
