@@ -17,6 +17,7 @@
     <select id="findByInstanceIds" parameterType="list" resultMap="DatabaseDtoMap">
         SELECT
         instance_id,
+        database_id,
         database_name,
         connections,
         size_bytes,
@@ -32,6 +33,7 @@
     <select id="findByInstanceId" parameterType="long" resultMap="DatabaseDtoMap">
         SELECT
             instance_id,
+            database_id,
             database_name,
             connections,
             size_bytes,
