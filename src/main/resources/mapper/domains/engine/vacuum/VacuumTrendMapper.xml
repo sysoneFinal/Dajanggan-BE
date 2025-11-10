@@ -9,6 +9,9 @@
         SELECT AVG(avg_delay_seconds)
         FROM vacuum_trend_metrics
         WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
     </select>
 
     <!-- KPI: 평균 Duration -->
@@ -16,6 +19,9 @@
         SELECT AVG(avg_vacuum_duration_seconds)
         FROM vacuum_trend_metrics
         WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
     </select>
 
     <!-- KPI: 총 Dead Tuple 처리량 -->
@@ -23,44 +29,56 @@
         SELECT SUM(dead_tuple_total)
         FROM vacuum_trend_metrics
         WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
     </select>
 
     <!-- 차트: Dead Tuple 증가 vs 처리 -->
-    <select id="getDeadTupleTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+    <select id="getDeadTupleTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumTrendRaw">
         SELECT
-            TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
-            AVG(dead_tuple_increase_rate_pm) as deadTupleIncreaseRate,
-            AVG(dead_tuple_processing_rate_pm) as avgProgress
+        TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
+        AVG(dead_tuple_increase_rate_pm) as deadTupleIncreaseRate,
+        AVG(dead_tuple_processing_rate_pm) as avgProgress
         FROM vacuum_trend_metrics
         WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
         GROUP BY DATE_TRUNC('hour', collected_at)
         ORDER BY DATE_TRUNC('hour', collected_at)
-            LIMIT #{buckets}
+        LIMIT #{buckets}
     </select>
 
     <!-- 차트: Autovacuum Cost Delay & Workers -->
-    <select id="getAutovacuumTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+    <select id="getAutovacuumTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumTrendRaw">
         SELECT
-            TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
-            AVG(avg_cost_delay_ms) as avgCostDelayMs,
-            AVG(worker_utilization_pct) as activeWorkers
+        TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
+        AVG(avg_cost_delay_ms) as avgCostDelayMs,
+        AVG(worker_utilization_pct) as activeWorkers
         FROM vacuum_trend_metrics
         WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
         GROUP BY DATE_TRUNC('hour', collected_at)
         ORDER BY DATE_TRUNC('hour', collected_at)
-            LIMIT #{buckets}
+        LIMIT #{buckets}
     </select>
 
     <!-- 차트: Latency Trend -->
-    <select id="getLatencyTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumTrendDto">
+    <select id="getLatencyTrend" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumTrendRaw">
         SELECT
-            TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
-            AVG(avg_delay_seconds) as avgDelaySeconds
+        TO_CHAR(DATE_TRUNC('hour', collected_at), 'HH24:00') as hourLabel,
+        AVG(avg_delay_seconds) as avgDelaySeconds
         FROM vacuum_trend_metrics
         WHERE collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
         GROUP BY DATE_TRUNC('hour', collected_at)
         ORDER BY DATE_TRUNC('hour', collected_at)
-            LIMIT #{buckets}
+        LIMIT #{buckets}
     </select>
 
 </mapper>
