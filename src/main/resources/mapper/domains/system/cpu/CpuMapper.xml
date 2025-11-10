@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.system.cpu.repository.CpuMapper">
+
+    <!-- CPU Raw Result Map -->
+    <resultMap id="cpuRawResultMap" type="com.dajanggan.domain.system.cpu.domain.CpuRaw">
+        <id property="cpuRawId" column="cpu_raw_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="backendType" column="backend_type"/>
+        <result property="userCpu" column="user_cpu"/>
+        <result property="systemCpu" column="system_cpu"/>
+        <result property="ioWait" column="io_wait"/>
+        <result property="activeConnections" column="active_connections"/>
+        <result property="parallelWorkers" column="parallel_workers"/>
+        <result property="waitingSessions" column="waiting_sessions"/>
+        <result property="workerTime" column="worker_time"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="totalCpuUsage" column="total_cpu_usage"/>
+        <result property="idleCpu" column="idle_cpu"/>
+        <result property="loadAvg1" column="load_avg_1"/>
+        <result property="loadAvg5" column="load_avg_5"/>
+        <result property="loadAvg15" column="load_avg_15"/>
+        <result property="contextSwitches" column="context_switches"/>
+        <result property="runningProcesses" column="running_processes"/>
+        <result property="stealCpu" column="steal_cpu"/>
+    </resultMap>
+
+    <!-- CPU Agg Result Map -->
+    <resultMap id="cpuAggResultMap" type="com.dajanggan.domain.system.cpu.domain.CpuAgg">
+        <id property="cpuAggId" column="cpu_agg_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="backendType" column="backend_type"/>
+        <result property="avgUserCpu" column="avg_user_cpu"/>
+        <result property="avgSystemCpu" column="avg_system_cpu"/>
+        <result property="avgIoWait" column="avg_io_wait"/>
+        <result property="maxUserCpu" column="max_user_cpu"/>
+        <result property="maxIoWait" column="max_io_wait"/>
+        <result property="avgActiveConnections" column="avg_active_connections"/>
+        <result property="avgParallelWorkers" column="avg_parallel_workers"/>
+        <result property="avgWaitingSessions" column="avg_waiting_sessions"/>
+        <result property="avgWorkerTime" column="avg_worker_time"/>
+        <result property="contextSwitches" column="context_switches"/>
+        <result property="cpuQueueLength" column="cpu_queue_length"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="avgTotalCpu" column="avg_total_cpu"/>
+        <result property="maxTotalCpu" column="max_total_cpu"/>
+        <result property="avgIdleCpu" column="avg_idle_cpu"/>
+        <result property="avgLoad1" column="avg_load_1"/>
+        <result property="avgLoad5" column="avg_load_5"/>
+        <result property="avgLoad15" column="avg_load_15"/>
+        <result property="totalContextSwitches" column="total_context_switches"/>
+        <result property="avgRunningProcesses" column="avg_running_processes"/>
+        <result property="avgStealCpu" column="avg_steal_cpu"/>
+        <result property="maxStealCpu" column="max_steal_cpu"/>
+    </resultMap>
+
+    <!-- CPU Raw 데이터 조회 -->
+    <select id="selectCpuRawByTimeRange" resultMap="cpuRawResultMap">
+        SELECT *
+        FROM cpu_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- CPU Agg 데이터 조회 -->
+    <select id="selectCpuAggByTimeRange" resultMap="cpuAggResultMap">
+        SELECT *
+        FROM cpu_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- CPU 리스트 조회 (필터링) -->
+    <select id="selectCpuListWithFilter" resultMap="cpuAggResultMap">
+        SELECT *
+        FROM cpu_agg
+        WHERE instance_id = #{instanceId}
+        AND collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
+        </if>
+        ORDER BY collected_at DESC
+    </select>
+
+    <!-- 최근 CPU 통계 조회 -->
+    <select id="selectRecentCpuStats" resultMap="cpuAggResultMap">
+        SELECT *
+        FROM cpu_agg
+        WHERE instance_id = #{instanceId}
+        ORDER BY collected_at DESC
+            LIMIT 1
+    </select>
+
+    <!-- CPU Raw 데이터 삽입 -->
+    <insert id="insertCpuRaw" parameterType="com.dajanggan.domain.system.cpu.domain.CpuRaw">
+        INSERT INTO cpu_raw (
+            instance_id, collected_at, backend_type, user_cpu, system_cpu, io_wait,
+            active_connections, parallel_workers, waiting_sessions, worker_time,
+            total_cpu_usage, idle_cpu, load_avg_1, load_avg_5, load_avg_15,
+            context_switches, running_processes, steal_cpu, created_at
+        ) VALUES (
+                     #{instanceId}, #{collectedAt}, #{backendType}, #{userCpu}, #{systemCpu}, #{ioWait},
+                     #{activeConnections}, #{parallelWorkers}, #{waitingSessions}, #{workerTime},
+                     #{totalCpuUsage}, #{idleCpu}, #{loadAvg1}, #{loadAvg5}, #{loadAvg15},
+                     #{contextSwitches}, #{runningProcesses}, #{stealCpu}, NOW()
+                 )
+    </insert>
+
+
+    <!-- CPU Agg 데이터 삽입 -->
+    <insert id="insertCpuAgg" parameterType="com.dajanggan.domain.system.cpu.domain.CpuAgg">
+        INSERT INTO cpu_agg (
+            instance_id, collected_at, backend_type, avg_user_cpu, avg_system_cpu, avg_io_wait,
+            max_user_cpu, max_io_wait, avg_active_connections, avg_parallel_workers,
+            avg_waiting_sessions, avg_worker_time, context_switches, cpu_queue_length, status,
+            avg_total_cpu, max_total_cpu, avg_idle_cpu, avg_load_1, avg_load_5, avg_load_15,
+            total_context_switches, avg_running_processes, avg_steal_cpu, max_steal_cpu, created_at
+        ) VALUES (
+                     #{instanceId}, #{collectedAt}, #{backendType}, #{avgUserCpu}, #{avgSystemCpu}, #{avgIoWait},
+                     #{maxUserCpu}, #{maxIoWait}, #{avgActiveConnections}, #{avgParallelWorkers},
+                     #{avgWaitingSessions}, #{avgWorkerTime}, #{contextSwitches}, #{cpuQueueLength}, #{status},
+                     #{avgTotalCpu}, #{maxTotalCpu}, #{avgIdleCpu}, #{avgLoad1}, #{avgLoad5}, #{avgLoad15},
+                     #{totalContextSwitches}, #{avgRunningProcesses}, #{avgStealCpu}, #{maxStealCpu}, NOW()
+                 )
+    </insert>
+
+</mapper>
