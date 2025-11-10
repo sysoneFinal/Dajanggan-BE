@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.overview.repository.MetricRepository">
+
+        <!-- 지표 정의 리스트 -->
+    <select id="getMetricList"
+            resultType="com.dajanggan.domain.overview.dto.MetricDefinition">
+        SELECT name, table_name AS tableName, column_name AS columnName, category, level, unit,
+                description, available_chart AS availableChart, default_chart_type AS defaultChartType
+        FROM metric_definition
+    </select>
+
+
+
+</mapper>

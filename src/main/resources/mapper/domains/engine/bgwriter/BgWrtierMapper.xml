@@ -3,8 +3,130 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.dajanggan.domains.engine.패키지명.repository.클래스명Mapper">
+<mapper namespace="com.dajanggan.domain.engine.bgwriter.repository.BgWriterMapper">
 
-    <!-- TODO: SQL 추가 예정 -->
+    <!-- Backend Flush 비율 조회 -->
+    <select id="selectBackendFlushRatio" resultType="map">
+        -- bgwriter_agg 테이블에서 최근 데이터 조회
+        SELECT
+            avg_backend_flush_ratio as value,
+            total_buffers_clean as buffersClean,
+            total_buffers_backend as buffersBackend
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+        ORDER BY collected_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- Clean Rate 시계열 데이터 조회 -->
+    <select id="selectCleanRateTimeSeries" resultType="map">
+        -- 시간대별 clean rate 계산
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            avg_clean_rate as clean_rate
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- Buffer Flush 비율 시계열 데이터 조회 -->
+    <select id="selectBufferFlushRatioTimeSeries" resultType="map">
+        -- Backend vs Clean 비교 데이터
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            total_buffers_backend as backend,
+            total_buffers_clean as clean
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- Maxwritten Clean 시계열 데이터 조회 -->
+    <select id="selectMaxwrittenCleanTimeSeries" resultType="map">
+        -- Maxwritten clean 발생 횟수
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            total_maxwritten_clean as maxwritten_clean
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- BGWriter vs Checkpoint 비교 데이터 조회 -->
+    <select id="selectBgwriterVsCheckpointTimeSeries" resultType="map">
+        -- BGWriter와 Checkpoint가 쓴 버퍼 비교
+        -- checkpoint_agg 테이블과 조인 필요
+        SELECT
+            TO_CHAR(b.collected_at, 'HH24:MI') as time_label,
+            b.total_buffers_clean as bgwriter,
+            c.total_buffers_checkpoint as checkpoint
+        FROM bgwriter_agg b
+        LEFT JOIN checkpoint_agg c ON b.instance_id = c.instance_id
+            AND DATE_TRUNC('hour', b.collected_at) = DATE_TRUNC('hour', c.collected_at)
+        WHERE b.instance_id = #{instanceId}
+          AND b.collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY b.collected_at
+    </select>
+
+    <!-- Buffer 재사용률 시계열 데이터 조회 -->
+    <select id="selectBufferReuseRateTimeSeries" resultType="map">
+        -- Buffer 재사용률 계산
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            -- 재사용률 계산 로직 필요
+            100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as reuse_rate
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 최근 통계 조회 -->
+    <select id="selectRecentStats" resultType="map">
+        -- 최근 5분 평균 통계 조회
+        SELECT
+            avg_backend_flush_ratio as bgwriterActivityRate,
+            -- 추가 통계 계산 로직 필요
+            100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as cleanBufferReuseRate,
+            total_backend_fsync as backendFsyncCount
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
+        ORDER BY collected_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- BGWriter 리스트 데이터 조회 -->
+    <select id="selectBgWriterList" resultType="map">
+        SELECT
+            bgwriter_agg_id as id,
+            TO_CHAR(collected_at, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+            COALESCE(total_buffers_clean + total_buffers_backend, 0) as buffersAlloc,
+            COALESCE(avg_clean_rate, 0.0) as cleanRate,
+            -- Backend rate 계산 (backend buffers / 시간 간격, 초당)
+            COALESCE(total_buffers_backend / 60.0, 0.0) as backendRate,
+            0 as checkpointBuffers,
+            COALESCE(avg_backend_flush_ratio, 0.0) as backendRatio,
+            -- Fsync rate 계산 (초당)
+            COALESCE(total_backend_fsync / 60.0, 0.0) as fsyncRate,
+            -- Maxwritten rate 계산 (분당)
+            COALESCE(total_maxwritten_clean, 0) as maxWrittenRate,
+            -- avg_cycle_time_ms 컬럼이 없으므로 0으로 처리
+            0.0 as avgCycleTime,
+            COALESCE(status, '정상') as status
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+          AND status IN
+          <foreach collection="statusList" item="status" open="(" separator="," close=")">
+              #{status}
+          </foreach>
+        </if>
+        ORDER BY collected_at DESC
+    </select>
 
 </mapper>

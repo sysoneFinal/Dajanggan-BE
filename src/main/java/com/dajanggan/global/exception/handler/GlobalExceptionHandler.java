@@ -80,7 +80,8 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(DajangganException.class)
     ProblemDetail handleDajangganException(final DajangganException e) {
-        log.error("DajangganException occurred: {}", e.getMessage());
+//        log.error("DajangganException occurred: {}", e.getMessage());
+        log.error("DajangganException occurred: {}", e);
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
         problemDetail.setTitle("DB 모니터링 오류");
         return problemDetail;
