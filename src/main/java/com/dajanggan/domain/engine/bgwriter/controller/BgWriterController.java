@@ -31,4 +31,30 @@ public class BgWriterController {
         
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * BGWriter 리스트 데이터 조회
+     * @param instanceId PostgreSQL 인스턴스 ID (optional)
+     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
+     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
+     * @return BGWriter 리스트 데이터
+     */
+    @GetMapping("/list")
+    public ResponseEntity<BgWriterDto.ListResponse> getBgWriterList(
+            @RequestParam(required = false) Long instanceId,
+            @RequestParam(defaultValue = "1h") String timeRange,
+            @RequestParam(required = false) String status) {
+        log.debug("BGWriter 리스트 조회 요청 - instanceId: {}, timeRange: {}, status: {}", 
+                instanceId, timeRange, status);
+        
+        // status 파라미터를 List로 변환
+        List<String> statusList = null;
+        if (status != null && !status.isEmpty()) {
+            statusList = List.of(status.split(","));
+        }
+        
+        BgWriterDto.ListResponse response = bgWriterService.getBgWriterList(instanceId, timeRange, statusList);
+        
+        return ResponseEntity.ok(response);
+    }
 }

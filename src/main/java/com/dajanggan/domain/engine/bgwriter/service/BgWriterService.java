@@ -284,6 +284,106 @@ public class BgWriterService {
                 .build();
     }
 
+    /**
+     * BGWriter 리스트 데이터 조회
+     * @param instanceId PostgreSQL 인스턴스 ID
+     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
+     * @param statusList 상태 필터 리스트
+     * @return BGWriter 리스트 데이터
+     */
+    public BgWriterDto.ListResponse getBgWriterList(Long instanceId, String timeRange, List<String> statusList) {
+        log.debug("BGWriter 리스트 데이터 조회 시작 - instanceId: {}, timeRange: {}, statusList: {}", 
+                instanceId, timeRange, statusList);
+
+        // instanceId가 null이면 기본값 사용
+        Long targetInstanceId = (instanceId != null) ? instanceId : DEFAULT_INSTANCE_ID;
+        
+        // 시간 범위 계산
+        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime startTime = calculateStartTime(endTime, timeRange);
+        
+        log.info("리스트 데이터 조회 범위: {} ~ {}", startTime, endTime);
+
+        try {
+            // 리스트 데이터 조회
+            List<Map<String, Object>> dataList = bgWriterMapper.selectBgWriterList(
+                    targetInstanceId, 
+                    startTime, 
+                    endTime, 
+                    statusList
+            );
+            
+            if (dataList == null || dataList.isEmpty()) {
+                log.warn("BGWriter 리스트 데이터 없음 - instanceId: {}, timeRange: {}", targetInstanceId, timeRange);
+                return BgWriterDto.ListResponse.builder()
+                        .data(new ArrayList<>())
+                        .total(0L)
+                        .build();
+            }
+            
+            // DTO 변환
+            List<BgWriterDto.ListItem> items = dataList.stream()
+                    .map(this::convertToListItem)
+                    .collect(Collectors.toList());
+            
+            return BgWriterDto.ListResponse.builder()
+                    .data(items)
+                    .total((long) items.size())
+                    .build();
+                    
+        } catch (Exception e) {
+            log.error("BGWriter 리스트 데이터 조회 중 오류 발생", e);
+            throw new RuntimeException("BGWriter 리스트 데이터 조회 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 시간 범위 문자열을 기준으로 시작 시간 계산
+     * @param endTime 종료 시간
+     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
+     * @return 시작 시간
+     */
+    private LocalDateTime calculateStartTime(LocalDateTime endTime, String timeRange) {
+        if (timeRange == null || timeRange.isEmpty()) {
+            timeRange = "1h"; // 기본값
+        }
+        
+        switch (timeRange.toLowerCase()) {
+            case "1h":
+                return endTime.minusHours(1);
+            case "6h":
+                return endTime.minusHours(6);
+            case "24h":
+                return endTime.minusHours(24);
+            case "7d":
+                return endTime.minusDays(7);
+            default:
+                log.warn("알 수 없는 시간 범위: {}. 기본값(1h) 사용", timeRange);
+                return endTime.minusHours(1);
+        }
+    }
+
+    /**
+     * Map 데이터를 ListItem DTO로 변환
+     * @param data Map 데이터
+     * @return ListItem DTO
+     */
+    private BgWriterDto.ListItem convertToListItem(Map<String, Object> data) {
+        return BgWriterDto.ListItem.builder()
+                .id(getString(data, "id"))
+                .timestamp(getString(data, "timestamp"))
+                .buffersAlloc(getLongValue(data, "buffersalloc"))
+                .cleanRate(getDoubleValue(data, "cleanrate"))
+                .backendRate(getDoubleValue(data, "backendrate"))
+                .checkpointBuffers(0L)  // checkpoint 데이터는 일단 0으로 처리
+                .backendRatio(getDoubleValue(data, "backendratio"))
+                .fsyncRate(getDoubleValue(data, "fsyncrate"))
+                .maxWrittenRate(getDoubleValue(data, "maxwrittenrate"))
+                .avgCycleTime(getDoubleValue(data, "avgcycletime"))
+                .status(getString(data, "status"))
+                .build();
+    }
+
     // ========== 유틸리티 메서드 ==========
     
     private String getString(Map<String, Object> map, String key) {

@@ -99,4 +99,34 @@
         LIMIT 1
     </select>
 
+    <!-- BGWriter 리스트 데이터 조회 -->
+    <select id="selectBgWriterList" resultType="map">
+        SELECT
+            bgwriter_agg_id as id,
+            TO_CHAR(collected_at, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+            COALESCE(total_buffers_clean + total_buffers_backend, 0) as buffersAlloc,
+            COALESCE(avg_clean_rate, 0.0) as cleanRate,
+            -- Backend rate 계산 (backend buffers / 시간 간격, 초당)
+            COALESCE(total_buffers_backend / 60.0, 0.0) as backendRate,
+            0 as checkpointBuffers,
+            COALESCE(avg_backend_flush_ratio, 0.0) as backendRatio,
+            -- Fsync rate 계산 (초당)
+            COALESCE(total_backend_fsync / 60.0, 0.0) as fsyncRate,
+            -- Maxwritten rate 계산 (분당)
+            COALESCE(total_maxwritten_clean, 0) as maxWrittenRate,
+            -- avg_cycle_time_ms 컬럼이 없으므로 0으로 처리
+            0.0 as avgCycleTime,
+            COALESCE(status, '정상') as status
+        FROM bgwriter_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+          AND status IN
+          <foreach collection="statusList" item="status" open="(" separator="," close=")">
+              #{status}
+          </foreach>
+        </if>
+        ORDER BY collected_at DESC
+    </select>
+
 </mapper>
