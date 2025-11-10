@@ -1,15 +1,32 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
 <mapper namespace="com.dajanggan.domain.overview.repository.OverviewRepository">
-    
+
+            <!-- JSON 핸들러 적용    -->
+    <resultMap id="userLayout" type="com.dajanggan.domain.overview.dto.DashboardLayoutResponse">
+        <result property="instanceId" column="instance_id" />
+        <result property="userLayout" column="user_layout" typeHandler="com.dajanggan.global.mybatis.JsonNodeTypeHandler" />
+    </resultMap>
+
+    <!--   postgresql (upsert) 삽입과 수정을 동시에      -->
     <insert id="saveDashboardLayout" parameterType="com.dajanggan.domain.overview.dto.DashboardSaveRequest">
-        INSERT INTO user_dashboard (instance_id, user_layout, created_at)
-        VALUES ( #{instanceId}, CAST(#{userLayout} AS JSONB) )
+        INSERT INTO user_dashboard (instance_id, user_layout)
+        VALUES (#{instanceId}, #{userLayout, jdbcType=OTHER})
         ON CONFLICT (instance_id)
         DO UPDATE
-        SET user_layout = CAST(#{userLayout} AS JSONB),
-            updated_at = now();
+        SET user_layout = #{userLayout, jdbcType=OTHER},
+        updated_at = now()
     </insert>
+
+            <!--  대시보드 조회  -->
+    <select id="getUserLayout"
+            parameterType="Long"
+            resultMap="userLayout">
+        SELECT instance_id, user_layout
+        FROM user_dashboard
+        WHERE instance_id = #{instanceId}
+    </select>
 
 </mapper>

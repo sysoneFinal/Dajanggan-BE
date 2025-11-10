@@ -1,17 +1,15 @@
 package com.dajanggan.domain.vacuum.service;
 
-
 import com.dajanggan.domain.vacuum.domain.VacuumRawMetrics;
 import com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics;
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDto;
-import com.dajanggan.domain.vacuum.repository.VacuumRawMetricsMapper;
-import com.dajanggan.domain.vacuum.repository.VacuumTrendMetricsMapper;
+import com.dajanggan.domain.vacuum.repository.VacuumBloatRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -22,19 +20,20 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class VacuumBloatService {
 
-    private final VacuumRawMetricsMapper rawMetricsMapper;
-    private final VacuumTrendMetricsMapper trendMetricsMapper;
+    private final VacuumBloatRepository repository;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("M/d");
 
     /**
-     * 대시보드 전체 데이터 조회
+     * Bloat 대시보드 전체 데이터 조회
      */
-    public VacuumBloatDto.DashboardResponse getDashboardData(String databaseId) {
-        LocalDateTime now = LocalDateTime.now();
+    public VacuumBloatDto.Response getDashboardData(Long databaseId) {
+        OffsetDateTime now = OffsetDateTime.now();
 
-        return VacuumBloatDto.DashboardResponse.builder()
+        log.info("Bloat Dashboard 조회 시작 - databaseId: {}", databaseId);
+
+        return VacuumBloatDto.Response.builder()
                 .xminHorizonMonitor(getXminHorizonData(databaseId, now.minusDays(7), now))
                 .bloatTrend(getBloatTrendData(databaseId, 30))
                 .bloatDistribution(getBloatDistributionData(databaseId))
@@ -43,11 +42,15 @@ public class VacuumBloatService {
     }
 
     /**
-     * Xmin Horizon Monitor 데이터 조회
-     * 최근 7일간의 시간별 Xmin Horizon Age 추이를 반환
+     * Xmin Horizon 모니터링 데이터 조회
      */
-    public VacuumBloatDto.XminHorizonMonitor getXminHorizonData(String databaseId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<VacuumRawMetrics> metrics = rawMetricsMapper.findXminHorizonData(databaseId, startTime, endTime);
+    public VacuumBloatDto.XminHorizonMonitor getXminHorizonData(
+            Long databaseId, OffsetDateTime startTime, OffsetDateTime endTime) {
+
+        List<VacuumRawMetrics> metrics = repository.findXminHorizonData(databaseId, startTime, endTime);
+
+        log.info("Xmin Horizon 조회 결과: {} 건 (databaseId: {})",
+                metrics != null ? metrics.size() : 0, databaseId);
 
         // 24시간 단위로 집계 (00:00 ~ 23:00)
         Map<Integer, List<VacuumRawMetrics>> groupedByHour = metrics.stream()
@@ -75,7 +78,9 @@ public class VacuumBloatService {
 
                 // Vacuum 처리 속도 계산 (tuples_deleted / elapsed_seconds)
                 double avgSpeed = hourMetrics.stream()
-                        .filter(m -> m.getTuplesDeleted() != null && m.getElapsedSeconds() != null && m.getElapsedSeconds() > 0)
+                        .filter(m -> m.getTuplesDeleted() != null &&
+                                m.getElapsedSeconds() != null &&
+                                m.getElapsedSeconds() > 0)
                         .mapToDouble(m -> (double) m.getTuplesDeleted() / m.getElapsedSeconds())
                         .average()
                         .orElse(0.0);
@@ -92,15 +97,27 @@ public class VacuumBloatService {
     }
 
     /**
-     * Bloat Trend 데이터 조회 (최근 N일)
+     * Bloat 트렌드 데이터 조회 (일별)
      */
-    public VacuumBloatDto.BloatTrend getBloatTrendData(String databaseId, int days) {
-        LocalDateTime startDate = LocalDateTime.now().minusDays(days);
-        List<VacuumTrendMetrics> metrics = trendMetricsMapper.findBloatTrendData(databaseId, startDate);
+    public VacuumBloatDto.BloatTrend getBloatTrendData(Long databaseId, int days) {
+        OffsetDateTime startDate = OffsetDateTime.now().minusDays(days);
+        List<VacuumTrendMetrics> metrics = repository.findBloatTrendData(databaseId, startDate);
+
+        log.info("Bloat Trend 조회 결과: {} 건 (databaseId: {}, days: {})",
+                metrics != null ? metrics.size() : 0, databaseId, days);
+
+        if (metrics == null || metrics.isEmpty()) {
+            log.warn("Bloat Trend 데이터가 없습니다. 빈 응답 반환");
+            return VacuumBloatDto.BloatTrend.builder()
+                    .data(new ArrayList<>())
+                    .labels(new ArrayList<>())
+                    .build();
+        }
 
         // 일별로 그룹핑
         Map<String, List<VacuumTrendMetrics>> groupedByDate = metrics.stream()
-                .collect(Collectors.groupingBy(m -> m.getCollectedAt().toLocalDate().format(DATE_FORMATTER)));
+                .collect(Collectors.groupingBy(m ->
+                        m.getCollectedAt().toLocalDate().format(DATE_FORMATTER)));
 
         List<String> labels = new ArrayList<>();
         List<Double> bloatData = new ArrayList<>();
@@ -121,6 +138,8 @@ public class VacuumBloatService {
                     bloatData.add(Math.round(avgBloat * 10.0) / 10.0);
                 });
 
+        log.debug("Bloat Trend 처리 완료 - labels: {}, data points: {}", labels.size(), bloatData.size());
+
         return VacuumBloatDto.BloatTrend.builder()
                 .data(bloatData)
                 .labels(labels)
@@ -128,14 +147,27 @@ public class VacuumBloatService {
     }
 
     /**
-     * Bloat Distribution 데이터 조회 (24시간 기준)
+     * Bloat 분포 데이터 조회 (최근 7일로 변경)
      */
-    public VacuumBloatDto.BloatDistribution getBloatDistributionData(String databaseId) {
-        LocalDateTime since = LocalDateTime.now().minusHours(24);
-        List<Map<String, Object>> distribution = trendMetricsMapper.findBloatDistribution(databaseId, since);
+    public VacuumBloatDto.BloatDistribution getBloatDistributionData(Long databaseId) {
+        // 24시간 → 7일로 변경하여 데이터 확보
+        OffsetDateTime since = OffsetDateTime.now().minusDays(7);
+        List<Map<String, Object>> distribution = repository.findBloatDistribution(databaseId, since);
+
+        log.info("Bloat Distribution 조회 결과: {} 건 (databaseId: {}, since: 7 days ago)",
+                distribution != null ? distribution.size() : 0, databaseId);
 
         // 범위 순서대로 정렬
         List<String> orderedLabels = Arrays.asList("0-5%", "5-10%", "10-15%", "15-20%", "20-30%", "30%+");
+
+        if (distribution == null || distribution.isEmpty()) {
+            log.warn("Bloat Distribution 데이터가 없습니다. 빈 분포 반환");
+            return VacuumBloatDto.BloatDistribution.builder()
+                    .data(Arrays.asList(0, 0, 0, 0, 0, 0))
+                    .labels(orderedLabels)
+                    .build();
+        }
+
         Map<String, Integer> distributionMap = distribution.stream()
                 .collect(Collectors.toMap(
                         obj -> (String) obj.get("range"),
@@ -146,6 +178,8 @@ public class VacuumBloatService {
                 .map(label -> distributionMap.getOrDefault(label, 0))
                 .collect(Collectors.toList());
 
+        log.debug("Bloat Distribution 처리 완료 - {}", distributionMap);
+
         return VacuumBloatDto.BloatDistribution.builder()
                 .data(data)
                 .labels(orderedLabels)
@@ -153,53 +187,77 @@ public class VacuumBloatService {
     }
 
     /**
-     * KPI 지표 데이터 조회
+     * KPI 지표 조회
      */
-    public VacuumBloatDto.Kpi getKpiData(String databaseId) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime last24h = now.minusHours(24);
-        LocalDateTime last30d = now.minusDays(30);
+    public VacuumBloatDto.Kpi getKpiData(Long databaseId) {
+        OffsetDateTime now = OffsetDateTime.now();
+        // 24시간 → 7일로 변경
+        OffsetDateTime last7d = now.minusDays(7);
+        OffsetDateTime last30d = now.minusDays(30);
 
-        // 1. 총 Bloat 크기
-        Long totalBloatBytes = trendMetricsMapper.calculateTotalBloat(databaseId, last24h);
+        log.info("KPI 조회 시작 - databaseId: {}", databaseId);
+
+        // 1. 총 Bloat 크기 (최근 7일)
+        Long totalBloatBytes = repository.calculateTotalBloat(databaseId, last7d);
         String tableBloat = formatBytes(totalBloatBytes != null ? totalBloatBytes : 0L);
 
-        // 2. Critical 테이블 수 (Bloat Ratio >= 15%)
-        Long criticalCount = trendMetricsMapper.countCriticalTables(databaseId, last24h);
+        // 2. Critical 테이블 수 (Bloat Ratio >= 15%, 최근 7일)
+        Long criticalCount = repository.countCriticalTables(databaseId, last7d);
+        int criticalTableCount = criticalCount != null ? criticalCount.intValue() : 0;
 
         // 3. Bloat 증가량 (30일 전과 현재 비교)
-        Long bloat30dAgo = trendMetricsMapper.calculateTotalBloat(databaseId, last30d);
-        Long bloatGrowthBytes = (totalBloatBytes != null ? totalBloatBytes : 0L) -
+        Long bloat30dAgo = repository.calculateTotalBloat(databaseId, last30d);
+        Long bloatNow = totalBloatBytes;
+
+        Long bloatGrowthBytes = (bloatNow != null ? bloatNow : 0L) -
                 (bloat30dAgo != null ? bloat30dAgo : 0L);
-        String bloatGrowth = (bloatGrowthBytes >= 0 ? "+" : "") + formatBytes(bloatGrowthBytes);
+
+        String bloatGrowth;
+        if (bloatGrowthBytes == 0) {
+            bloatGrowth = "0B";
+        } else if (bloatGrowthBytes > 0) {
+            bloatGrowth = "+" + formatBytes(bloatGrowthBytes);
+        } else {
+            bloatGrowth = "-" + formatBytes(Math.abs(bloatGrowthBytes));
+        }
+
+        log.info("KPI 계산 완료 - Total: {} ({}), Critical: {}, Growth: {} ({})",
+                tableBloat, totalBloatBytes, criticalTableCount, bloatGrowth, bloatGrowthBytes);
 
         return VacuumBloatDto.Kpi.builder()
                 .tableBloat(tableBloat)
-                .criticalTable(criticalCount != null ? criticalCount.intValue() : 0)
+                .criticalTable(criticalTableCount)
                 .bloatGrowth(bloatGrowth)
                 .build();
     }
 
     /**
-     * Bytes를 사람이 읽기 쉬운 형식으로 변환
+     * 바이트 단위 포맷팅
      */
     private String formatBytes(Long bytes) {
         if (bytes == null || bytes == 0) {
             return "0B";
         }
 
-        double kb = bytes / 1024.0;
+        // 음수 처리
+        long absBytes = Math.abs(bytes);
+        boolean isNegative = bytes < 0;
+
+        double kb = absBytes / 1024.0;
         double mb = kb / 1024.0;
         double gb = mb / 1024.0;
 
+        String result;
         if (gb >= 1) {
-            return String.format("%.1fGB", gb);
+            result = String.format("%.1fGB", gb);
         } else if (mb >= 1) {
-            return String.format("%.1fMB", mb);
+            result = String.format("%.1fMB", mb);
         } else if (kb >= 1) {
-            return String.format("%.1fKB", kb);
+            result = String.format("%.1fKB", kb);
         } else {
-            return bytes + "B";
+            result = absBytes + "B";
         }
+
+        return isNegative ? "-" + result : result;
     }
 }
