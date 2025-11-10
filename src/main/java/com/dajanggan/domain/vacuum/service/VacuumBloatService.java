@@ -106,6 +106,14 @@ public class VacuumBloatService {
         log.info("Bloat Trend 조회 결과: {} 건 (databaseId: {}, days: {})",
                 metrics != null ? metrics.size() : 0, databaseId, days);
 
+        if (metrics == null || metrics.isEmpty()) {
+            log.warn("Bloat Trend 데이터가 없습니다. 빈 응답 반환");
+            return VacuumBloatDto.BloatTrend.builder()
+                    .data(new ArrayList<>())
+                    .labels(new ArrayList<>())
+                    .build();
+        }
+
         // 일별로 그룹핑
         Map<String, List<VacuumTrendMetrics>> groupedByDate = metrics.stream()
                 .collect(Collectors.groupingBy(m ->
@@ -130,6 +138,8 @@ public class VacuumBloatService {
                     bloatData.add(Math.round(avgBloat * 10.0) / 10.0);
                 });
 
+        log.debug("Bloat Trend 처리 완료 - labels: {}, data points: {}", labels.size(), bloatData.size());
+
         return VacuumBloatDto.BloatTrend.builder()
                 .data(bloatData)
                 .labels(labels)
@@ -137,17 +147,27 @@ public class VacuumBloatService {
     }
 
     /**
-     * Bloat 분포 데이터 조회
+     * Bloat 분포 데이터 조회 (최근 7일로 변경)
      */
     public VacuumBloatDto.BloatDistribution getBloatDistributionData(Long databaseId) {
-        OffsetDateTime since = OffsetDateTime.now().minusHours(24);
+        // 24시간 → 7일로 변경하여 데이터 확보
+        OffsetDateTime since = OffsetDateTime.now().minusDays(7);
         List<Map<String, Object>> distribution = repository.findBloatDistribution(databaseId, since);
 
-        log.info("Bloat Distribution 조회 결과: {} 건 (databaseId: {})",
+        log.info("Bloat Distribution 조회 결과: {} 건 (databaseId: {}, since: 7 days ago)",
                 distribution != null ? distribution.size() : 0, databaseId);
 
         // 범위 순서대로 정렬
         List<String> orderedLabels = Arrays.asList("0-5%", "5-10%", "10-15%", "15-20%", "20-30%", "30%+");
+
+        if (distribution == null || distribution.isEmpty()) {
+            log.warn("Bloat Distribution 데이터가 없습니다. 빈 분포 반환");
+            return VacuumBloatDto.BloatDistribution.builder()
+                    .data(Arrays.asList(0, 0, 0, 0, 0, 0))
+                    .labels(orderedLabels)
+                    .build();
+        }
+
         Map<String, Integer> distributionMap = distribution.stream()
                 .collect(Collectors.toMap(
                         obj -> (String) obj.get("range"),
@@ -157,6 +177,8 @@ public class VacuumBloatService {
         List<Integer> data = orderedLabels.stream()
                 .map(label -> distributionMap.getOrDefault(label, 0))
                 .collect(Collectors.toList());
+
+        log.debug("Bloat Distribution 처리 완료 - {}", distributionMap);
 
         return VacuumBloatDto.BloatDistribution.builder()
                 .data(data)
@@ -169,30 +191,42 @@ public class VacuumBloatService {
      */
     public VacuumBloatDto.Kpi getKpiData(Long databaseId) {
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime last24h = now.minusHours(24);
+        // 24시간 → 7일로 변경
+        OffsetDateTime last7d = now.minusDays(7);
         OffsetDateTime last30d = now.minusDays(30);
 
         log.info("KPI 조회 시작 - databaseId: {}", databaseId);
 
-        // 1. 총 Bloat 크기
-        Long totalBloatBytes = repository.calculateTotalBloat(databaseId, last24h);
+        // 1. 총 Bloat 크기 (최근 7일)
+        Long totalBloatBytes = repository.calculateTotalBloat(databaseId, last7d);
         String tableBloat = formatBytes(totalBloatBytes != null ? totalBloatBytes : 0L);
 
-        // 2. Critical 테이블 수 (Bloat Ratio >= 15%)
-        Long criticalCount = repository.countCriticalTables(databaseId, last24h);
+        // 2. Critical 테이블 수 (Bloat Ratio >= 15%, 최근 7일)
+        Long criticalCount = repository.countCriticalTables(databaseId, last7d);
+        int criticalTableCount = criticalCount != null ? criticalCount.intValue() : 0;
 
         // 3. Bloat 증가량 (30일 전과 현재 비교)
         Long bloat30dAgo = repository.calculateTotalBloat(databaseId, last30d);
-        Long bloatGrowthBytes = (totalBloatBytes != null ? totalBloatBytes : 0L) -
-                (bloat30dAgo != null ? bloat30dAgo : 0L);
-        String bloatGrowth = (bloatGrowthBytes >= 0 ? "+" : "") + formatBytes(bloatGrowthBytes);
+        Long bloatNow = totalBloatBytes;
 
-        log.debug("KPI 결과 - Total: {}, Critical: {}, Growth: {}",
-                tableBloat, criticalCount, bloatGrowth);
+        Long bloatGrowthBytes = (bloatNow != null ? bloatNow : 0L) -
+                (bloat30dAgo != null ? bloat30dAgo : 0L);
+
+        String bloatGrowth;
+        if (bloatGrowthBytes == 0) {
+            bloatGrowth = "0B";
+        } else if (bloatGrowthBytes > 0) {
+            bloatGrowth = "+" + formatBytes(bloatGrowthBytes);
+        } else {
+            bloatGrowth = "-" + formatBytes(Math.abs(bloatGrowthBytes));
+        }
+
+        log.info("KPI 계산 완료 - Total: {} ({}), Critical: {}, Growth: {} ({})",
+                tableBloat, totalBloatBytes, criticalTableCount, bloatGrowth, bloatGrowthBytes);
 
         return VacuumBloatDto.Kpi.builder()
                 .tableBloat(tableBloat)
-                .criticalTable(criticalCount != null ? criticalCount.intValue() : 0)
+                .criticalTable(criticalTableCount)
                 .bloatGrowth(bloatGrowth)
                 .build();
     }
@@ -205,18 +239,25 @@ public class VacuumBloatService {
             return "0B";
         }
 
-        double kb = bytes / 1024.0;
+        // 음수 처리
+        long absBytes = Math.abs(bytes);
+        boolean isNegative = bytes < 0;
+
+        double kb = absBytes / 1024.0;
         double mb = kb / 1024.0;
         double gb = mb / 1024.0;
 
+        String result;
         if (gb >= 1) {
-            return String.format("%.1fGB", gb);
+            result = String.format("%.1fGB", gb);
         } else if (mb >= 1) {
-            return String.format("%.1fMB", mb);
+            result = String.format("%.1fMB", mb);
         } else if (kb >= 1) {
-            return String.format("%.1fKB", kb);
+            result = String.format("%.1fKB", kb);
         } else {
-            return bytes + "B";
+            result = absBytes + "B";
         }
+
+        return isNegative ? "-" + result : result;
     }
 }
