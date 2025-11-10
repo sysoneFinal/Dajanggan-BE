@@ -17,7 +17,7 @@ mybatis:
   mapper-locations: classpath:mapper/**/*.xml
 
   # Type Alias ???
-  type-aliases-package: com.dajanggan.domains
+  type-aliases-package: com.dajanggan.domain.**.domain
 
   # MyBatis ??
   configuration:
@@ -39,8 +39,9 @@ logging:
   level:
     com.dajanggan: DEBUG
     com.dajanggan.domain.engine: DEBUG
-    org.apache.ibatis: DEBUG
-    com.zaxxer.hikari: INFO
+    com.dajanggan.domain.query: DEBUG  # 추가: 쿼리 도메인 로깅
+    org.apache.ibatis: DEBUG             # MyBatis ?? ??
+    com.zaxxer.hikari: INFO              # HikariCP ??
 
 server:
   port: 8080
