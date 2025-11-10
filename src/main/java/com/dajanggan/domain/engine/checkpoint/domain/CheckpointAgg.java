@@ -2,33 +2,33 @@ package com.dajanggan.domain.engine.checkpoint.domain;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.OffsetDateTime;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
- * - checkpoint_agg 테이블 매핑
- * - 시간대별 집계 데이터
+ * Checkpoint 집계 데이터 엔티티
+ * 테이블: checkpoint_agg
  */
-@Getter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CheckpointAgg {
-
-    private Long checkpointAggId;               // PK
-    private Long instanceId;                    // FK - monitor_instance
-    private OffsetDateTime collectedAt;         // 집계 시각
-    private Double avgCheckpointReqRatio;       // 평균 요청 비율 (%)
-    private Double avgWriteTime;                // 평균 Write 시간 (ms)
-    private Double avgSyncTime;                 // 평균 Sync 시간 (ms)
-    private Double avgTotalTime;                // 평균 총 시간 (ms)
-    private Long totalCheckpointsTimed;         // 총 시간 기반 발생 횟수
-    private Long totalCheckpointsReq;           // 총 요청 기반 발생 횟수
-    private Long totalWalBytes;                 // 총 WAL 생성량 (bytes)
-    private Long totalBuffersCheckpoint;        // 총 버퍼 처리량
-    private String status;                      // 상태 (NORMAL/WARNING/CRITICAL)
-    private OffsetDateTime createdAt;           // 생성 시각
-
+    
+    private Long checkpointAggId;           // PK
+    private Long instanceId;                // 인스턴스 ID
+    private LocalDateTime collectedAt;      // 수집 시각
+    private Double avgCheckpointReqRatio;   // 평균 요청형 체크포인트 비율
+    private Double avgWriteTime;            // 평균 쓰기 시간 (초)
+    private Double avgSyncTime;             // 평균 동기화 시간 (초)
+    private Double avgTotalTime;            // 평균 총 시간 (초)
+    private Long totalCheckpointsTimed;     // 총 정기 체크포인트 횟수
+    private Long totalCheckpointsReq;       // 총 요청 체크포인트 횟수
+    private BigDecimal totalWalBytes;       // 총 WAL 바이트 수
+    private Long totalBuffersCheckpoint;    // 총 체크포인트 버퍼 수
+    private String status;                  // 상태 (정상, 주의, 위험)
+    private LocalDateTime createdAt;        // 생성 시각
 }

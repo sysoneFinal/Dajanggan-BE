@@ -11,7 +11,7 @@ import java.util.List;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/dashboard/bgwriter")
+@RequestMapping("/api/engine/bgwriter")
 @RequiredArgsConstructor
 public class BgWriterController {
 
@@ -42,7 +42,7 @@ public class BgWriterController {
     @GetMapping("/list")
     public ResponseEntity<BgWriterDto.ListResponse> getBgWriterList(
             @RequestParam(required = false) Long instanceId,
-            @RequestParam(defaultValue = "1h") String timeRange,
+            @RequestParam(defaultValue = "7d") String timeRange,
             @RequestParam(required = false) String status) {
         log.debug("BGWriter 리스트 조회 요청 - instanceId: {}, timeRange: {}, status: {}", 
                 instanceId, timeRange, status);

@@ -2,36 +2,36 @@ package com.dajanggan.domain.engine.checkpoint.domain;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.OffsetDateTime;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
- * - checkpoint_raw 테이블 매핑
- * - pg_stat_bgwriter에서 수집한 원시 데이터
+ * Checkpoint Raw 데이터 엔티티
+ * 테이블: checkpoint_raw
  */
-@Getter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CheckpointRaw {
-
-    private Long checkpointRawId;           // PK
-    private Long instanceId;                // FK - monitor_instance
-    private OffsetDateTime collectedAt;     // 수집 시각
-    private String checkpointType;          // Checkpoint 타입 (timed/requested)
-    private Long checkpointsTimed;          // 시간 기반 발생 횟수
-    private Long checkpointsReq;            // 요청 기반 발생 횟수
-    private Double checkpointWriteTime;     // Write 시간 (ms)
-    private Double checkpointSyncTime;      // Sync 시간 (ms)
-    private Long buffersCheckpoint;         // 기록된 버퍼 수
-    private Long buffersBackend;            // Backend에서 작성한 버퍼 수
-    private Long avgBuffersPerSec;          // 평균 버퍼/초
-    private Long walBytes;                  // WAL 생성량 (bytes)
-    private Long walFilesAdded;             // WAL 파일 추가 수
-    private Long walFilesRemoved;           // WAL 파일 제거 수
-    private Long checkpointDistance;        // Checkpoint 거리 (%)
-    private OffsetDateTime createdAt;       // 생성 시각
-
+    
+    private Long checkpointRawId;        // PK
+    private Long instanceId;             // 인스턴스 ID
+    private LocalDateTime collectedAt;   // 수집 시각
+    private String checkpointType;       // 체크포인트 유형 (timed, requested)
+    private Long checkpointsTimed;       // 정기 체크포인트 횟수
+    private Long checkpointsReq;         // 요청 체크포인트 횟수
+    private Double checkpointWriteTime;  // 체크포인트 쓰기 시간 (초)
+    private Double checkpointSyncTime;   // 체크포인트 동기화 시간 (초)
+    private Long buffersCheckpoint;      // 체크포인트가 쓴 버퍼 수
+    private BigDecimal walBytes;         // WAL 바이트 수
+    private LocalDateTime createdAt;     // 생성 시각
+    private Long walFilesAdded;          // WAL 파일 추가 수
+    private Long walFilesRemoved;        // WAL 파일 제거 수
+    private Long checkpointDistance;     // 체크포인트 간격 (bytes)
+    private Long buffersBackend;         // Backend가 쓴 버퍼 수
+    private Double avgBuffersPerSec;     // 평균 버퍼 처리량 (개/초)
 }

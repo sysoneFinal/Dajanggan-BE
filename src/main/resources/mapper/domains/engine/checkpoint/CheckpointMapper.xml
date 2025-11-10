@@ -3,372 +3,155 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.dajanggan.domain.engine.checkpoint.repository.CheckpointRepository">
+<mapper namespace="com.dajanggan.domain.engine.checkpoint.repository.CheckpointMapper">
 
-    <!-- ResultMap 정의 -->
-    <resultMap id="checkpointRawResultMap" type="com.dajanggan.domain.engine.checkpoint.domain.CheckpointRaw">
-        <id property="checkpointRawId" column="checkpoint_raw_id"/>
-        <result property="instanceId" column="instance_id"/>
-        <result property="collectedAt" column="collected_at"/>
-        <result property="checkpointType" column="checkpoint_type"/>
-        <result property="checkpointsTimed" column="checkpoints_timed"/>
-        <result property="checkpointsReq" column="checkpoints_req"/>
-        <result property="checkpointWriteTime" column="checkpoint_write_time"/>
-        <result property="checkpointSyncTime" column="checkpoint_sync_time"/>
-        <result property="buffersCheckpoint" column="buffers_checkpoint"/>
-        <result property="buffersBackend" column="buffers_backend"/>
-        <result property="avgBuffersPerSec" column="avg_buffers_per_sec"/>
-        <result property="walBytes" column="wal_bytes"/>
-        <result property="walFilesAdded" column="wal_files_added"/>
-        <result property="walFilesRemoved" column="wal_files_removed"/>
-        <result property="checkpointDistance" column="checkpoint_distance"/>
-        <result property="createdAt" column="created_at"/>
-    </resultMap>
-
-    <resultMap id="checkpointRawDtoResultMap" type="com.dajanggan.domain.engine.checkpoint.dto.CheckpointRawDto">
-        <id property="checkpointRawId" column="checkpoint_raw_id"/>
-        <result property="instanceId" column="instance_id"/>
-        <result property="collectedAt" column="collected_at"/>
-        <result property="checkpointType" column="checkpoint_type"/>
-        <result property="checkpointsTimed" column="checkpoints_timed"/>
-        <result property="checkpointsReq" column="checkpoints_req"/>
-        <result property="checkpointWriteTime" column="checkpoint_write_time"/>
-        <result property="checkpointSyncTime" column="checkpoint_sync_time"/>
-        <result property="buffersCheckpoint" column="buffers_checkpoint"/>
-        <result property="buffersBackend" column="buffers_backend"/>
-        <result property="avgBuffersPerSec" column="avg_buffers_per_sec"/>
-        <result property="walBytes" column="wal_bytes"/>
-        <result property="walFilesAdded" column="wal_files_added"/>
-        <result property="walFilesRemoved" column="wal_files_removed"/>
-        <result property="checkpointDistance" column="checkpoint_distance"/>
-        <result property="createdAt" column="created_at"/>
-        <result property="totalTime" column="total_time"/>
-        <result property="requestRatio" column="request_ratio"/>
-        <result property="totalCheckpoints" column="total_checkpoints"/>
-        <result property="intervalMinutes" column="interval_minutes"/>
-    </resultMap>
-
-    <resultMap id="timeSeriesResultMap" type="com.dajanggan.domain.engine.checkpoint.dto.TimeSeriesDto">
-        <result property="timeLabel" column="time_label"/>
-        <result property="bucketTime" column="bucket_time"/>
-        <result property="requestedCount" column="requested_count"/>
-        <result property="timedCount" column="timed_count"/>
-        <result property="avgWriteTime" column="avg_write_time"/>
-        <result property="avgSyncTime" column="avg_sync_time"/>
-        <result property="avgTotalTime" column="avg_total_time"/>
-        <result property="walBytes" column="wal_bytes"/>
-        <result property="buffersCheckpoint" column="buffers_checkpoint"/>
-        <result property="avgIntervalMinutes" column="avg_interval_minutes"/>
-    </resultMap>
-
-    <!--
-        1. pg_stat_bgwriter에서 현재 Checkpoint 통계 조회
-        - Spring Batch에서 1분마다 호출
-        - 누적 카운터이므로 이전 값과의 차이를 계산해야 함
-        - checkpoint_distance: 마지막 체크포인트 이후 WAL 진행률 (%)
-    -->
-    <select id="selectCurrentBgwriterStats" resultType="map">
+    <!-- 요청형 체크포인트 비율 조회 -->
+    <select id="selectRequestRatio" resultType="map">
         SELECT
-            bg.checkpoints_timed,
-            bg.checkpoints_req,
-            bg.checkpoint_write_time,
-            bg.checkpoint_sync_time,
-            bg.buffers_checkpoint,
-            bg.buffers_backend,
-            bg.stats_reset,
-            -- Checkpoint Distance 계산: 마지막 체크포인트 이후 WAL 사용률
-            ROUND(
-                (pg_wal_lsn_diff(pg_current_wal_lsn(), cp.checkpoint_lsn) * 100.0 /
-                NULLIF((SELECT setting::bigint FROM pg_settings WHERE name = 'max_wal_size') * 1024 * 1024, 0))
-            , 2) as checkpoint_distance_percent,
-            -- WAL 파일 정보
-            (SELECT count(*) FROM pg_ls_waldir()) as wal_files_total,
-            -- 평균 버퍼/초 계산 (최근 체크포인트 기준)
-            CASE
-                WHEN bg.checkpoint_write_time > 0
-                THEN ROUND(bg.buffers_checkpoint::numeric / (bg.checkpoint_write_time / 1000.0))
-                ELSE 0
-            END as avg_buffers_per_sec
-        FROM pg_stat_bgwriter bg
-        CROSS JOIN pg_control_checkpoint() cp
-    </select>
-
-    <!--
-        2. Checkpoint Raw 데이터 삽입
-        - 배치 작업에서 수집한 데이터 저장
-    -->
-    <insert id="insertCheckpointRaw" parameterType="com.dajanggan.domain.engine.checkpoint.domain.CheckpointRaw">
-        INSERT INTO checkpoint_raw (
-            instance_id,
-            collected_at,
-            checkpoint_type,
-            checkpoints_timed,
-            checkpoints_req,
-            checkpoint_write_time,
-            checkpoint_sync_time,
-            buffers_checkpoint,
-            buffers_backend,
-            avg_buffers_per_sec,
-            wal_bytes,
-            wal_files_added,
-            wal_files_removed,
-            checkpoint_distance,
-            created_at
-        ) VALUES (
-            #{instanceId},
-            #{collectedAt},
-            #{checkpointType},
-            #{checkpointsTimed},
-            #{checkpointsReq},
-            #{checkpointWriteTime},
-            #{checkpointSyncTime},
-            #{buffersCheckpoint},
-            #{buffersBackend},
-            #{avgBuffersPerSec},
-            #{walBytes},
-            #{walFilesAdded},
-            #{walFilesRemoved},
-            #{checkpointDistance},
-            NOW()
-        )
-    </insert>
-
-    <!--
-        3. 24시간 시계열 데이터 조회 (2시간 단위 집계)
-        - categories: ["0:00", "2:00", "4:00", ..., "22:00"]
-        - 각 2시간 구간의 평균/합계 계산
-    -->
-    <select id="selectTimeSeriesData" resultMap="timeSeriesResultMap">
-        WITH time_buckets AS (
-            SELECT
-                date_trunc('hour', collected_at)
-                    + INTERVAL '2 hours' * FLOOR(EXTRACT(HOUR FROM collected_at) / 2) AS bucket_time,
-                TO_CHAR(
-                    date_trunc('hour', collected_at)
-                    + INTERVAL '2 hours' * FLOOR(EXTRACT(HOUR FROM collected_at) / 2),
-                    'HH24:MI'
-                ) AS time_label,
-                checkpoints_req,
-                checkpoints_timed,
-                checkpoint_write_time,
-                checkpoint_sync_time,
-                checkpoint_write_time + checkpoint_sync_time AS total_time,
-                buffers_checkpoint,
-                wal_bytes,
-                collected_at,
-                EXTRACT(EPOCH FROM (collected_at - LAG(collected_at) OVER (ORDER BY collected_at))) / 60.0 AS interval_minutes
-            FROM checkpoint_raw
-            WHERE instance_id = #{instanceId}
-              AND collected_at BETWEEN #{startTime} AND #{endTime}
-        )
-        SELECT
-            time_label,
-            bucket_time,
-            SUM(checkpoints_req) AS requested_count,
-            SUM(checkpoints_timed) AS timed_count,
-            AVG(checkpoint_write_time) AS avg_write_time,
-            AVG(checkpoint_sync_time) AS avg_sync_time,
-            AVG(total_time) AS avg_total_time,
-            SUM(wal_bytes) AS wal_bytes,
-            SUM(buffers_checkpoint) AS buffers_checkpoint,
-            AVG(interval_minutes) AS avg_interval_minutes
-        FROM time_buckets
-        GROUP BY time_label, bucket_time
-        ORDER BY bucket_time
-    </select>
-
-    <!--
-        4. 최근 5분 평균 통계 조회
-        - recentStats 섹션에 사용
-    -->
-    <select id="selectRecentStats" resultMap="checkpointRawDtoResultMap">
-        WITH checkpoint_intervals AS (
-            SELECT
-                buffers_checkpoint,
-                checkpoint_write_time + checkpoint_sync_time AS total_time,
-                checkpoint_distance,
-                CASE
-                    WHEN (checkpoints_req + checkpoints_timed) > 0
-                    THEN (checkpoints_req::NUMERIC / (checkpoints_req + checkpoints_timed) * 100)
-                    ELSE 0
-                END AS request_ratio,
-                EXTRACT(EPOCH FROM (collected_at - LAG(collected_at) OVER (ORDER BY collected_at))) / 60 AS checkpoint_interval,
-                wal_bytes / 1024.0 / 1024.0 / 1024.0 * 60 AS avg_wal_generation_speed
-            FROM checkpoint_raw
-            WHERE instance_id = #{instanceId}
-              AND collected_at >= NOW() - (#{minutes} || ' minutes')::INTERVAL
-        )
-        SELECT
-            AVG(buffers_checkpoint) AS buffers_checkpoint,
-            AVG(total_time) AS total_time,
-            AVG(checkpoint_distance) AS checkpoint_distance,
-            AVG(request_ratio) AS request_ratio,
-            AVG(checkpoint_interval) AS checkpoint_interval,
-            AVG(avg_wal_generation_speed) AS avg_wal_generation_speed
-        FROM checkpoint_intervals
-    </select>
-
-    <!--
-        5. 24시간 전체 통계 조회
-        - requestRatio 등 요약 통계에 사용
-    -->
-    <select id="select24HourStats" resultMap="checkpointRawDtoResultMap">
-        SELECT
-            SUM(checkpoints_req) AS checkpoints_req,
-            SUM(checkpoints_timed) AS checkpoints_timed,
-            CASE
-                WHEN (SUM(checkpoints_req) + SUM(checkpoints_timed)) > 0
-                THEN (SUM(checkpoints_req)::NUMERIC / (SUM(checkpoints_req) + SUM(checkpoints_timed)) * 100)
-                ELSE 0
-            END AS request_ratio
-        FROM checkpoint_raw
-        WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
-    </select>
-
-    <!--
-        6. 이전 통계 조회 (변화량 계산용)
-        - 5~10분 전 데이터
-    -->
-    <select id="selectPreviousStats" resultMap="checkpointRawDtoResultMap">
-        WITH checkpoint_intervals AS (
-            SELECT
-                buffers_checkpoint,
-                checkpoint_write_time + checkpoint_sync_time AS total_time,
-                checkpoint_distance,
-                CASE
-                    WHEN (checkpoints_req + checkpoints_timed) > 0
-                    THEN (checkpoints_req::NUMERIC / (checkpoints_req + checkpoints_timed) * 100)
-                    ELSE 0
-                END AS request_ratio,
-                EXTRACT(EPOCH FROM (collected_at - LAG(collected_at) OVER (ORDER BY collected_at))) / 60 AS checkpoint_interval,
-                wal_bytes / 1024.0 / 1024.0 / 1024.0 * 60 AS avg_wal_generation_speed
-            FROM checkpoint_raw
-            WHERE instance_id = #{instanceId}
-              AND collected_at BETWEEN NOW() - (#{minutes} * 2 || ' minutes')::INTERVAL
-                                   AND NOW() - (#{minutes} || ' minutes')::INTERVAL
-        )
-        SELECT
-            AVG(buffers_checkpoint) AS buffers_checkpoint,
-            AVG(total_time) AS total_time,
-            AVG(checkpoint_distance) AS checkpoint_distance,
-            AVG(request_ratio) AS request_ratio,
-            AVG(checkpoint_interval) AS checkpoint_interval,
-            AVG(avg_wal_generation_speed) AS avg_wal_generation_speed
-        FROM checkpoint_intervals
-    </select>
-
-    <!--
-        7. 최근 Checkpoint Raw 데이터 1건 조회
-        - 배치에서 차이값 계산 시 사용
-        - 누적 카운터 차이 계산을 위한 이전 값
-    -->
-    <select id="selectLatestCheckpointRaw" resultMap="checkpointRawResultMap">
-        SELECT
-            checkpoint_raw_id,
-            instance_id,
-            collected_at,
-            checkpoint_type,
-            checkpoints_timed,
-            checkpoints_req,
-            checkpoint_write_time,
-            checkpoint_sync_time,
-            buffers_checkpoint,
-            buffers_backend,
-            avg_buffers_per_sec,
-            wal_bytes,
-            wal_files_added,
-            wal_files_removed,
-            checkpoint_distance,
-            created_at
-        FROM checkpoint_raw
+            CASE 
+                WHEN (total_checkpoints_timed + total_checkpoints_req) > 0 
+                THEN ROUND(100.0 * total_checkpoints_req / (total_checkpoints_timed + total_checkpoints_req), 2)
+                ELSE 0.0
+            END as value,
+            total_checkpoints_req as requestedCount,
+            total_checkpoints_timed as timedCount
+        FROM checkpoint_agg
         WHERE instance_id = #{instanceId}
         ORDER BY collected_at DESC
         LIMIT 1
     </select>
 
-    <!--
-        8. Checkpoint 리스트 조회 (필터링 + 페이징)
-        - 프론트엔드 리스트 페이지용
-    -->
-    <select id="selectCheckpointList" resultMap="checkpointRawDtoResultMap">
-        WITH checkpoint_with_interval AS (
-            SELECT
-                checkpoint_raw_id,
-                instance_id,
-                collected_at,
-                checkpoint_type,
-                checkpoints_timed,
-                checkpoints_req,
-                checkpoint_write_time,
-                checkpoint_sync_time,
-                buffers_checkpoint,
-                buffers_backend,
-                avg_buffers_per_sec,
-                wal_bytes,
-                wal_files_added,
-                wal_files_removed,
-                checkpoint_distance,
-                created_at,
-                -- 계산 필드
-                checkpoint_write_time + checkpoint_sync_time AS total_time,
-                CASE
-                    WHEN (checkpoints_req + checkpoints_timed) > 0
-                    THEN (checkpoints_req::NUMERIC / (checkpoints_req + checkpoints_timed) * 100)
-                    ELSE 0
-                END AS request_ratio,
-                -- 이전 checkpoint와의 시간 간격 (분)
-                EXTRACT(EPOCH FROM (collected_at - LAG(collected_at) OVER (ORDER BY collected_at))) / 60.0 AS interval_minutes
-            FROM checkpoint_raw
-            WHERE instance_id = #{instanceId}
-              AND collected_at BETWEEN #{startTime} AND #{endTime}
-              <if test="types != null and types.size() > 0">
-                  AND checkpoint_type IN
-                  <foreach collection="types" item="type" open="(" separator="," close=")">
-                      #{type}
-                  </foreach>
-              </if>
-        )
+    <!-- 평균 쓰기 시간 시계열 데이터 조회 -->
+    <select id="selectAvgWriteTimeTimeSeries" resultType="map">
         SELECT
-            checkpoint_raw_id,
-            instance_id,
-            collected_at,
-            checkpoint_type,
-            checkpoints_timed,
-            checkpoints_req,
-            checkpoint_write_time,
-            checkpoint_sync_time,
-            total_time,
-            buffers_checkpoint,
-            buffers_backend,
-            avg_buffers_per_sec,
-            wal_bytes,
-            wal_files_added,
-            wal_files_removed,
-            checkpoint_distance,
-            request_ratio,
-            interval_minutes,
-            created_at
-        FROM checkpoint_with_interval
-        ORDER BY collected_at DESC
-        LIMIT #{limit} OFFSET #{offset}
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(avg_write_time, 0.0) as avg_write_time
+        FROM checkpoint_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
     </select>
 
-    <!--
-        9. Checkpoint 리스트 총 개수 조회 (필터링)
-        - 페이징 처리용
-    -->
-    <select id="countCheckpointList" resultType="long">
-        SELECT COUNT(*)
+    <!-- 체크포인트 발생 횟수 시계열 데이터 조회 -->
+    <select id="selectOccurrenceTimeSeries" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(total_checkpoints_req, 0) as requested,
+            COALESCE(total_checkpoints_timed, 0) as timed
+        FROM checkpoint_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- WAL 생성량 시계열 데이터 조회 -->
+    <select id="selectWalGenerationTimeSeries" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(total_wal_bytes, 0) as wal_bytes
+        FROM checkpoint_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 처리 시간 시계열 데이터 조회 (Sync + Write) -->
+    <select id="selectProcessTimeTimeSeries" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(avg_sync_time, 0.0) as sync_time,
+            COALESCE(avg_write_time, 0.0) as write_time
+        FROM checkpoint_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 버퍼 처리량 시계열 데이터 조회 -->
+    <select id="selectBufferTimeSeries" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            CASE 
+                WHEN avg_total_time > 0 
+                THEN ROUND((total_buffers_checkpoint / avg_total_time)::NUMERIC, 2)
+                ELSE 0.0
+            END as buffers_per_sec
+        FROM checkpoint_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 체크포인트 간격 시계열 데이터 조회 -->
+    <select id="selectCheckpointIntervalTimeSeries" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(
+                EXTRACT(EPOCH FROM (collected_at - LAG(collected_at) OVER (ORDER BY collected_at))) / 60.0,
+                0.0
+            ) as interval_minutes
+        FROM checkpoint_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 최근 통계 조회 -->
+    <select id="selectRecentStats" resultType="map">
+        SELECT
+            COALESCE(SUM(total_buffers_checkpoint), 0) as buffersWritten,
+            COALESCE(AVG(avg_total_time), 0.0) as avgTotalProcessTime,
+            COALESCE(AVG(total_wal_bytes / 1048576.0), 0.0) as checkpointDistance,
+            CASE 
+                WHEN COUNT(*) > 1 
+                THEN EXTRACT(EPOCH FROM (MAX(collected_at) - MIN(collected_at))) / 60.0 / (COUNT(*) - 1)
+                ELSE 0.0
+            END as checkpointInterval,
+            CASE 
+                WHEN AVG(avg_total_time) > 0 
+                THEN AVG(total_wal_bytes / avg_total_time / 1048576.0)
+                ELSE 0.0
+            END as avgWalGenerationSpeed
+        FROM checkpoint_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '24 hours'
+    </select>
+
+    <!-- Checkpoint 리스트 데이터 조회 -->
+    <select id="selectCheckpointList" resultType="map">
+        SELECT
+            checkpoint_raw_id as id,
+            TO_CHAR(collected_at, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+            checkpoint_type as type,
+            COALESCE(checkpoint_write_time, 0.0) as writeTime,
+            COALESCE(checkpoint_sync_time, 0.0) as syncTime,
+            COALESCE(checkpoint_write_time + checkpoint_sync_time, 0.0) as totalTime,
+            CONCAT(ROUND(wal_bytes / 1048576.0, 2), ' MB') as walGenerated,
+            COALESCE(wal_files_added, 0) as walFilesAdded,
+            COALESCE(wal_files_removed, 0) as walFilesRemoved,
+            CONCAT(ROUND(checkpoint_distance / 1048576.0, 2), ' MB') as checkpointDistance,
+            COALESCE(buffers_checkpoint, 0) as buffersWritten,
+            COALESCE(buffers_backend, 0) as buffersBackend,
+            COALESCE(avg_buffers_per_sec, 0.0) as avgBuffersPerSec,
+            CASE
+                WHEN checkpoint_write_time + checkpoint_sync_time > 30 THEN '위험'
+                WHEN checkpoint_write_time + checkpoint_sync_time > 15 THEN '주의'
+                ELSE '정상'
+            END as status
         FROM checkpoint_raw
         WHERE instance_id = #{instanceId}
           AND collected_at BETWEEN #{startTime} AND #{endTime}
-          <if test="types != null and types.size() > 0">
-              AND checkpoint_type IN
-              <foreach collection="types" item="type" open="(" separator="," close=")">
-                  #{type}
-              </foreach>
-          </if>
+        <if test="statusList != null and statusList.size() > 0">
+          AND CASE
+                WHEN checkpoint_write_time + checkpoint_sync_time > 30 THEN '위험'
+                WHEN checkpoint_write_time + checkpoint_sync_time > 15 THEN '주의'
+                ELSE '정상'
+              END IN
+          <foreach collection="statusList" item="status" open="(" separator="," close=")">
+              #{status}
+          </foreach>
+        </if>
+        ORDER BY collected_at DESC
     </select>
 
 </mapper>
