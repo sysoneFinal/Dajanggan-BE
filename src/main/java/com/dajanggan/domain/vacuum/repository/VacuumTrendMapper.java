@@ -1,51 +1,54 @@
 package com.dajanggan.domain.vacuum.repository;
 
-import com.dajanggan.domain.vacuum.dto.VacuumTrendDto;
+import com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * Vacuum Trend Metrics Mapper
- * - vacuum_trend_metrics 테이블 접근
- */
 @Mapper
 public interface VacuumTrendMapper {
 
     // KPI 지표
     Double getAvgDelaySeconds(
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("databaseId") Long databaseId
     );
 
     Double getAvgVacuumDuration(
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("databaseId") Long databaseId
     );
 
     Long getTotalDeadTuples(
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("databaseId") Long databaseId
     );
 
     // 차트 데이터
-    List<VacuumTrendDto> getDeadTupleTrend(
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
-            @Param("buckets") int buckets
+    List<VacuumMaintenanceDto.VacuumTrendRaw> getDeadTupleTrend(
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("buckets") int buckets,
+            @Param("databaseId") Long databaseId
     );
 
-    List<VacuumTrendDto> getAutovacuumTrend(
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
-            @Param("buckets") int buckets
+    List<VacuumMaintenanceDto.VacuumTrendRaw> getAutovacuumTrend(
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("buckets") int buckets,
+            @Param("databaseId") Long databaseId
     );
 
-    List<VacuumTrendDto> getLatencyTrend(
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
-            @Param("buckets") int buckets
+    List<VacuumMaintenanceDto.VacuumTrendRaw> getLatencyTrend(
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("buckets") int buckets,
+            @Param("databaseId") Long databaseId
     );
 }

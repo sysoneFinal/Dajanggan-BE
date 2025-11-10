@@ -1,39 +1,35 @@
 package com.dajanggan.domain.vacuum.repository;
 
-import com.dajanggan.domain.vacuum.dto.*;
-import org.apache.ibatis.annotations.Mapper;
+import com.dajanggan.domain.vacuum.dto.VacuumRiskDto;
 import org.apache.ibatis.annotations.Param;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * Vacuum Risk Mapper
- */
-@Mapper
 public interface VacuumRiskMapper {
 
-    /**
-     * Blockers per Hour 조회 (24시간)
-     */
-    List<BlockersPerHourRawDto> getBlockersPerHour(
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end,
-            @Param("buckets") int buckets
+    List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(
+            @Param("databaseId") Long databaseId,
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end
     );
 
-    /**
-     * Top-3 Bloat Tables 조회
-     */
-    List<TopBloatRawDto> getTopBloatTables(@Param("limit") int limit);
+    List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(
+            @Param("databaseId") Long databaseId,
+            @Param("limit") int limit,
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end
+    );
 
-    /**
-     * Vacuum Blockers 조회
-     */
-    List<VacuumBlockerDetailRawDto> getVacuumBlockers();
+    List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers(
+            @Param("databaseId") Long databaseId,
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end
+    );
 
-    /**
-     * Wraparound Progress 조회
-     */
-    List<WraparoundProgressRawDto> getWraparoundProgress();
+    List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress(
+            @Param("databaseId") Long databaseId,
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end
+    );
 }
