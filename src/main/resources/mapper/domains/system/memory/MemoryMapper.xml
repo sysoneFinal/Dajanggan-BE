@@ -11,8 +11,12 @@
         SELECT
             ROUND(CAST(SUM(avg_buffer_usage_pct) AS NUMERIC), 2) as value,
             SUM(avg_buffers) as usedBuffers,
-            -- 전체 버퍼 수는 설정값에서 가져와야 함 (임시로 계산)
-            (SELECT SUM(buffers) FROM memory_raw WHERE instance_id = #{instanceId} ORDER BY collected_at DESC LIMIT 1) as totalBuffers
+            -- 전체 버퍼 수는 최신 데이터에서 가져오기 (서브쿼리 수정)
+            (SELECT buffers
+             FROM memory_raw
+             WHERE instance_id = #{instanceId}
+            ORDER BY collected_at DESC
+            LIMIT 1) as totalBuffers
         FROM memory_agg
         WHERE instance_id = #{instanceId}
           AND collected_at >= NOW() - INTERVAL '5 minutes'
@@ -36,7 +40,11 @@
         SELECT
             ROUND(CAST(AVG(avg_buffer_usage_pct) AS NUMERIC), 2) as value,
             SUM(avg_buffers) as activeBuffers,
-            (SELECT SUM(buffers) FROM memory_raw WHERE instance_id = #{instanceId} ORDER BY collected_at DESC LIMIT 1) as totalBuffers
+            (SELECT buffers
+             FROM memory_raw
+             WHERE instance_id = #{instanceId}
+            ORDER BY collected_at DESC
+            LIMIT 1) as totalBuffers
         FROM memory_agg
         WHERE instance_id = #{instanceId}
           AND collected_at >= NOW() - INTERVAL '5 minutes'
