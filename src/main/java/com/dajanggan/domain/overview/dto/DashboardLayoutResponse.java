@@ -3,13 +3,12 @@ package com.dajanggan.domain.overview.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.*;
 
-@AllArgsConstructor
-@NoArgsConstructor
-@Builder
-@Getter
 @Setter
-public class DashboardSaveRequest {
+@Getter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DashboardLayoutResponse {
     private Long instanceId;
     private JsonNode userLayout;
-
 }
