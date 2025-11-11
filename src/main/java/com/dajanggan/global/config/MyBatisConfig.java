@@ -17,8 +17,8 @@ public class MyBatisConfig {
         SqlSessionFactoryBean factoryBean = new SqlSessionFactoryBean();
         factoryBean.setDataSource(dataSource);
 
-        // TypeHandler 패키지 등록
-        factoryBean.setTypeHandlersPackage("com.dajanggan.global.mybatis");
+        // TypeHandler 패키지 등록 (암호화 포함)
+        factoryBean.setTypeHandlersPackage("com.dajanggan.global.mybatis,com.dajanggan.global.crypto.mybatis");
 
         // 매퍼 XML 경로 설정
         factoryBean.setMapperLocations(

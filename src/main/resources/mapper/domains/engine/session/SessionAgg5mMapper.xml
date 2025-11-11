@@ -168,8 +168,9 @@
         FROM session_metrics_raw
         WHERE database_id = #{databaseId}
         AND table_name = #{tableName}
-        AND is_deadlock = true
-        AND collected_at >= NOW() - INTERVAL 24 HOUR
+        AND is_deadlock = TRUE
+        AND collected_at >= NOW() - INTERVAL '24 hours'
     </select>
+
 
 </mapper>
