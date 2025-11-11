@@ -23,5 +23,6 @@ public class SessionDetailsDto {
     private List<ConnectionTrendDto> connectionUsageTrend; // 연결 사용량 추이
     private List<AvgTxDurationTrendDto> avgTxDurationTrend;   // 평균 트랜잭션 실행시간 추이
     private List<AvgLockWaitTrendDto> avgLockWaitTrend;    // 평균 락 대기시간 추이
+    private List<DeadLockListDto> deadLockList; // 데드락 리스트
 
 }

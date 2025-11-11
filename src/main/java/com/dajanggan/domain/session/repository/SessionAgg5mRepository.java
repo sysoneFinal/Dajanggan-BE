@@ -25,5 +25,12 @@ public interface SessionAgg5mRepository {
     /** 데드락 추이*/
     List<DeadLockCountDto> findDeadLockTrend(Map<String, Object> params);
 
+    /**  데드락 리스트 */
+    List<DeadLockListDto> findDeadLockList(Map<String, Object> params);
 
+    /** 데드락 상세 모달 */
+    DeadLockDetailDto getDeadlockDetail(Map<String, Object> params);
+
+    /**최근 24시간 내 데드락 반복 발생 횟수*/
+    int getDeadlockRecurrenceCount(Map<String, Object> params);
 }

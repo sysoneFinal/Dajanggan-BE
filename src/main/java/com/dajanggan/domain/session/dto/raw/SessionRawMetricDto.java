@@ -41,6 +41,7 @@ public class SessionRawMetricDto {
     private Double lockDurationMs;
 
     private Boolean isDeadlock;
+    private String tableName;
 
     private OffsetDateTime createdAt;
 }
