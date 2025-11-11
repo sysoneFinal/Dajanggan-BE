@@ -5,22 +5,26 @@
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumRawMapper">
 
     <!-- 현재 실행 중인 Vacuum 세션 -->
-    <select id="getCurrentVacuumSessions" resultType="com.dajanggan.domain.vacuum.dto.VacuumRawDto">
+    <select id="getCurrentVacuumSessions" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumSessionRaw">
         SELECT
-            database_id as databaseId,
-            session_phase as sessionPhase,
-            session_progress as sessionProgress,
-            autovacuum,
-            elapsed_seconds as elapsedSeconds,
-            heap_blks_total as heapBlksTotal,
-            heap_blks_scanned as heapBlksScanned,
-            heap_blks_vacuumed as heapBlksVacuumed,
-            COALESCE(n_dead_tup, 0) as deadTupleTotal
+        database_id as databaseId,
+        table_name as tableName,
+        session_phase as sessionPhase,
+        session_progress as sessionProgress,
+        autovacuum,
+        elapsed_seconds as elapsedSeconds,
+        heap_blks_total as heapBlksTotal,
+        heap_blks_scanned as heapBlksScanned,
+        heap_blks_vacuumed as heapBlksVacuumed,
+        COALESCE(n_dead_tup, 0) as deadTupleTotal
         FROM vacuum_raw_metrics
         WHERE session_phase IS NOT NULL
-          AND session_phase != 'completed'
+        AND session_phase != 'completed'
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
         ORDER BY created_at DESC
-            LIMIT 10
+        LIMIT 10
     </select>
 
     <!-- 세션 진행률 히스토리 -->
@@ -28,8 +32,9 @@
         SELECT CAST(session_progress AS INTEGER) as progress
         FROM vacuum_raw_metrics
         WHERE database_id = CAST(#{databaseId} AS BIGINT)
+          AND table_name = #{tableName}
           AND session_progress IS NOT NULL
-        ORDER BY created_at DESC
+        ORDER BY created_at ASC
             LIMIT #{limit}
     </select>
 
@@ -38,8 +43,11 @@
         SELECT COALESCE(max_workers, 0) as max_workers
         FROM vacuum_raw_metrics
         WHERE max_workers IS NOT NULL
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
         ORDER BY created_at DESC
-            LIMIT 1
+        LIMIT 1
     </select>
 
     <!-- 현재 활성 Worker 수 -->
@@ -47,8 +55,11 @@
         SELECT COALESCE(active_workers, 0) as active_workers
         FROM vacuum_raw_metrics
         WHERE active_workers IS NOT NULL
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
         ORDER BY created_at DESC
-            LIMIT 1
+        LIMIT 1
     </select>
 
 </mapper>

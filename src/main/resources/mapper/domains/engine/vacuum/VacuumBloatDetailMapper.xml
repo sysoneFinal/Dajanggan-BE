@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumBloatDetailMapper">
+
+    <!-- 특정 테이블의 최신 메트릭 조회 -->
+    <select id="findLatestMetricsByTable" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
+        SELECT
+            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
+            database_id AS databaseId,
+            table_name AS tableName,
+            collected_at AS collectedAt,
+            bloat_bytes AS bloatBytes,
+            bloat_ratio AS bloatRatio,
+            dead_tuple_total AS deadTupleTotal,
+            last_vacuum AS lastVacuum,
+            last_autovacuum AS lastAutovacuum
+        FROM vacuum_trend_metrics
+        WHERE database_id = #{databaseId}
+          AND table_name = #{tableName}
+        ORDER BY collected_at DESC
+            LIMIT 1
+    </select>
+
+    <!-- 특정 테이블의 Bloat % 트렌드 조회 (30일) -->
+    <select id="findBloatTrendByTable" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
+        SELECT
+            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
+            collected_at AS collectedAt,
+            bloat_ratio AS bloatRatio
+        FROM vacuum_trend_metrics
+        WHERE database_id = #{databaseId}
+          AND table_name = #{tableName}
+          AND collected_at BETWEEN #{startDate} AND #{endDate}
+          AND bloat_ratio IS NOT NULL
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- 특정 테이블의 Dead Tuples 트렌드 조회 (30일) -->
+    <select id="findDeadTuplesTrendByTable" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
+        SELECT
+            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
+            collected_at AS collectedAt,
+            dead_tuple_total AS deadTupleTotal
+        FROM vacuum_trend_metrics
+        WHERE database_id = #{databaseId}
+          AND table_name = #{tableName}
+          AND collected_at BETWEEN #{startDate} AND #{endDate}
+          AND dead_tuple_total IS NOT NULL
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- 특정 테이블의 인덱스별 Bloat 트렌드 조회 (30일) -->
+    <!-- 인덱스 메트릭 테이블이 없으므로 빈 결과 반환 -->
+    <select id="findIndexBloatTrendByTable" resultType="map">
+        SELECT
+            CAST(NULL AS VARCHAR) as index_name,
+            CAST(NULL AS NUMERIC) as bloat_ratio,
+            CAST(NULL AS TIMESTAMP) as collected_at
+            WHERE 1=0
+    </select>
+
+    <!-- 데이터베이스 내 테이블 목록 조회 -->
+    <select id="findTableList" resultType="string">
+        SELECT DISTINCT table_name
+        FROM vacuum_trend_metrics
+        WHERE database_id = #{databaseId}
+          AND table_name IS NOT NULL
+        ORDER BY table_name ASC
+    </select>
+
+</mapper>

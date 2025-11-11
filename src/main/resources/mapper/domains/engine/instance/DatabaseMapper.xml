@@ -6,16 +6,17 @@
 <mapper namespace="com.dajanggan.domain.instance.repository.DatabaseRepository">
     <resultMap id="DatabaseDtoMap" type="com.dajanggan.domain.instance.domain.Database">
         <result property="databaseId" column="database_id"/>
+        <result property="instanceId" column="instance_id"/>
         <result property="databaseName" column="database_name"/>
         <result property="connections" column="connections"/>
         <result property="sizeBytes" column="size_bytes"/>
         <result property="cacheHitRate" column="cache_hit_rate"/>
         <result property="updatedAt" column="updated_at"/>
-        <result property="instanceId" column="instance_id"/>
     </resultMap>
 
     <select id="findByInstanceIds" parameterType="list" resultMap="DatabaseDtoMap">
         SELECT
+        database_id,
         instance_id,
         database_name,
         connections,
@@ -31,11 +32,13 @@
 
     <select id="findByInstanceId" parameterType="long" resultMap="DatabaseDtoMap">
         SELECT
+            database_id,
             instance_id,
             database_name,
             connections,
             size_bytes,
             cache_hit_rate,
+            created_at,
             updated_at
         FROM monitor_database
         WHERE instance_id = #{instanceId}
