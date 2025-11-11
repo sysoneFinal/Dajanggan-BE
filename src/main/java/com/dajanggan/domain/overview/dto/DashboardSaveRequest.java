@@ -1,5 +1,6 @@
 package com.dajanggan.domain.overview.dto;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.*;
 
 @AllArgsConstructor
@@ -9,6 +10,6 @@ import lombok.*;
 @Setter
 public class DashboardSaveRequest {
     private Long instanceId;
-    private String userLayout;
+    private JsonNode userLayout;
 
 }

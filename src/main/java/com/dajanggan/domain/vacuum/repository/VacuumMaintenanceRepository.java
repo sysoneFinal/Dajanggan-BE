@@ -1,103 +1,75 @@
 package com.dajanggan.domain.vacuum.repository;
 
-import com.dajanggan.domain.vacuum.dto.*;
+import com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * Vacuum Maintenance Repository
- * - MyBatis Mapper 호출
- * - 데이터 접근 계층
- */
 @Repository
 @RequiredArgsConstructor
 public class VacuumMaintenanceRepository {
 
     private final VacuumRawMapper rawMapper;
-    private final VacuumRiskMapper riskMapper;
     private final VacuumTrendMapper trendMapper;
-    private final VacuumHistoryMapper historyMapper;
 
     // ========== KPI 지표 ==========
 
-    public Double getAvgDelaySeconds(LocalDateTime start, LocalDateTime end) {
-        return trendMapper.getAvgDelaySeconds(start, end);
+    public Double getAvgDelaySeconds(
+            OffsetDateTime start, OffsetDateTime end,
+           Long databaseId) {
+        return trendMapper.getAvgDelaySeconds(start, end, databaseId);
     }
 
-    public Double getAvgVacuumDuration(LocalDateTime start, LocalDateTime end) {
-        return trendMapper.getAvgVacuumDuration(start, end);
+    public Double getAvgVacuumDuration(
+            OffsetDateTime start, OffsetDateTime end,
+            Long databaseId) {
+        return trendMapper.getAvgVacuumDuration(start, end, databaseId);
     }
 
-    public Long getTotalDeadTuples(LocalDateTime start, LocalDateTime end) {
-        return trendMapper.getTotalDeadTuples(start, end);
+    public Long getTotalDeadTuples(
+            OffsetDateTime start, OffsetDateTime end,
+            Long databaseId) {
+        return trendMapper.getTotalDeadTuples(start, end, databaseId);
     }
 
-    public Integer getMaxWorkers() {
-        return rawMapper.getMaxWorkers();
+    public Integer getMaxWorkers(Long databaseId) {
+        return rawMapper.getMaxWorkers(databaseId);
     }
 
-    public Integer getActiveWorkers() {
-        return rawMapper.getActiveWorkers();
+    public Integer getActiveWorkers(Long databaseId) {
+        return rawMapper.getActiveWorkers(databaseId);
     }
 
     // ========== 차트 데이터 ==========
 
-    public List<VacuumTrendDto> getDeadTupleTrend(
-            LocalDateTime start, LocalDateTime end, int buckets) {
-        return trendMapper.getDeadTupleTrend(start, end, buckets);
+    public List<VacuumMaintenanceDto.VacuumTrendRaw> getDeadTupleTrend(
+            OffsetDateTime start, OffsetDateTime end, int buckets,
+            Long databaseId) {
+        return trendMapper.getDeadTupleTrend(start, end, buckets, databaseId);
     }
 
-    public List<VacuumTrendDto> getAutovacuumTrend(
-            LocalDateTime start, LocalDateTime end, int buckets) {
-        return trendMapper.getAutovacuumTrend(start, end, buckets);
+    public List<VacuumMaintenanceDto.VacuumTrendRaw> getAutovacuumTrend(
+            OffsetDateTime start, OffsetDateTime end, int buckets,
+            Long databaseId) {
+        return trendMapper.getAutovacuumTrend(start, end, buckets, databaseId);
     }
 
-    public List<VacuumTrendDto> getLatencyTrend(
-            LocalDateTime start, LocalDateTime end, int buckets) {
-        return trendMapper.getLatencyTrend(start, end, buckets);
+    public List<VacuumMaintenanceDto.VacuumTrendRaw> getLatencyTrend(
+            OffsetDateTime start, OffsetDateTime end, int buckets,
+            Long databaseId) {
+        return trendMapper.getLatencyTrend(start, end, buckets, databaseId);
     }
 
     // ========== 세션 데이터 ==========
 
-    public List<VacuumRawDto> getCurrentVacuumSessions() {
-        return rawMapper.getCurrentVacuumSessions();
+    public List<VacuumMaintenanceDto.VacuumSessionRaw> getCurrentVacuumSessions(
+            Long databaseId, String tableName) {
+        return rawMapper.getCurrentVacuumSessions(databaseId, tableName);
     }
 
-    public List<Integer> getSessionProgressHistory(String databaseId, int limit) {
-        return rawMapper.getSessionProgressHistory(databaseId, limit);
-    }
-
-    // ========== History 데이터 ==========
-
-    public List<VacuumHistoryRawDto> getVacuumHistoryList(
-            LocalDateTime start, LocalDateTime end) {
-        return historyMapper.getVacuumHistoryList(start, end);
-    }
-
-    public Integer getVacuumFrequency(Long databaseId, int hours) {
-        return historyMapper.getVacuumFrequency(databaseId, hours);
-    }
-
-
-    // ========== Risk 데이터 ==========
-
-    public List<BlockersPerHourRawDto> getBlockersPerHour(
-            LocalDateTime start, LocalDateTime end, int buckets) {
-        return riskMapper.getBlockersPerHour(start, end, buckets);
-    }
-
-    public List<TopBloatRawDto> getTopBloatTables(int limit) {
-        return riskMapper.getTopBloatTables(limit);
-    }
-
-    public List<VacuumBlockerDetailRawDto> getVacuumBlockers() {
-        return riskMapper.getVacuumBlockers();
-    }
-
-    public List<WraparoundProgressRawDto> getWraparoundProgress() {
-        return riskMapper.getWraparoundProgress();
+    public List<Integer> getSessionProgressHistory(Long databaseId, String tableName, int limit) {
+        return rawMapper.getSessionProgressHistory(databaseId, tableName,limit);
     }
 }

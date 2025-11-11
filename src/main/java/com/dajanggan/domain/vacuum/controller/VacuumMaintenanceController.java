@@ -1,9 +1,6 @@
 package com.dajanggan.domain.vacuum.controller;
 
-import com.dajanggan.domain.vacuum.dto.VacuumDashboardDto;
-import com.dajanggan.domain.vacuum.dto.VacuumHistoryDto;
-import com.dajanggan.domain.vacuum.dto.VacuumHistoryRequestDto;
-import com.dajanggan.domain.vacuum.dto.VacuumRiskDto;
+import com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto;
 import com.dajanggan.domain.vacuum.service.VacuumMaintenanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,10 +12,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * Vacuum Maintenance Controller
- * - VacuumPage.tsx 대시보드 데이터 제공
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/vacuum")
@@ -26,56 +19,32 @@ import java.util.List;
 public class VacuumMaintenanceController {
 
     private final VacuumMaintenanceService vacuumMaintenanceService;
-    /**
-     * 대시보드 전체 데이터 조회
-     * GET /api/vacuum/dashboard?hours=24
-     */
-    @GetMapping("/dashboard")
-    public ResponseEntity<VacuumDashboardDto> getDashboard(
-            @RequestParam(defaultValue = "24") int hours) {
 
-        VacuumDashboardDto dashboard = vacuumMaintenanceService.getDashboardData(hours);
+    @GetMapping("/dashboard")
+    public ResponseEntity<VacuumMaintenanceDto.Response> getDashboard(
+            @RequestParam(defaultValue = "1000") int hours,
+            @RequestParam(required = false) Long databaseId, String tableName) {
+
+        log.info("Dashboard 조회 요청 - databaseId: {}, hours: {}",
+                databaseId, hours);
+
+
+        VacuumMaintenanceDto.Response dashboard =
+                vacuumMaintenanceService.getDashboardData(hours,databaseId, tableName);
+
         return ResponseEntity.ok(dashboard);
     }
 
-    /**
-     * 실시간 세션 목록만 조회
-     * GET /api/vacuum/sessions
-     */
     @GetMapping("/sessions")
-    public ResponseEntity<?> getCurrentSessions() {
-        return ResponseEntity.ok(vacuumMaintenanceService.getCurrentSessions());
-    }
+    public ResponseEntity<List<VacuumMaintenanceDto.Session>> getCurrentSessions(
+            @RequestParam(required = false) Long databaseId, String tableName) {
+
+        log.info("Sessions 조회 요청 - databaseId: {}",
+                databaseId);
 
 
-    /**
-     * Vacuum History 목록 조회
-     * GET /api/vacuum/history?hours=24&status=주의
-     */
-    @GetMapping("/history")
-    public ResponseEntity<List<VacuumHistoryDto>> getHistory(
-            @RequestParam(required = false) Integer hours,
-            @RequestParam(required = false) String status) {
-
-        log.info("GET /api/vacuum/history - hours: {}, status: {}", hours, status);
-
-        VacuumHistoryRequestDto request = new VacuumHistoryRequestDto(hours, status);
-        List<VacuumHistoryDto> history = vacuumMaintenanceService.getVacuumHistory(request);
-
-        return ResponseEntity.ok(history);
-    }
-
-    /**
-     * Vacuum Risk 페이지 데이터 조회
-     * GET /api/vacuum/risk?hours=24
-     */
-    @GetMapping("/risk")
-    public ResponseEntity<VacuumRiskDto> getRisk(
-            @RequestParam(defaultValue = "24") int hours) {
-
-        log.info("GET /api/vacuum/risk - hours: {}", hours);
-        VacuumRiskDto risk = vacuumMaintenanceService.getVacuumRiskData(hours);
-
-        return ResponseEntity.ok(risk);
+        return ResponseEntity.ok(
+                vacuumMaintenanceService.getCurrentSessions(databaseId, tableName)
+        );
     }
 }

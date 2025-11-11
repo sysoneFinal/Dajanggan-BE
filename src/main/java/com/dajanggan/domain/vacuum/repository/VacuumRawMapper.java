@@ -1,39 +1,30 @@
 package com.dajanggan.domain.vacuum.repository;
 
-
-import com.dajanggan.domain.vacuum.dto.VacuumRawDto;
+import com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
-/**
- * Vacuum Raw Metrics Mapper
- * - vacuum_raw_metrics 테이블 접근
- */
 @Mapper
 public interface VacuumRawMapper {
 
-    /**
-     * 현재 실행 중인 Vacuum 세션
-     */
-    List<VacuumRawDto> getCurrentVacuumSessions();
-
-    /**
-     * 세션 진행률 히스토리
-     */
-    List<Integer> getSessionProgressHistory(
-            @Param("databaseId") String databaseId,
-            @Param("limit") int limit
+    Integer getMaxWorkers(
+            @Param("databaseId") Long databaseId
     );
 
-    /**
-     * 최대 Worker 수
-     */
-    Integer getMaxWorkers();
+    Integer getActiveWorkers(
+            @Param("databaseId") Long databaseId
+    );
 
-    /**
-     * 현재 활성 Worker 수
-     */
-    Integer getActiveWorkers();
+    List<VacuumMaintenanceDto.VacuumSessionRaw> getCurrentVacuumSessions(
+            @Param("databaseId") Long databaseId,
+            @Param("tableName") String tableName
+    );
+
+    List<Integer> getSessionProgressHistory(
+            @Param("databaseId") Long databaseId,
+            @Param("tableName") String tableName,
+            @Param("limit") int limit
+    );
 }

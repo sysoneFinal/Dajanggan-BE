@@ -6,7 +6,9 @@ import java.util.List;
 public class VacuumMaintenanceDto {
 
     // ========== Raw DTOs ==========
-    @Data @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class VacuumTrendRaw {
         private String hourLabel;
         private Double deadTupleIncreaseRate;
@@ -16,9 +18,12 @@ public class VacuumMaintenanceDto {
         private Double avgDelaySeconds;
     }
 
-    @Data @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class VacuumSessionRaw {
-        private String databaseId;
+        private Long databaseId;
+        private String tableName;
         private String sessionPhase;
         private Double sessionProgress;
         private Boolean autovacuum;
@@ -26,27 +31,38 @@ public class VacuumMaintenanceDto {
         private Long heapBlksTotal;
         private Long heapBlksScanned;
         private Long heapBlksVacuumed;
-        private Long deadTupleTotal;
+        private Long deadTupleTotal; //  trend dto
+
     }
 
     // ========== Response DTOs ==========
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class Kpi {
-        private Double avgDelay;
-        private Double avgDuration;
-        private Double totalDeadTuple;
-        private Integer autovacuumWorker;
+        private Double avgDelay;           // 평균 지연시간
+        private Double avgDuration;        // 평균 Duration
+        private Double deadTupleTotal;     // 총 Dead Tuple (M)
+        private Integer autovacuumWorker;  // Worker 활동률 (%)
     }
 
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class Chart {
         private List<? extends List<? extends Number>> data;
         private List<String> labels;
     }
 
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class Session {
-        private String table;
+        private Long databaseId;
+        private String tableName;
         private String phase;
         private String deadTuples;
         private String trigger;
@@ -54,7 +70,10 @@ public class VacuumMaintenanceDto {
         private List<Integer> progressSeries;
     }
 
-    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class Response {
         private Kpi kpi;
         private Chart deadtuple;

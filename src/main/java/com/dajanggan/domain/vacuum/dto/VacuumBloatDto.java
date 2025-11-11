@@ -4,31 +4,22 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
 import java.util.List;
 
-/**
- * Vacuum Bloat 관련 모든 DTO 통합
- */
 public class VacuumBloatDto {
 
-    /**
-     * 대시보드 응답 DTO
-     */
+    // ========== Response DTOs ==========
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class DashboardResponse {
+    public static class Response {
         private XminHorizonMonitor xminHorizonMonitor;
         private BloatTrend bloatTrend;
         private BloatDistribution bloatDistribution;
         private Kpi kpi;
     }
 
-    /**
-     * Xmin Horizon Monitor 데이터
-     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -38,9 +29,6 @@ public class VacuumBloatDto {
         private List<String> labels;      // 시간 라벨 (00:00, 01:00, ...)
     }
 
-    /**
-     * Bloat Trend 데이터
-     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -50,9 +38,6 @@ public class VacuumBloatDto {
         private List<String> labels;      // 날짜 라벨
     }
 
-    /**
-     * Bloat Distribution 데이터
-     */
     @Data
     @Builder
     @NoArgsConstructor
@@ -62,9 +47,6 @@ public class VacuumBloatDto {
         private List<String> labels;      // 범위 라벨 (0-5%, 5-10%, ...)
     }
 
-    /**
-     * KPI 지표 데이터
-     */
     @Data
     @Builder
     @NoArgsConstructor

@@ -13,6 +13,8 @@ import java.util.stream.Collectors;
 public final class DtoMappers {
     public static DatabaseResponse toDatabaseDto(Database s) {
         DatabaseResponse d = new DatabaseResponse();
+        d.setDatabaseId(s.getDatabaseId());
+        d.setInstanceId(s.getInstanceId());
         d.setDatabaseName(s.getDatabaseName());
         d.setConnections(s.getConnections());
         d.setSizeBytes(s.getSizeBytes());
