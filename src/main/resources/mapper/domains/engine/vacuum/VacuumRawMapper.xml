@@ -8,6 +8,7 @@
     <select id="getCurrentVacuumSessions" resultType="com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto$VacuumSessionRaw">
         SELECT
         database_id as databaseId,
+        table_name as tableName,
         session_phase as sessionPhase,
         session_progress as sessionProgress,
         autovacuum,
@@ -31,8 +32,9 @@
         SELECT CAST(session_progress AS INTEGER) as progress
         FROM vacuum_raw_metrics
         WHERE database_id = CAST(#{databaseId} AS BIGINT)
+          AND table_name = #{tableName}
           AND session_progress IS NOT NULL
-        ORDER BY created_at DESC
+        ORDER BY created_at ASC
             LIMIT #{limit}
     </select>
 

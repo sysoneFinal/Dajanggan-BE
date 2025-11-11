@@ -18,11 +18,13 @@ public interface VacuumRawMapper {
     );
 
     List<VacuumMaintenanceDto.VacuumSessionRaw> getCurrentVacuumSessions(
-            @Param("databaseId") Long databaseId
+            @Param("databaseId") Long databaseId,
+            @Param("tableName") String tableName
     );
 
     List<Integer> getSessionProgressHistory(
-            @Param("databaseId") String databaseId,
+            @Param("databaseId") Long databaseId,
+            @Param("tableName") String tableName,
             @Param("limit") int limit
     );
 }

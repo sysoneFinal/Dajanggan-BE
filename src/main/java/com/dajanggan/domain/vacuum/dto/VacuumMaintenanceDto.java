@@ -22,7 +22,8 @@ public class VacuumMaintenanceDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class VacuumSessionRaw {
-        private String databaseId;
+        private Long databaseId;
+        private String tableName;
         private String sessionPhase;
         private Double sessionProgress;
         private Boolean autovacuum;
@@ -31,6 +32,7 @@ public class VacuumMaintenanceDto {
         private Long heapBlksScanned;
         private Long heapBlksVacuumed;
         private Long deadTupleTotal; //  trend dto
+
     }
 
     // ========== Response DTOs ==========
@@ -59,7 +61,8 @@ public class VacuumMaintenanceDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Session {
-        private String table;
+        private Long databaseId;
+        private String tableName;
         private String phase;
         private String deadTuples;
         private String trigger;
