@@ -11,7 +11,8 @@
         <result property="dbname"           column="dbname"/>
         <result property="port"             column="port"/>
         <result property="userName"         column="username"/>
-        <result property="secretRef"        column="secret_ref"/>
+        <result column="secret_ref"    property="secretRef"
+                typeHandler="com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler"/>
         <result property="sslmode"          column="sslmode"/>
         <result property="createdAt"          column="created_at"/>
         <result property="updatedAt"          column="updated_at"/>
@@ -28,7 +29,8 @@
         INSERT INTO monitor_instance (
             instance_name, host, port, username, secret_ref
         ) VALUES (
-                     #{instanceName}, #{host}, #{port}, #{userName}, #{secretRef}
+                     #{instanceName}, #{host}, #{port}, #{userName}, #{secretRef, jdbcType=VARCHAR,
+            typeHandler=com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler}
         )
     </insert>
 
@@ -46,7 +48,8 @@
             host          = #{host},
             port          = #{port},
             username      = #{userName},
-            secret_ref    = #{secretRef},
+            secret_ref    = #{secretRef, jdbcType=VARCHAR,
+                         typeHandler=com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler},
             version       = #{version}
         where instance_id = #{instanceId}
     </update>
