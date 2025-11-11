@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.system.disk.repository.DiskIoMapper">
+
+    <!-- 디스크 사용률 조회 -->
+    <select id="selectDiskUsage" resultType="map">
+        SELECT
+            COALESCE(ROUND(AVG(disk_utilization)::numeric, 2), 0) as disk_usage,
+            COALESCE(SUM(reads), 0) as iops_read,
+            COALESCE(SUM(writes), 0) as iops_write
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
+    </select>
+
+    <!-- 프로세스별 I/O 시계열 데이터 조회 -->
+    <select id="selectProcessIOTimeSeries" resultType="map">
+        SELECT
+            date_trunc('hour', collected_at) as time_bucket,
+            backend_type,
+            COALESCE(SUM(reads + writes), 0) as total_io
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY date_trunc('hour', collected_at), backend_type
+        ORDER BY time_bucket, backend_type
+    </select>
+
+    <!-- Queue Depth 시계열 데이터 조회 -->
+    <select id="selectQueueDepthTimeSeries" resultType="map">
+        SELECT
+            date_trunc('hour', collected_at) as time_bucket,
+            COALESCE(ROUND(AVG(queue_depth)::numeric, 2), 0) as avg_queue_depth
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY date_trunc('hour', collected_at)
+        ORDER BY time_bucket
+    </select>
+
+    <!-- I/O Latency 시계열 데이터 조회 -->
+    <select id="selectIoLatencyTimeSeries" resultType="map">
+        SELECT
+            date_trunc('hour', collected_at) as time_bucket,
+            COALESCE(ROUND(AVG(read_latency_ms)::numeric, 2), 0) as avg_read_latency,
+            COALESCE(ROUND(AVG(write_latency_ms)::numeric, 2), 0) as avg_write_latency
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY date_trunc('hour', collected_at)
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Throughput 시계열 데이터 조회 -->
+    <select id="selectThroughputTimeSeries" resultType="map">
+        SELECT
+            date_trunc('hour', collected_at) as time_bucket,
+            COALESCE(SUM(reads + writes), 0) as total_iops,
+            COALESCE(ROUND((SUM(blks_read + blks_written) * 8.0 / 1024.0)::numeric, 2), 0) as throughput_mb
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY date_trunc('hour', collected_at)
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Evictions 시계열 데이터 조회 -->
+    <select id="selectEvictionsTimeSeries" resultType="map">
+        SELECT
+            date_trunc('hour', collected_at) as time_bucket,
+            COALESCE(SUM(evictions), 0) as eviction_rate
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY date_trunc('hour', collected_at)
+        ORDER BY time_bucket
+    </select>
+
+    <!-- WAL Bytes 시계열 데이터 조회 -->
+    <select id="selectWalBytesTimeSeries" resultType="map">
+        SELECT
+            date_trunc('hour', collected_at) as time_bucket,
+            COALESCE(SUM(wal_bytes), 0) as wal_bytes
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY date_trunc('hour', collected_at)
+        ORDER BY time_bucket
+    </select>
+
+    <!-- 최근 통계 조회 -->
+    <select id="selectRecentStats" resultType="map">
+        WITH recent_data AS (
+            SELECT
+                queue_depth,
+                (reads + writes) as total_iops,
+                (read_latency_ms + write_latency_ms) / 2.0 as avg_latency,
+                wal_bytes,
+                evictions
+            FROM disk_io_raw
+            WHERE instance_id = #{instanceId}
+              AND collected_at >= NOW() - INTERVAL '5 minutes'
+            )
+        SELECT
+            COALESCE(ROUND(AVG(queue_depth)::numeric, 2), 0) as disk_queue_length,
+            COALESCE(ROUND((AVG(total_iops) / 10000.0 * 100)::numeric, 2), 0) as iops_saturation,
+            COALESCE(ROUND(AVG(avg_latency)::numeric, 2), 0) as avg_latency,
+            COALESCE(ROUND((AVG(wal_bytes) / 1000000.0)::numeric, 2), 0) as wal_bottleneck,
+            COALESCE(ROUND(AVG(evictions)::numeric, 2), 0) as buffer_eviction_rate
+        FROM recent_data
+    </select>
+
+    <!-- Disk I/O 리스트 데이터 조회 - 수정됨 -->
+    <select id="selectDiskIoList" resultType="map">
+        WITH aggregated_data AS (
+        SELECT
+        ROW_NUMBER() OVER (ORDER BY collected_at DESC, backend_type) as id,
+        backend_type,
+        collected_at,
+        COALESCE(SUM(reads + writes), 0) as total_io,
+        COALESCE(SUM(reads), 0) as read_rate,
+        COALESCE(SUM(writes), 0) as write_rate,
+        COALESCE(ROUND((SUM(blks_read) * 8.0 / 1024.0)::numeric, 2), 0) as read_mbs,
+        COALESCE(ROUND((SUM(blks_written) * 8.0 / 1024.0)::numeric, 2), 0) as write_mbs,
+        COALESCE(ROUND((SUM(blks_read + blks_written) * 8.0 / 1024.0)::numeric, 2), 0) as throughput_mbs,
+        COALESCE(SUM(fsyncs), 0) as fsync_rate,
+        COALESCE(SUM(evictions), 0) as eviction_rate,
+        COALESCE(SUM(extend_count), 0) as extend_rate,
+        COALESCE(ROUND(((1.0 - (SUM(blks_read)::numeric / NULLIF(SUM(blks_read + blks_written), 0))) * 100)::numeric, 2), 0) as hit_ratio,
+        COALESCE(ROUND(AVG(queue_depth)::numeric, 2), 0) as avg_queue_depth,
+        COALESCE(ROUND(AVG((read_latency_ms + write_latency_ms) / 2.0)::numeric, 2), 0) as avg_latency,
+        COALESCE(ROUND(AVG(read_percent)::numeric, 2), 0) as read_percent,
+        COALESCE(ROUND(AVG(write_percent)::numeric, 2), 0) as write_percent,
+        CASE
+        WHEN AVG((read_latency_ms + write_latency_ms) / 2.0) > 50 THEN '위험'
+        WHEN AVG((read_latency_ms + write_latency_ms) / 2.0) > 20 THEN '주의'
+        ELSE '정상'
+        END as status
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+        AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY backend_type, collected_at
+        )
+        SELECT *
+        FROM aggregated_data
+        <where>
+            <if test="statusList != null and statusList.size() > 0">
+                AND status IN
+                <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                    #{status}
+                </foreach>
+            </if>
+        </where>
+        ORDER BY collected_at DESC, backend_type
+        LIMIT 1000
+    </select>
+
+</mapper>
