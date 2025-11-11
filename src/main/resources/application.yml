@@ -49,3 +49,11 @@ logging:
 
 server:
   port: 8080
+
+app:
+  crypto:
+    active-key-id: 1
+    keys-v1: ${APP_CRYPTO_KEYS_V1}
+    pbkdf2-iter: 200000
+    salt-len: 16
+    iv-len: 12
