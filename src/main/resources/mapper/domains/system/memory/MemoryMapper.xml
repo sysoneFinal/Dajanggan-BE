@@ -105,7 +105,12 @@
 
     <!-- 상위 버퍼 사용 객체 조회 -->
     <select id="selectTopBufferObjects" resultType="map">
-        -- 버퍼를 가장 많이 사용하는 상위 객체
+        WITH total_buffers AS (
+            SELECT SUM(avg_buffers) as total
+            FROM memory_agg
+            WHERE instance_id = #{instanceId}
+              AND collected_at >= NOW() - INTERVAL '5 minutes'
+            )
         SELECT
             relname as object_name,
             CASE relkind
@@ -113,7 +118,13 @@
                 WHEN 'i' THEN 'index'
                 ELSE 'other'
                 END as object_type,
-            avg_buffers as buffer_count
+            ROUND(
+                    CAST(
+                            (avg_buffers * 100.0 / NULLIF((SELECT total FROM total_buffers), 0))
+                        AS NUMERIC
+                    ),
+                    2
+            ) as buffer_count
         FROM memory_agg
         WHERE instance_id = #{instanceId}
           AND collected_at >= NOW() - INTERVAL '5 minutes'
@@ -151,7 +162,7 @@
         ELSE 'other'
         END as type,
         -- 크기는 pg_relation_size로 별도 계산 필요
-        0.0 as sizeMB,
+        0.0 as sizeMb,
         avg_buffers as bufferCount,
         ROUND(CAST(avg_buffer_usage_pct AS NUMERIC), 2) as usagePercent,
         -- Dirty count는 raw 테이블에서 가져와야 함
