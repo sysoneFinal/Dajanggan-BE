@@ -318,8 +318,8 @@ public class MemoryService {
                 .map(item -> (String) item.get("object_name"))
                 .collect(Collectors.toList());
 
-        List<Long> data = dataList.stream()
-                .map(item -> getLongValue(item, "buffer_count"))
+        List<Double> data = dataList.stream()
+                .map(item -> getDoubleValue(item, "buffer_count"))  // Long → Double
                 .collect(Collectors.toList());
 
         List<String> types = dataList.stream()
@@ -408,7 +408,7 @@ public class MemoryService {
                 .id(String.valueOf(data.get("id")))
                 .objectName((String) data.get("objectname"))
                 .type((String) data.get("type"))
-                .sizeMB(getDoubleValue(data, "sizemb"))
+                .sizeMb(getDoubleValue(data, "sizemb"))
                 .bufferCount(getLongValue(data, "buffercount"))
                 .usagePercent(getDoubleValue(data, "usagepercent"))
                 .dirtyCount(getLongValue(data, "dirtycount"))
