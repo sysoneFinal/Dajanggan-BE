@@ -14,4 +14,7 @@ public interface DatabaseRepository {
     // N+1 방지: 여러 인스턴스의 DB를 한 번에 조회
      List<Database> findByInstanceIds(List<Long> ids);
 
+    // EXPLAIN ANALYZE용 단일 Database 조회
+    Database findById(@Param("databaseId") Long databaseId);
+
 }
