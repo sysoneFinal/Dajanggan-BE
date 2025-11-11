@@ -11,7 +11,7 @@ import java.util.List;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/dashboard/memory")
+@RequestMapping("/api/system/memory")
 @RequiredArgsConstructor
 public class MemoryController {
 
