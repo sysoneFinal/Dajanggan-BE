@@ -4,7 +4,6 @@ import com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -66,11 +65,11 @@ public class VacuumMaintenanceRepository {
     // ========== 세션 데이터 ==========
 
     public List<VacuumMaintenanceDto.VacuumSessionRaw> getCurrentVacuumSessions(
-            Long databaseId) {
-        return rawMapper.getCurrentVacuumSessions(databaseId);
+            Long databaseId, String tableName) {
+        return rawMapper.getCurrentVacuumSessions(databaseId, tableName);
     }
 
-    public List<Integer> getSessionProgressHistory(String databaseId, int limit) {
-        return rawMapper.getSessionProgressHistory(databaseId, limit);
+    public List<Integer> getSessionProgressHistory(Long databaseId, String tableName, int limit) {
+        return rawMapper.getSessionProgressHistory(databaseId, tableName,limit);
     }
 }
