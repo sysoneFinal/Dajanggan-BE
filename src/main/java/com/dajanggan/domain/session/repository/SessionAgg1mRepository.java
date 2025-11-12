@@ -28,4 +28,5 @@ public interface SessionAgg1mRepository {
     /** 락 대기 시간 추이 */
     List<AvgLockWaitTrendDto> getLockWaitTrend(Map<String, Object> params);
 
+
 }
