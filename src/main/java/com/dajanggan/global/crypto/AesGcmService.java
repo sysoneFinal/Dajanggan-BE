@@ -42,8 +42,12 @@ public final class AesGcmService {
 
             Cipher c = Cipher.getInstance(CIPHER);
             c.init(Cipher.ENCRYPT_MODE, sk, new GCMParameterSpec(TAG_BITS, iv));
-            byte[] ct = c.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+            
+            // 먼저 ciphertext를 생성
+            byte[] plainBytes = plaintext.getBytes(StandardCharsets.UTF_8);
+            byte[] ct = c.doFinal(plainBytes);
 
+            // 전체 크기: version(1) + keyId(2) + salt + iv + ciphertext
             ByteBuffer bb = ByteBuffer.allocate(1 + 2 + salt.length + iv.length + ct.length);
             bb.put(VERSION).putShort(activeKeyId).put(salt).put(iv).put(ct);
             return Base64.getEncoder().encodeToString(bb.array());
@@ -56,6 +60,14 @@ public final class AesGcmService {
         if (blobB64 == null) return null;
         try {
             byte[] blob = Base64.getDecoder().decode(blobB64);
+            
+            // 최소 크기 체크: version(1) + keyId(2) + salt + iv + 최소 암호문
+            int minSize = 1 + 2 + saltLen + ivLen;
+            if (blob.length < minSize) {
+                // 너무 짧으면 평문으로 간주
+                return blobB64;
+            }
+            
             ByteBuffer bb = ByteBuffer.wrap(blob);
 
             byte version = bb.get();
@@ -82,9 +94,12 @@ public final class AesGcmService {
             // Base64 decoding 실패 → 평문
             return blobB64;
         } catch (AEADBadTagException e) {
-            throw new CryptoException("Authentication failed", e);
+            throw new CryptoException("Authentication failed - data may be corrupted: " + e.getMessage(), e);
+        } catch (java.nio.BufferUnderflowException e) {
+            // 버퍼 언더플로우 발생 시 평문으로 간주
+            return blobB64;
         } catch (GeneralSecurityException e) {
-            throw new CryptoException("Decryption failed", e);
+            throw new CryptoException("Decryption failed: " + e.getMessage(), e);
         }
     }
 
