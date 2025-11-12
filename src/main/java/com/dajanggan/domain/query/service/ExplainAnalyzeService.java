@@ -1,17 +1,12 @@
 package com.dajanggan.domain.query.service;
 
-import com.dajanggan.domain.instance.domain.Database;
-import com.dajanggan.domain.instance.domain.Instance;
-import com.dajanggan.domain.instance.repository.DatabaseRepository;
-import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.query.dto.ExplainAnalyzeResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.regex.Matcher;
@@ -21,47 +16,27 @@ import java.util.regex.Pattern;
  * EXPLAIN ANALYZE 실행 Service
  * - PostgreSQL EXPLAIN ANALYZE 실행
  * - 안전 모드 처리 (DML 쿼리)
- * - 동적 데이터베이스 연결
  *
- * @author 이해든
+ * @author 백엔드 담당자
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ExplainAnalyzeService {
 
-    private final DatabaseRepository databaseRepository;
-    private final InstanceRepository instanceRepository;
-
-    @Value("${DB_PASSWORD:StrongPW!234}")
-    private String dbPassword;
+    private final DataSource dataSource;
 
     /**
      * EXPLAIN ANALYZE 실행
      *
-     * @param databaseId 데이터베이스 ID
+     * @param databaseId 데이터베이스 ID (현재 미사용, 향후 다중 DB 지원 시 활용)
      * @param query 분석할 쿼리
      * @return EXPLAIN ANALYZE 결과
      */
     public ExplainAnalyzeResult execute(Long databaseId, String query) {
         log.info("🔍 쿼리 분석 시작");
 
-        // 1. 데이터베이스 정보 조회
-        Database database = databaseRepository.findById(databaseId);
-        if (database == null) {
-            log.error("❌ 데이터베이스를 찾을 수 없습니다: databaseId={}", databaseId);
-            throw new RuntimeException("데이터베이스를 찾을 수 없습니다: databaseId=" + databaseId);
-        }
-
-        // 2. 인스턴스 정보 조회
-        Instance instance = instanceRepository.findById(database.getInstanceId())
-                .orElseThrow(() -> new RuntimeException("인스턴스를 찾을 수 없습니다: instanceId=" + database.getInstanceId()));
-
-        String databaseName = database.getDatabaseName();
-        log.info("  - 대상 데이터베이스: {}", databaseName);
-        log.info("  - 인스턴스: {}:{}", instance.getHost(), instance.getPort());
-
-        // 3. 쿼리 타입 체크
+        // 1. 쿼리 타입 체크
         String trimmedQuery = query.trim();
         String upperQuery = trimmedQuery.toUpperCase();
 
@@ -78,7 +53,7 @@ public class ExplainAnalyzeService {
         log.info("  - 실행 모드: {}", executionMode);
         log.info("  - 쿼리 타입: {}", getQueryType(upperQuery));
 
-        // 4. EXPLAIN 쿼리 생성
+        // 2. EXPLAIN 쿼리 생성
         String explainQuery;
         if (isModifying) {
             // 안전 모드: EXPLAIN만 실행 (실제 데이터 변경 없음)
@@ -90,23 +65,15 @@ public class ExplainAnalyzeService {
             log.info("  ✅ SELECT 쿼리 - EXPLAIN ANALYZE 실행");
         }
 
-        // 5. 동적으로 해당 데이터베이스에 직접 연결
-        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s",
-                instance.getHost(),
-                instance.getPort(),
-                databaseName);
-
-        log.info("  🔗 데이터베이스 연결 URL: {}", jdbcUrl);
-
-        // 6. EXPLAIN 실행
+        // 3. EXPLAIN 실행
         StringBuilder resultBuilder = new StringBuilder();
         Double executionTimeMs = null;
         Double planningTimeMs = null;
 
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, instance.getUserName(), dbPassword);
+        try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
 
-            log.info("  ✅ 데이터베이스 연결 성공: {}", databaseName);
+            log.info("  🔗 데이터베이스 연결 성공");
 
             try (ResultSet rs = stmt.executeQuery(explainQuery)) {
                 while (rs.next()) {
@@ -143,7 +110,6 @@ public class ExplainAnalyzeService {
 
         } catch (Exception e) {
             log.error("  ❌ EXPLAIN ANALYZE 실행 실패: {}", e.getMessage());
-            log.error("  상세 오류:", e);
             throw new RuntimeException("쿼리 분석 실패: " + e.getMessage(), e);
         }
     }
