@@ -3,12 +3,11 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.dajanggan.domain.instance.repository.InstanceRepository">
 
-    <!-- Entity <-> 컬럼 매핑 -->
+    <!-- 전체 매핑 (secret_ref 포함) - INSERT/UPDATE용 -->
     <resultMap id="InstanceResultMap" type="com.dajanggan.domain.instance.domain.Instance">
         <id     property="instanceId"       column="instance_id"/>
         <result property="instanceName"     column="instance_name"/>
         <result property="host"             column="host"/>
-        <result property="dbname"           column="dbname"/>
         <result property="port"             column="port"/>
         <result property="userName"         column="username"/>
         <result column="secret_ref"    property="secretRef"
@@ -23,34 +22,79 @@
         <result property="version"        column="version"/>
     </resultMap>
 
+    <!-- 목록 조회용 매핑 (secret_ref 제외) -->
+    <resultMap id="InstanceListResultMap" type="com.dajanggan.domain.instance.domain.Instance">
+        <id     property="instanceId"       column="instance_id"/>
+        <result property="instanceName"     column="instance_name"/>
+        <result property="host"             column="host"/>
+        <result property="port"             column="port"/>
+        <result property="userName"         column="username"/>
+        <!-- secret_ref는 목록 조회에서 제외 -->
+        <result property="sslmode"          column="sslmode"/>
+        <result property="createdAt"          column="created_at"/>
+        <result property="updatedAt"          column="updated_at"/>
+        <result property="slackEnabled"     column="slack_enabled"/>
+        <result property="slackChannel"     column="slack_channel"/>
+        <result property="slackMention"     column="slack_mention"/>
+        <result property="slackWebhookUrl"  column="slack_webhook_url"/>
+        <result property="version"        column="version"/>
+    </resultMap>
+
     <!-- INSERT -->
     <insert id="createInstance" parameterType="com.dajanggan.domain.instance.domain.Instance"
             useGeneratedKeys="true" keyProperty="instanceId">
         INSERT INTO monitor_instance (
-            instance_name, host, port, username, secret_ref
+        instance_name, host, port, username, secret_ref
         ) VALUES (
-                     #{instanceName}, #{host}, #{port}, #{userName}, #{secretRef, jdbcType=VARCHAR,
+        #{instanceName}, #{host}, #{port}, #{userName}, #{secretRef, jdbcType=VARCHAR,
             typeHandler=com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler}
         )
     </insert>
 
+    <!-- 개별 조회 (secret_ref 포함) -->
     <select id="findById" resultMap="InstanceResultMap">
         select * from monitor_instance where instance_id = #{id}
     </select>
 
-    <select id="findAll" resultMap="InstanceResultMap">
-        select * from monitor_instance order by instance_id desc
+    <!-- 목록 조회 (secret_ref 제외) -->
+    <select id="findAll" resultMap="InstanceListResultMap">
+        select
+        instance_id,
+        instance_name,
+        host,
+        port,
+        username,
+        -- secret_ref 제외
+        sslmode,
+        created_at,
+        updated_at,
+        slack_enabled,
+        slack_channel,
+        slack_mention,
+        slack_webhook_url,
+        version
+        from monitor_instance
+        order by instance_id desc
+    </select>
+
+    <!-- 메트릭 수집용: 특정 인스턴스들 조회 (secret_ref 포함) -->
+    <select id="findAllWithSecrets" resultMap="InstanceResultMap">
+        SELECT * FROM monitor_instance
+        WHERE instance_id IN
+        <foreach collection="instanceIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
     </select>
 
     <update id="updateInstance" parameterType="com.dajanggan.domain.instance.domain.Instance">
         update monitor_instance
         set instance_name = #{instanceName},
-            host          = #{host},
-            port          = #{port},
-            username      = #{userName},
-            secret_ref    = #{secretRef, jdbcType=VARCHAR,
+        host          = #{host},
+        port          = #{port},
+        username      = #{userName},
+        secret_ref    = #{secretRef, jdbcType=VARCHAR,
                          typeHandler=com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler},
-            version       = #{version}
+        version       = #{version}
         where instance_id = #{instanceId}
     </update>
 
@@ -60,7 +104,7 @@
 
     <select id="existsByName" resultType="boolean">
         select exists(
-            select 1 from monitor_instance where instance_name = #{instanceName}
+        select 1 from monitor_instance where instance_name = #{instanceName}
         )
     </select>
 

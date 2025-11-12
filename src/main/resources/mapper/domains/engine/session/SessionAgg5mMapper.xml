@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.session.repository.SessionAgg5mRepository">
+
+    <!--
+      5분 단위 세션 요약 집계 ResultMap (Top 5 사용자 포함)
+    -->
+    <resultMap id="agg5m" type="com.dajanggan.domain.session.dto.agg5m.SessionAgg5mDto">
+        <result property="instanceId" column="instance_id"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="totalSessions" column="total_sessions"/>
+        <result property="activeSessions" column="active_sessions"/>
+        <result property="waitingSessions" column="waiting_sessions"/>
+        <result property="idleSessions" column="idle_sessions"/>
+        <result property="usedConnections" column="used_connections"/>
+        <result property="maxConnections" column="max_connections"/>
+        <result property="activeRatio" column="active_ratio"/>
+        <result property="waitRatio" column="wait_ratio"/>
+
+        <!-- 상위 사용자 1~5 -->
+        <result property="topUser1" column="top_user_1"/>
+        <result property="topUser1Sessions" column="top_user_1_sessions"/>
+        <result property="topUser2" column="top_user_2"/>
+        <result property="topUser2Sessions" column="top_user_2_sessions"/>
+        <result property="topUser3" column="top_user_3"/>
+        <result property="topUser3Sessions" column="top_user_3_sessions"/>
+        <result property="topUser4" column="top_user_4"/>
+        <result property="topUser4Sessions" column="top_user_4_sessions"/>
+        <result property="topUser5" column="top_user_5"/>
+        <result property="topUser5Sessions" column="top_user_5_sessions"/>
+
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- 요약카드 및 커넥션 5분 집계 (단일 DB용 - Details 페이지) -->
+    <select id="findLatestSummary" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.SessionSummaryDto">
+        SELECT
+            instance_id AS instanceId,
+            database_id AS databaseId,
+            active_sessions AS activeSessions,
+            waiting_sessions AS waitingSessions,
+            idle_sessions AS idleSessions,
+            idle_txn_sessions AS idleTxnSessions,
+            avg_tx_duration_sec AS avgTxDurationSec,
+            created_at AS createdAt
+        FROM session_metrics_agg_5m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'
+        ORDER BY collected_at DESC
+        LIMIT 1;
+    </select>
+
+        <!-- 커넥션 사용량 조회    -->
+    <select id="findConnectionUsage" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.ConnectionDto">
+        SELECT
+            used_connections AS usedConnections,
+            max_connections AS maxConnections
+        FROM session_metrics_agg_5m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at DESC
+        LIMIT 1;
+    </select>
+
+    <!-- 데드락 요약카드 (단일 DB용 - Details 페이지) -->
+    <select id="findLatestDeadLock" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.DeadLockSummaryDto">
+        SELECT
+            COALESCE(SUM(deadlock_count), 0) AS deadlockCount
+        FROM session_metrics_agg_5m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+    </select>
+
+        <!-- 세션 최다 사용자 top 5   -->
+    <select id="findTopUserSession" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.TopUserSessionDto">
+        SELECT
+          instance_id AS instanceId,
+          database_id AS databaseId,
+          top_user_1 AS topUser1,
+          top_user_1_sessions AS topUser1Sessions,
+          top_user_2 AS topUser2,
+          top_user_2_sessions AS topUser2Sessions,
+          top_user_3 AS topUser3,
+          top_user_3_sessions AS topUser3Sessions,
+          top_user_4 AS topUser4,
+          top_user_4_sessions AS topUser4Sessions,
+          top_user_5 AS topUser5,
+          top_user_5_sessions AS topUser5Sessions
+        FROM session_metrics_agg_5m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at DESC
+        LIMIT 1;
+    </select>
+
+        <!--  데드락 추이    -->
+    <select id="findDeadLockTrend" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.DeadLockCountDto">
+        SELECT
+            collected_at AS collectedAt,
+            deadlock_count AS deadlockCount
+        FROM session_metrics_agg_5m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at;
+    </select>
+
+        <!-- 데드락 리스트 최신 3개    -->
+    <select id="findDeadLockList" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.DeadLockListDto">
+        SELECT
+            session_metric_id AS sessionRawId,
+            collected_at AS collectedAt,
+            username,
+            query,
+            lock_duration_ms AS lockDurationMs,
+            table_name AS tableName,
+            blocking_username AS blockingUserName,
+            pid
+        FROM session_metrics_raw
+        WHERE database_id = #{databaseId}
+        AND is_deadlock = true
+        AND collected_at >= NOW() - INTERVAL '24 hours'
+        ORDER BY collected_at DESC
+        LIMIT 3;
+    </select>
+
+    <!-- 데드락 상세 정보 조회 -->
+    <select id="getDeadlockDetail" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.DeadLockDetailDto">
+        SELECT
+            waiter.collected_at AS collectedAt,
+            waiter.databasename AS databaseName,
+            waiter.table_name AS tableName,
+            waiter.lock_type AS lockType,
+            waiter.lock_duration_ms AS duration,
+
+            -- 차단당한 세션 (Waiter)
+            waiter.pid AS waiterPid,
+            waiter.username AS waiterUser,
+            waiter.query AS waiterQuery,
+
+            -- 차단한 세션 (Holder)
+            holder.pid AS holderPid,
+            holder.username AS holderUser,
+            holder.query AS holderQuery
+
+        FROM session_metrics_raw waiter
+        LEFT JOIN session_metrics_raw holder
+            ON waiter.blocking_pid = holder.pid
+            AND waiter.database_id = holder.database_id
+            AND waiter.collected_at = holder.collected_at
+        WHERE waiter.database_id = #{databaseId}
+            AND waiter.pid = #{pid}
+            AND waiter.is_deadlock = true
+        ORDER BY waiter.collected_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- 최근 24시간 내 데드락 반복 발생 횟수 -->
+    <select id="getDeadlockRecurrenceCount" parameterType="map" resultType="int">
+        SELECT COUNT(DISTINCT collected_at)
+        FROM session_metrics_raw
+        WHERE database_id = #{databaseId}
+        AND table_name = #{tableName}
+        AND is_deadlock = TRUE
+        AND collected_at >= NOW() - INTERVAL '24 hours'
+    </select>
+
+
+</mapper>
