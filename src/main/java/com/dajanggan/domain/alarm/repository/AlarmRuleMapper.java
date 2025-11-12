@@ -25,7 +25,7 @@ public interface AlarmRuleMapper {
     int insertRule(AlarmRule alarmRule);
 
     // 규칙 수정
-    int updateRule(AlarmRule alarmRule);
+    int updateRuleLevels(AlarmRule alarmRule);
 
     // 규칙 삭제
     int deleteRule(@Param("alarmRuleId") Long alarmRuleId);

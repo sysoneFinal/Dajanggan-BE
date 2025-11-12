@@ -49,8 +49,8 @@ public class AlarmRuleDto {
     @AllArgsConstructor
     public static class CreateRequest {
         private Boolean enabled;
-        private Long targetInstanceId;
-        private Long targetDatabaseId;
+        private Long instanceId;
+        private Long databaseId;
         private String metricType;
         private String aggregationType;
         private Levels levels;
@@ -74,8 +74,8 @@ public class AlarmRuleDto {
     @AllArgsConstructor
     public static class RuleItem {
         private Long alarmRuleId;
-        private Long targetInstanceId;
-        private Long targetDatabaseId;
+        private Long instanceId;
+        private Long databaseId;
         private String instanceName;
         private String databaseName;
         private String section;
@@ -90,8 +90,8 @@ public class AlarmRuleDto {
     public static class DetailResponse {
         private Long alarmRuleId;
         private Boolean enabled;
-        private Long targetInstanceId;
-        private Long targetDatabaseId;
+        private Long instanceId;
+        private Long databaseId;
         private String instanceName;
         private String databaseName;
         private String section;

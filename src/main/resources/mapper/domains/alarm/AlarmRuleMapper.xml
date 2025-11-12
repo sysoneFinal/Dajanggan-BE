@@ -54,12 +54,9 @@
             COALESCE(i.instance_name, 'Unknown') AS instanceName,
             COALESCE(d.database_name, 'Unknown') AS databaseName,
             ar.metric_type AS metricType,
-            ar.time_window AS timeWindow,
             ar.aggregation_type AS aggregationType,
             ar.operator,
-            ar.threshold_value AS thresholdValue,
-            ar.breach_duration AS breachDuration,
-            ar.severity_level AS severityLevel,
+            ar.levels::text AS levels,
             ar.created_at AS createdAt,
             ar.updated_at AS updatedAt,
             COALESCE(ar.enabled, false) AS enabled
@@ -77,57 +74,28 @@
 
     <!-- 규칙 생성 -->
     <insert id="insertRule" useGeneratedKeys="true" keyProperty="alarmRuleId">
-        INSERT INTO alarm_rules (
-            instance_id,
-            database_id,
-            metric_type,
-            time_window,
-            aggregation_type,
-            operator,
-            threshold_value,
-            breach_duration,
-            severity_level,
-            created_at,
-            updated_at,
-            enabled
+        INSERT INTO alarm_rules(
+            instance_id, database_id, metric_type, aggregation_type, operator,
+            enabled, levels, created_at, updated_at
         ) VALUES (
-                     #{instanceId},
-                     #{databaseId},
-                     #{metricType},
-                     COALESCE(#{timeWindow}, '15m'),
-                     #{aggregationType},
-                     #{operator},
-                     #{thresholdValue},
-                     #{breachDuration},
-                     #{severityLevel},
-                     #{createdAt},
-                     #{updatedAt},
-                     COALESCE(#{enabled}, true)
+                     #{instanceId}, #{databaseId}, #{metricType}, #{aggregationType}, COALESCE(#{operator},'gt'),
+                     COALESCE(#{enabled}, true), CAST(#{levels} AS JSONB), NOW(), NOW()
                  )
     </insert>
 
-    <!-- 규칙 수정 -->
-    <update id="updateRule">
+    <update id="updateRuleLevels">
         UPDATE alarm_rules
-        <set>
-            <if test="enabled != null">
-                enabled = #{enabled},
-            </if>
-            <if test="aggregationType != null and aggregationType != ''">
-                aggregation_type = #{aggregationType},
-            </if>
-            <if test="thresholdValue != null">
-                threshold_value = #{thresholdValue},
-            </if>
-            updated_at = #{updatedAt}
-        </set>
+        SET levels = CAST(#{levels} AS JSONB),
+            aggregation_type = #{aggregationType},
+            enabled = #{enabled},
+            updated_at = NOW()
         WHERE alarm_rule_id = #{alarmRuleId}
     </update>
 
-    <!-- 규칙 및 관련 피드 삭제 (WITH 절 사용) -->
+    <!-- 규칙 삭제 (WITH 절 사용) -->
     <delete id="deleteRule">
-        WITH deleted_feeds AS (
-        DELETE FROM alarm_feed
+        WITH deleted_rules AS (
+        DELETE FROM alarm_rules
         WHERE alarm_rule_id = #{alarmRuleId}
             RETURNING alarm_rule_id
         )
