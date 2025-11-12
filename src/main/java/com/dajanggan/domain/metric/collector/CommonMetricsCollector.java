@@ -69,8 +69,11 @@ public class CommonMetricsCollector {
                         instance.getPort(),
                         database.getDatabaseName());
 
-                // (4) 세션 메트릭 수집
+                // (4) 메트릭 수집 - 각자의 메트릭 수집기를 넣어주시면 됩니다
                 sessionMetricsCollector.collect(instance, database, collectedAt);
+
+
+
                 successCount++;
 
             } catch (Exception e) {
