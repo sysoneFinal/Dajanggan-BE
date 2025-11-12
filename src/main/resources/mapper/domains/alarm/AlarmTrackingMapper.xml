@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.alarm.repository.AlarmTrackingMapper">
+
+    <!-- 트래킹 상태 조회 -->
+    <select id="selectTrackingStatus" resultType="com.dajanggan.domain.alarm.dto.AlarmTrackingDto$TrackingStatusRaw">
+        SELECT
+        at.alarm_tracking_id AS alarmTrackingId,
+        at.alarm_rule_id AS alarmRuleId,
+        i.instance_name AS instanceName,
+        d.database_name AS databaseName,
+        ar.metric_type AS metricType,
+        at.current_value AS currentValue,
+        at.consecutive_count AS consecutiveCount,
+        at.status,
+        at.last_checked_at AS lastCheckedAt
+        FROM alarm_tracking at
+        LEFT JOIN alarm_rules ar ON at.alarm_rule_id = ar.alarm_rule_id
+        LEFT JOIN monitor_instance i ON at.instance_id = i.instance_id
+        LEFT JOIN monitor_database d ON at.database_id = d.database_id
+        WHERE 1=1
+        <if test="instanceId != null">
+            AND at.instance_id = #{instanceId}
+        </if>
+        <if test="status != null">
+            AND at.status = #{status}
+        </if>
+        ORDER BY at.last_checked_at DESC
+    </select>
+
+    <!-- 트래킹 상세 조회 -->
+    <select id="selectTrackingDetail" resultType="com.dajanggan.domain.alarm.domain.AlarmTracking">
+        SELECT
+            alarm_tracking_id AS alarmTrackingId,
+            alarm_rule_id AS alarmRuleId,
+            instance_id AS instanceId,
+            database_id AS databaseId,
+            first_triggered_at AS firstTriggeredAt,
+            last_checked_at AS lastCheckedAt,
+            consecutive_count AS consecutiveCount,
+            current_value AS currentValue,
+            status,
+            created_at AS createdAt,
+            updated_at AS updatedAt
+        FROM alarm_tracking
+        WHERE alarm_tracking_id = #{alarmTrackingId}
+    </select>
+
+    <!-- 트래킹 생성 -->
+    <insert id="insertTracking" useGeneratedKeys="true" keyProperty="alarmTrackingId">
+        INSERT INTO alarm_tracking (
+            alarm_rule_id,
+            instance_id,
+            database_id,
+            first_triggered_at,
+            last_checked_at,
+            consecutive_count,
+            current_value,
+            status,
+            created_at,
+            updated_at
+        ) VALUES (
+                     #{alarmRuleId},
+                     #{instanceId},
+                     #{databaseId},
+                     #{firstTriggeredAt},
+                     #{lastCheckedAt},
+                     #{consecutiveCount},
+                     #{currentValue},
+                     #{status},
+                     #{createdAt},
+                     #{updatedAt}
+                 )
+    </insert>
+
+    <!-- 트래킹 업데이트 -->
+    <update id="updateTracking">
+        UPDATE alarm_tracking
+        SET
+            last_checked_at = #{lastCheckedAt},
+            consecutive_count = #{consecutiveCount},
+            current_value = #{currentValue},
+            status = #{status},
+            updated_at = #{updatedAt}
+        WHERE alarm_tracking_id = #{alarmTrackingId}
+    </update>
+
+    <!-- 트래킹 상태 변경 -->
+    <update id="updateTrackingStatus">
+        UPDATE alarm_tracking
+        SET status = #{status},
+            updated_at = NOW()
+        WHERE alarm_tracking_id = #{alarmTrackingId}
+    </update>
+
+</mapper>
