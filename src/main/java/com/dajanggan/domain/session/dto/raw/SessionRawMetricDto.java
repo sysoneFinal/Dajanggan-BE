@@ -44,4 +44,5 @@ public class SessionRawMetricDto {
     private String tableName;
 
     private OffsetDateTime createdAt;
+    private Long instanceId;
 }

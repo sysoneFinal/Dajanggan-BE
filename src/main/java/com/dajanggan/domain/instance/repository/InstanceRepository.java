@@ -15,6 +15,3 @@ public interface InstanceRepository {
     int updateInstance(Instance instance);
     void deleteById(@Param("id") Long id);
 }
-
-
-
