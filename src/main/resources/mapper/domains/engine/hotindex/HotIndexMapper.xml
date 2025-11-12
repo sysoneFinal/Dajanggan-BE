@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.engine.hotindex.repository.HotIndexMapper">
+
+    <!-- 인덱스 사용 분포 조회 -->
+    <select id="selectUsageDistribution" resultType="map">
+        SELECT
+            COUNT(CASE WHEN status = '정상' THEN 1 END) as used_count,
+            COUNT(CASE WHEN status = '미사용' THEN 1 END) as unused_count,
+            COUNT(CASE WHEN status = '비효율' THEN 1 END) as inefficient_count
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+    </select>
+
+    <!-- Top 사용 인덱스 조회 -->
+    <select id="selectTopUsageIndexes" resultType="map">
+        SELECT
+            index_name,
+            total_idx_scan as idx_scan
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+        ORDER BY total_idx_scan DESC
+            LIMIT 5
+    </select>
+
+    <!-- 비효율 인덱스 조회 -->
+    <select id="selectInefficientIndexes" resultType="map">
+        SELECT
+            index_name,
+            (100 - avg_idx_efficiency) as inefficiency_score
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+          AND status = '비효율'
+        ORDER BY inefficiency_score DESC
+            LIMIT 5
+    </select>
+
+    <!-- 캐시 히트율 시계열 -->
+    <select id="selectCacheHitRatioTimeSeries" resultType="map">
+        SELECT
+            collected_at as timestamp,
+            avg_idx_hit_ratio as cache_hit_ratio
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 인덱스 효율성 -->
+    <select id="selectIndexEfficiency" resultType="map">
+        SELECT
+            index_name,
+            total_idx_scan as idx_scan,
+            avg_idx_efficiency as efficiency
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+    </select>
+
+    <!-- 접근 추이 시계열 -->
+    <select id="selectAccessTrendTimeSeries" resultType="map">
+        SELECT
+            collected_at as timestamp,
+            total_idx_tup_read as idx_tup_read,
+            total_idx_tup_fetch as idx_tup_fetch
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 스캔 속도 시계열 -->
+    <select id="selectScanSpeedTimeSeries" resultType="map">
+        SELECT
+            collected_at as timestamp,
+            avg_scan_time_ms
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 최근 통계 -->
+    <select id="selectRecentStats" resultType="map">
+        SELECT
+            AVG(avg_idx_hit_ratio) as cache_hit_ratio,
+            AVG(avg_scan_time_ms) as avg_scan_speed,
+            SUM(total_idx_tup_read) as total_reads,
+            SUM(total_idx_tup_fetch) as total_writes,
+            COUNT(CASE WHEN status = '비효율' THEN 1 END) as inefficient_count
+        FROM hot_index_agg
+        WHERE database_id = #{databaseId}
+    </select>
+
+    <!-- HotIndex 리스트 조회 -->
+    <select id="selectHotIndexList" resultType="map">
+        SELECT
+        hot_index_raw_id,
+        schema_name,
+        table_name,
+        index_name,
+        index_type,
+        index_size,
+        idx_scan,
+        idx_tup_read,
+        idx_tup_fetch,
+        idx_blks_read,
+        idx_blks_hit,
+        bloat_percent,
+        avg_scan_time_ms,
+        last_idx_scan
+        FROM hot_index_raw
+        WHERE database_id = #{databaseId}
+        AND collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
+        </if>
+        ORDER BY collected_at DESC
+    </select>
+
+</mapper>
