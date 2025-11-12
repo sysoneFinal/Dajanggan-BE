@@ -26,9 +26,9 @@ public class SessionMetricsCollector {
 
     /** 세션 원시 지표 수집기 (Database 단위) */
     public void collect(Instance instance, Database database, OffsetDateTime collectedAt) {
-        // ① JdbcTemplate 생성 (인스턴스별 동적 연결)
-        JdbcTemplate jdbc = dataSourceFactory.createJdbcTemplate(instance);
-        
+        // ① JdbcTemplate 생성 (인스턴스 + 데이터베이스명으로 동적 연결)
+        JdbcTemplate jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName());
+
         // ② 현재 세션 조회 (pg_stat_activity) - 대상 PostgreSQL DB에서 조회
         List<SessionRawMetricDto> allSessions = sessionRawRepositoryImpl.getActiveSessions(jdbc);
 
@@ -38,16 +38,17 @@ public class SessionMetricsCollector {
                 .collect(Collectors.toList());
 
         if (sessions.isEmpty()) {
-            log.debug("[{}] No active sessions found for database: {}", 
+            log.debug("[{}] No active sessions found for database: {}",
                     collectedAt, database.getDatabaseName());
             return;
         }
 
         // ④ 세션별 가공
         for (SessionRawMetricDto dto : sessions) {
-            // Database ID 설정
+            // Database ID와 Instance ID 설정
             dto.setDatabaseId(database.getDatabaseId());
-            
+            dto.setInstanceId(instance.getInstanceId());
+
             // 쿼리 실행 시간 계산
             OffsetDateTime queryStart = dto.getQueryStart();
             if (queryStart != null) {
@@ -90,9 +91,9 @@ public class SessionMetricsCollector {
 
         // ⑥ 저장 - 모니터링 DB에 INSERT (MyBatis 사용)
         sessionRawRepository.insertSessionMetrics(sessions);
-        log.info("✅ [{}] Collected {} session metrics for database: {} (instance: {}:{})", 
-                collectedAt, 
-                sessions.size(), 
+        log.info("✅ [{}] Collected {} session metrics for database: {} (instance: {}:{})",
+                collectedAt,
+                sessions.size(),
                 database.getDatabaseName(),
                 instance.getHost(),
                 instance.getPort());

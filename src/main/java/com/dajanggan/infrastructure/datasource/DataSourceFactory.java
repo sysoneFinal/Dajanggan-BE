@@ -23,37 +23,45 @@ public class DataSourceFactory {
 
     private final AesGcmService aesGcmService;
 
-    // 인스턴스별 DataSource 캐싱 (동일 인스턴스에 대해 재사용)
-    private final Map<Long, DataSource> dataSourceCache = new ConcurrentHashMap<>();
+    // 인스턴스+DB별 DataSource 캐싱
+    private final Map<String, DataSource> dataSourceCache = new ConcurrentHashMap<>();
 
     /**
-     * Instance 정보를 기반으로 JdbcTemplate 생성
+     * Instance와 Database 이름을 기반으로 JdbcTemplate 생성
      */
-    public JdbcTemplate createJdbcTemplate(Instance instance) {
-        DataSource dataSource = getOrCreateDataSource(instance);
+    public JdbcTemplate createJdbcTemplate(Instance instance, String databaseName) {
+        DataSource dataSource = getOrCreateDataSource(instance, databaseName);
         return new JdbcTemplate(dataSource);
     }
 
     /**
      * DataSource 캐시에서 가져오거나 새로 생성
      */
-    private DataSource getOrCreateDataSource(Instance instance) {
-        return dataSourceCache.computeIfAbsent(instance.getInstanceId(), 
-            id -> createDataSource(instance));
+    private DataSource getOrCreateDataSource(Instance instance, String databaseName) {
+        String cacheKey = instance.getInstanceId() + ":" + databaseName;
+        return dataSourceCache.computeIfAbsent(cacheKey, 
+            key -> createDataSource(instance, databaseName));
     }
 
     /**
      * HikariCP를 사용한 DataSource 생성
      */
-    private DataSource createDataSource(Instance instance) {
+    private DataSource createDataSource(Instance instance, String databaseName) {
         HikariConfig config = new HikariConfig();
         
         // JDBC URL 구성
+        String host = instance.getHost();
+        if (host != null) {
+            host = host.trim(); // 공백 제거
+        }
+        log.warn("> [DEBUG] Host value: '{}', length: {}", host, host != null ? host.length() : 0);
+        
         String jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s",
-                instance.getHost(),
+                host,
                 instance.getPort(),
-                instance.getDbname());
+                databaseName);
         config.setJdbcUrl(jdbcUrl);
+        log.info(">> Creating connection to: {}", jdbcUrl);
         
         // 인증 정보
         config.setUsername(instance.getUserName());
@@ -63,19 +71,23 @@ public class DataSourceFactory {
             try {
                 String password = aesGcmService.decryptToString(instance.getSecretRef());
                 config.setPassword(password);
-                log.debug("Password decrypted successfully for instance: {}", instance.getInstanceName());
+                log.debug(">>>> Password decrypted successfully for instance: {}", instance.getInstanceName());
+                log.warn(">>>>> [TEMP DEBUG] Decrypted password length: {} chars", password.length()); // 임시 디버깅
             } catch (Exception e) {
-                log.error("Failed to decrypt password for instance: {} - {}", 
+                log.error("************Failed to decrypt password for instance: {} - {}",
                         instance.getInstanceName(), e.getMessage());
                 throw new RuntimeException("Failed to decrypt password for instance: " + instance.getInstanceName(), e);
             }
         } else {
-            log.warn("No password (secretRef) configured for instance: {}", instance.getInstanceName());
+            log.warn(">>>>>>>>>>No password (secretRef) configured for instance: {}", instance.getInstanceName());
         }
         
         // SSL 설정
         if (instance.getSslmode() != null) {
             config.addDataSourceProperty("sslmode", instance.getSslmode());
+            log.info(">>>>>> SSL Mode: {}", instance.getSslmode());
+        } else {
+            log.warn("******** No SSL mode configured for instance: {}", instance.getInstanceName());
         }
         
         // Connection Pool 설정
@@ -86,23 +98,29 @@ public class DataSourceFactory {
         config.setMaxLifetime(600000);  // 10분
         
         // Pool 이름
-        config.setPoolName("MetricsCollector-" + instance.getInstanceName());
+        config.setPoolName("MetricsCollector-" + instance.getInstanceName() + "-" + databaseName);
         
-        log.info("DataSource created for instance: {} ({}:{})", 
-                instance.getInstanceName(), instance.getHost(), instance.getPort());
+        log.info(">>>>>>>>DataSource created for instance: {} ({}:{}/{})",
+                instance.getInstanceName(), instance.getHost(), instance.getPort(), databaseName);
         
         return new HikariDataSource(config);
     }
 
     /**
-     * 특정 인스턴스의 DataSource 제거 (인스턴스 삭제 시 호출)
+     * 특정 인스턴스의 모든 DataSource 제거 (인스턴스 삭제 시 호출)
      */
     public void removeDataSource(Long instanceId) {
-        DataSource dataSource = dataSourceCache.remove(instanceId);
-        if (dataSource instanceof HikariDataSource) {
-            ((HikariDataSource) dataSource).close();
-            log.info("DataSource closed for instanceId: {}", instanceId);
-        }
+        dataSourceCache.entrySet().removeIf(entry -> {
+            if (entry.getKey().startsWith(instanceId + ":")) {
+                DataSource dataSource = entry.getValue();
+                if (dataSource instanceof HikariDataSource) {
+                    ((HikariDataSource) dataSource).close();
+                }
+                return true;
+            }
+            return false;
+        });
+        log.info("All DataSources closed for instanceId: {}", instanceId);
     }
 
     /**

@@ -84,7 +84,7 @@ public class SessionRawRepositoryImpl {
             SessionRawMetricDto dto = new SessionRawMetricDto();
             
             dto.setPid(rs.getInt("pid"));
-            dto.setDatabasename(rs.getString("databasename"));
+            dto.setDatabasename(rs.getString("database_name")); // 수정: database_name
             dto.setUsername(rs.getString("username"));
             dto.setClientAddr(rs.getString("client_addr"));
             dto.setApplicationName(rs.getString("application_name"));

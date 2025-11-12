@@ -39,14 +39,13 @@ public class CommonMetricsCollector {
 
         log.info("수집 대상 데이터베이스: {} 개", databases.size());
 
-        // (2) 인스턴스 정보 한 번에 조회 (N+1 문제 방지)
+        // (2) 인스턴스 정보 한 번에 조회 (N+1 문제 방지) - secret_ref 포함!
         List<Long> instanceIds = databases.stream()
                 .map(Database::getInstanceId)
                 .distinct()
                 .toList();
         
-        Map<Long, Instance> instanceMap = instanceRepository.findAll().stream()
-                .filter(i -> instanceIds.contains(i.getInstanceId()))
+        Map<Long, Instance> instanceMap = instanceRepository.findAllWithSecrets(instanceIds).stream()
                 .collect(Collectors.toMap(Instance::getInstanceId, i -> i));
 
         // (3) 데이터베이스별 수집 실행
@@ -57,14 +56,14 @@ public class CommonMetricsCollector {
             Instance instance = instanceMap.get(database.getInstanceId());
             
             if (instance == null) {
-                log.error("❌ Database ID {} - 연결된 Instance를 찾을 수 없음 (instance_id: {})", 
+                log.error("************* Database ID {} - 연결된 Instance를 찾을 수 없음 (instance_id: {})",
                         database.getDatabaseId(), database.getInstanceId());
                 failureCount++;
                 continue;
             }
 
             try {
-                log.info("📊 [{}] Collecting metrics from {}:{} / {}",
+                log.info(">>>>>>>>>>>>>>>> [{}] Collecting metrics from {}:{} / {}",
                         collectedAt,
                         instance.getHost(),
                         instance.getPort(),
@@ -76,7 +75,7 @@ public class CommonMetricsCollector {
 
             } catch (Exception e) {
                 failureCount++;
-                log.error("❌ [{}] {}:{}/{} 수집 실패: {}", 
+                log.error("************* [{}] {}:{}/{} 수집 실패: {}",
                         collectedAt,
                         instance.getHost(),
                         instance.getPort(),
