@@ -8,9 +8,11 @@
         <result property="databaseId" column="database_id"/>
         <result property="instanceId" column="instance_id"/>
         <result property="databaseName" column="database_name"/>
+        <result property="isEnabled" column="is_enabled"/>
         <result property="connections" column="connections"/>
         <result property="sizeBytes" column="size_bytes"/>
         <result property="cacheHitRate" column="cache_hit_rate"/>
+        <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
@@ -19,6 +21,7 @@
         database_id,
         instance_id,
         database_name,
+        is_enabled,
         connections,
         size_bytes,
         cache_hit_rate,
@@ -35,6 +38,7 @@
             database_id,
             instance_id,
             database_name,
+            is_enabled,
             connections,
             size_bytes,
             cache_hit_rate,
@@ -42,6 +46,23 @@
             updated_at
         FROM monitor_database
         WHERE instance_id = #{instanceId}
+    </select>
+
+    <!-- 메트릭 수집이 활성화된 데이터베이스 목록 조회 -->
+    <select id="findAllEnabled" resultMap="DatabaseDtoMap">
+        SELECT
+            database_id,
+            instance_id,
+            database_name,
+            is_enabled,
+            connections,
+            size_bytes,
+            cache_hit_rate,
+            created_at,
+            updated_at
+        FROM monitor_database
+        WHERE is_enabled = true
+        ORDER BY instance_id, database_id
     </select>
 
     <select id="findById" parameterType="long" resultMap="DatabaseDtoMap">

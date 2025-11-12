@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.session.repository.SessionActiveRepository">
+
+    <resultMap id="sessionActive" type="com.dajanggan.domain.session.dto.SessionActive">
+        <result property="sessionMetricId" column="session_metric_id"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="pid" column="pid"/>
+        <result property="username" column="username"/>
+        <result property="databasename" column="databasename"/>
+        <result property="clientAddr" column="client_addr"/>
+        <result property="applicationName" column="application_name"/>
+        <result property="state" column="state"/>
+        <result property="waitEventType" column="wait_event_type"/>
+        <result property="waitEvent" column="wait_event"/>
+        <result property="waitClass" column="wait_class"/>
+        <result property="bottleneckCause" column="bottleneck_cause"/>
+        <result property="impactLevel" column="impact_level"/>
+        <result property="waitDurationSec" column="wait_duration_sec"/>
+        <result property="blockingPid" column="blocking_pid"/>
+        <result property="xactStart" column="xact_start"/>
+        <result property="queryType" column="query_type"/>
+        <result property="query" column="query"/>
+        <result property="queryStart" column="query_start"/>
+        <result property="queryAgeSec" column="query_age_sec"/>
+        <result property="cpuUsage" column="cpu_usage"/>
+        <result property="memoryUsageMb" column="memory_usage_mb"/>
+        <result property="lockType" column="lock_type"/>
+        <result property="lockDurationMs" column="lock_duration_ms"/>
+        <result property="isDeadlock" column="is_deadlock"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!--  필터 옵션  -->
+    <select id="findDistinctDatabases" parameterType="long" resultType="string">
+        SELECT DISTINCT databasename
+        FROM session_metrics_raw
+        WHERE instance_id = #{instanceId}
+          AND databasename IS NOT NULL
+        ORDER BY databasename
+    </select>
+
+    <select id="findDistinctStates" parameterType="long" resultType="string">
+        SELECT DISTINCT state
+        FROM session_metrics_raw
+        WHERE instance_id = #{instanceId}
+          AND state IS NOT NULL
+        ORDER BY state
+    </select>
+
+    <select id="findDistinctWaitEventTypes" parameterType="long" resultType="string">
+        SELECT DISTINCT wait_event_type
+        FROM session_metrics_raw
+        WHERE instance_id = #{instanceId}
+          AND wait_event_type IS NOT NULL
+        ORDER BY wait_event_type
+    </select>
+
+    <!--  요약 카드  -->
+    <select id="getRecentSummary" parameterType="long" resultType="map">
+        SELECT
+            COUNT(*) FILTER (WHERE state = 'active') AS activeCount,
+            COUNT(*) FILTER (WHERE state = 'idle in transaction') AS waitingCount,
+            COUNT(*) FILTER (WHERE state = 'idle') AS idleCount,
+            COUNT(*) AS totalCount
+        FROM session_metrics_raw
+        WHERE instance_id = #{instanceId}
+          AND collected_at = (
+              SELECT MAX(collected_at)
+              FROM session_metrics_raw
+              WHERE instance_id = #{instanceId}
+          )
+    </select>
+
+    <!--  Active Session 리스트 조회  -->
+    <select id="getSessionList" resultMap="sessionActive" parameterType="map">
+        SELECT
+            session_metric_id, database_id, collected_at, pid, username, databasename,
+            client_addr, application_name, state, wait_event_type, wait_event,
+            wait_class, bottleneck_cause, impact_level, wait_duration_sec,
+            blocking_pid, xact_start, query_type, query, query_start,
+            query_age_sec, cpu_usage, memory_usage_mb, lock_type,
+            lock_duration_ms, is_deadlock, created_at
+        FROM session_metrics_raw
+        WHERE instance_id = #{instanceId}
+
+        <!-- 최신 수집 시점 데이터만 (히스토리 모드) -->
+        AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM session_metrics_raw
+            WHERE instance_id = #{instanceId}
+        )
+
+        <!-- DB명 필터 -->
+        <if test="dbNames != null and dbNames != ''">
+            AND databasename IN
+            <foreach item="db" collection="dbNames.split(',')" open="(" separator="," close=")">
+                #{db}
+            </foreach>
+        </if>
+
+        <!-- State 필터 -->
+        <if test="states != null and states != ''">
+            AND state IN
+            <foreach item="st" collection="states.split(',')" open="(" separator="," close=")">
+                #{st}
+            </foreach>
+        </if>
+
+        <!-- Wait Event Type 필터 -->
+        <if test="waitEventTypes != null and waitEventTypes != ''">
+            AND wait_event_type IN
+            <foreach item="wet" collection="waitEventTypes.split(',')" open="(" separator="," close=")">
+                #{wet}
+            </foreach>
+        </if>
+
+        <!-- Query Type 필터 -->
+        <if test="queryTypes != null and queryTypes != ''">
+            AND query_type IN
+            <foreach item="qt" collection="queryTypes.split(',')" open="(" separator="," close=")">
+                #{qt}
+            </foreach>
+        </if>
+
+        <!-- 사용자명 검색 -->
+        <if test="username != null and username != ''">
+            AND username LIKE CONCAT('%', #{username}, '%')
+        </if>
+
+        ORDER BY query_age_sec DESC NULLS LAST
+        LIMIT #{pageSize}
+        OFFSET #{offset}
+    </select>
+
+    <!--  전체 개수 조회  -->
+    <select id="getSessionListCount" resultType="int" parameterType="map">
+        SELECT COUNT(*)
+        FROM session_metrics_raw
+        WHERE instance_id = #{instanceId}
+
+        AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM session_metrics_raw
+            WHERE instance_id = #{instanceId}
+        )
+
+        <if test="dbNames != null and dbNames != ''">
+            AND databasename IN
+            <foreach item="db" collection="dbNames.split(',')" open="(" separator="," close=")">
+                #{db}
+            </foreach>
+        </if>
+
+        <if test="states != null and states != ''">
+            AND state IN
+            <foreach item="st" collection="states.split(',')" open="(" separator="," close=")">
+                #{st}
+            </foreach>
+        </if>
+
+        <if test="waitEventTypes != null and waitEventTypes != ''">
+            AND wait_event_type IN
+            <foreach item="wet" collection="waitEventTypes.split(',')" open="(" separator="," close=")">
+                #{wet}
+            </foreach>
+        </if>
+
+        <if test="queryTypes != null and queryTypes != ''">
+            AND query_type IN
+            <foreach item="qt" collection="queryTypes.split(',')" open="(" separator="," close=")">
+                #{qt}
+            </foreach>
+        </if>
+
+        <if test="username != null and username != ''">
+            AND username LIKE CONCAT('%', #{username}, '%')
+        </if>
+    </select>
+
+    <!--  세션 상세 정보 조회  -->
+    <select id="getSessionDetail" resultMap="sessionActive" parameterType="map">
+        SELECT
+            session_metric_id, database_id, collected_at, pid, username, databasename,
+            client_addr, application_name, state, wait_event_type, wait_event,
+            wait_class, bottleneck_cause, impact_level, wait_duration_sec,
+            blocking_pid, xact_start, query_type, query, query_start,
+            query_age_sec, cpu_usage, memory_usage_mb, lock_type,
+            lock_duration_ms, is_deadlock, created_at
+        FROM session_metrics_raw
+        WHERE database_id = #{databaseId}
+        AND pid = #{pid}
+        AND collected_at = (
+        SELECT MAX(collected_at)
+        FROM session_metrics_raw
+        WHERE database_id = #{databaseId}
+        )
+        LIMIT 1
+    </select>
+
+</mapper>

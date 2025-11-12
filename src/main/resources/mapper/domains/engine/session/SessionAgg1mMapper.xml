@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.session.repository.SessionAgg1mRepository">
+
+            <!--  세션 상태 추이    -->
+    <select id="getSessionStatTrend" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg1m.SessionStateDto">
+        SELECT
+            collected_at AS collectedAt,
+            active_sessions AS activeSessions,
+            idle_sessions AS idleSessions,
+            waiting_sessions AS waitingSessions
+        FROM session_metrics_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at
+    </select>
+
+        <!--  병목현상 추이  -->
+    <select id="getWaitEventRatioTrend" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg1m.WaitEventRatioTrendDto">
+        SELECT
+            collected_at AS collectedAt,
+            lock_wait_count AS lockWaitCount,
+            io_wait_count AS ioWaitCount,
+            client_wait_count AS clientWaitCount,
+            lwlock_wait_count AS lwlockWaitCount
+        FROM session_metrics_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at
+    </select>
+
+    <!--  connection 사용량 추이   -->
+    <select id="getConnectionUsageTrend" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg1m.ConnectionTrendDto">
+        SELECT
+            collected_at AS collectedAt,
+            used_connections AS usedConnections
+        FROM session_metrics_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at
+    </select>
+    
+    <select id="getTxDurationTrend" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg1m.AvgTxDurationTrendDto">
+        SELECT
+            collected_at AS collectedAt,
+            avg_tx_duration_sec AS avgTxDurationSec
+        FROM session_metrics_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at;
+    </select>
+
+    <select id="getLockWaitTrend" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg1m.AvgLockWaitTrendDto">
+        SELECT
+            collected_at AS collectedAt,
+            avg_lock_wait_sec AS avgLockWaitSec
+        FROM session_metrics_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at;
+    </select>
+
+
+</mapper>
