@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.engine.hottable.repository.HotTableMapper">
+
+    <!-- Top 테이블 조회 (크기별) -->
+    <select id="selectTopTablesBySize" resultType="map">
+        SELECT
+            schema_name,
+            table_name,
+            avg_table_size as value,
+            status
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM hot_table_agg
+            WHERE database_id = #{databaseId}
+            )
+        ORDER BY avg_table_size DESC
+            LIMIT 5
+    </select>
+
+    <!-- Top 테이블 조회 (스캔별) -->
+    <select id="selectTopTablesByScan" resultType="map">
+        SELECT
+            schema_name,
+            table_name,
+            (total_seq_scan + total_idx_scan) as value,
+            status
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM hot_table_agg
+            WHERE database_id = #{databaseId}
+            )
+        ORDER BY (total_seq_scan + total_idx_scan) DESC
+            LIMIT 5
+    </select>
+
+    <!-- Top 테이블 조회 (Bloat별) -->
+    <select id="selectTopTablesByBloat" resultType="map">
+        SELECT
+            schema_name,
+            table_name,
+            avg_bloat_percent as value,
+            status
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM hot_table_agg
+            WHERE database_id = #{databaseId}
+            )
+        ORDER BY avg_bloat_percent DESC
+            LIMIT 5
+    </select>
+
+    <!-- 테이블 활동 시계열 데이터 조회 -->
+    <select id="selectTableActivityTimeSeries" resultType="map">
+        SELECT
+            DATE_TRUNC('hour', collected_at) as timestamp,
+            SUM(total_seq_scan) as seq_scan,
+            SUM(total_idx_scan) as idx_scan,
+            SUM(total_tup_ins) as n_tup_ins,
+            SUM(total_tup_upd) as n_tup_upd,
+            SUM(total_tup_del) as n_tup_del
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY DATE_TRUNC('hour', collected_at)
+        ORDER BY timestamp
+    </select>
+
+    <!-- 캐시 히트율 시계열 데이터 조회 -->
+    <select id="selectCacheHitRatioTimeSeries" resultType="map">
+        SELECT
+            DATE_TRUNC('hour', collected_at) as timestamp,
+            AVG(avg_cache_hit_ratio) as cache_hit_ratio
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY DATE_TRUNC('hour', collected_at)
+        ORDER BY timestamp
+    </select>
+
+    <!-- Bloat 상태 조회 -->
+    <select id="selectBloatStatus" resultType="map">
+        SELECT
+            table_name,
+            avg_bloat_percent as bloat_percent
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM hot_table_agg
+            WHERE database_id = #{databaseId}
+        )
+        ORDER BY avg_bloat_percent DESC
+            LIMIT 10
+    </select>
+
+    <!-- Vacuum 상태 조회 -->
+    <select id="selectVacuumStatus" resultType="map">
+        SELECT
+            table_name,
+            vacuum_delay_seconds
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM hot_table_agg
+            WHERE database_id = #{databaseId}
+        )
+        ORDER BY vacuum_delay_seconds DESC
+            LIMIT 10
+    </select>
+
+    <!-- 최근 통계 조회 -->
+    <select id="selectRecentStats" resultType="map">
+        SELECT
+            COUNT(*) as total_tables,
+            COUNT(CASE WHEN status = '정상' THEN 1 END) as active_tables,
+            AVG(avg_cache_hit_ratio) as avg_cache_hit_ratio,
+            SUM(total_seq_scan) as total_seq_scans,
+            SUM(total_idx_scan) as total_idx_scans,
+            COUNT(CASE WHEN avg_bloat_percent >= 15 THEN 1 END) as high_bloat_tables
+        FROM hot_table_agg
+        WHERE database_id = #{databaseId}
+          AND collected_at = (
+            SELECT MAX(collected_at)
+            FROM hot_table_agg
+            WHERE database_id = #{databaseId}
+        )
+    </select>
+
+    <!-- HotTable 리스트 데이터 조회 -->
+    <select id="selectHotTableList" resultType="map">
+        SELECT
+        hot_table_raw_id,
+        schema_name,
+        table_name,
+        table_size,
+        seq_scan,
+        seq_tup_read,
+        idx_scan,
+        idx_tup_fetch,
+        n_tup_ins,
+        n_tup_upd,
+        n_tup_del,
+        n_tup_hot_upd,
+        n_live_tup,
+        n_dead_tup,
+        bloat_percent,
+        last_vacuum,
+        last_autovacuum,
+        heap_blks_read,
+        heap_blks_hit,
+        CASE
+        WHEN bloat_percent >= 30 THEN '위험'
+        WHEN bloat_percent >= 15 THEN '주의'
+        ELSE '정상'
+        END as status
+        FROM hot_table_raw
+        WHERE database_id = #{databaseId}
+        AND collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+            AND CASE
+            WHEN bloat_percent >= 30 THEN '위험'
+            WHEN bloat_percent >= 15 THEN '주의'
+            ELSE '정상'
+            END IN
+            <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
+        </if>
+        ORDER BY collected_at DESC, table_size DESC
+    </select>
+</mapper>

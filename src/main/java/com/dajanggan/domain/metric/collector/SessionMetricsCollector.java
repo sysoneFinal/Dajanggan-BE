@@ -26,13 +26,13 @@ public class SessionMetricsCollector {
 
     /** 세션 원시 지표 수집기 (Database 단위) */
     public void collect(Instance instance, Database database, OffsetDateTime collectedAt) {
-        // ① JdbcTemplate 생성 (인스턴스 + 데이터베이스명으로 동적 연결)
+        //  JdbcTemplate 생성 (인스턴스 + 데이터베이스명으로 동적 연결)
         JdbcTemplate jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName());
 
-        // ② 현재 세션 조회 (pg_stat_activity) - 대상 PostgreSQL DB에서 조회
+        //  현재 세션 조회 (pg_stat_activity) - 대상 PostgreSQL DB에서 조회
         List<SessionRawMetricDto> allSessions = sessionRawRepositoryImpl.getActiveSessions(jdbc);
 
-        // ③ 해당 데이터베이스의 세션만 필터링
+        //  해당 데이터베이스의 세션만 필터링
         List<SessionRawMetricDto> sessions = allSessions.stream()
                 .filter(s -> database.getDatabaseName().equals(s.getDatabasename()))
                 .collect(Collectors.toList());
@@ -43,7 +43,7 @@ public class SessionMetricsCollector {
             return;
         }
 
-        // ④ 세션별 가공
+        //  세션별 가공
         for (SessionRawMetricDto dto : sessions) {
             // Database ID와 Instance ID 설정
             dto.setDatabaseId(database.getDatabaseId());
@@ -79,7 +79,7 @@ public class SessionMetricsCollector {
             dto.setCreatedAt(collectedAt);
         }
 
-        // ⑤ 락 정보 매핑 - 대상 PostgreSQL DB에서 조회
+        //  락 정보 매핑 - 대상 PostgreSQL DB에서 조회
         Map<Integer, String> lockMap = sessionRawRepositoryImpl.getCurrentLocks(jdbc);
         for (SessionRawMetricDto dto : sessions) {
             if (lockMap.containsKey(dto.getPid())) {
@@ -89,9 +89,9 @@ public class SessionMetricsCollector {
             }
         }
 
-        // ⑥ 저장 - 모니터링 DB에 INSERT (MyBatis 사용)
+        //  저장 - 모니터링 DB에 INSERT
         sessionRawRepository.insertSessionMetrics(sessions);
-        log.info("✅ [{}] Collected {} session metrics for database: {} (instance: {}:{})",
+        log.info("[{}] Collected {} session metrics for database: {} (instance: {}:{})",
                 collectedAt,
                 sessions.size(),
                 database.getDatabaseName(),
