@@ -13,6 +13,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/instances")
@@ -32,6 +33,13 @@ public class InstanceController {
                 .toUri();
 
         return ResponseEntity.created(location).body(response);
+    }
+
+    // 연결 테스트 API 추가
+    @PostMapping("/test-connection")
+    public ResponseEntity<Map<String, Object>> testConnection(@Valid @RequestBody InstanceCreateRequest req) {
+        Map<String, Object> response = instanceService.testConnection(req);
+        return ResponseEntity.ok(response);
     }
 
     // 하나 조회

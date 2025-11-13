@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.alarm.repository.AlarmRuleMapper">
+
+    <!-- 규칙 목록 조회 -->
+    <select id="selectRuleList" resultType="com.dajanggan.domain.alarm.dto.AlarmRuleDto$RuleListRaw">
+        SELECT
+        ar.alarm_rule_id AS alarmRuleId,
+        ar.instance_id AS instanceId,
+        ar.database_id AS databaseId,
+        COALESCE(i.instance_name, 'Unknown') AS instanceName,
+        COALESCE(d.database_name, 'Unknown') AS databaseName,
+        CASE
+        WHEN ar.metric_type LIKE '%vacuum%' OR ar.metric_type LIKE '%dead_tuples%' THEN 'vacuum'
+        WHEN ar.metric_type LIKE '%bloat%' THEN 'bloat'
+        WHEN ar.metric_type LIKE '%wal%' THEN 'wal'
+        ELSE 'session'
+        END AS section,
+        ar.metric_type AS metricType,
+        COALESCE(ar.enabled, false) AS enabled
+        FROM alarm_rules ar
+        LEFT JOIN (
+        SELECT instance_id, instance_name
+        FROM monitor_instance
+        ) i ON ar.instance_id = i.instance_id
+        LEFT JOIN (
+        SELECT database_id, database_name
+        FROM monitor_database
+        ) d ON ar.database_id = d.database_id
+        WHERE 1=1
+        <if test="instanceId != null">
+            AND ar.instance_id = #{instanceId}
+        </if>
+        <if test="databaseId != null">
+            AND ar.database_id = #{databaseId}
+        </if>
+        <if test="metricType != null and metricType != ''">
+            AND ar.metric_type = #{metricType}
+        </if>
+        <if test="enabled != null">
+            AND ar.enabled = #{enabled}
+        </if>
+        ORDER BY ar.created_at DESC
+    </select>
+
+    <!-- 규칙 상세 조회 -->
+    <select id="selectRuleDetail" resultType="com.dajanggan.domain.alarm.domain.AlarmRule">
+        SELECT
+            ar.alarm_rule_id AS alarmRuleId,
+            ar.instance_id AS instanceId,
+            ar.database_id AS databaseId,
+            COALESCE(i.instance_name, 'Unknown') AS instanceName,
+            COALESCE(d.database_name, 'Unknown') AS databaseName,
+            ar.metric_type AS metricType,
+            ar.aggregation_type AS aggregationType,
+            ar.operator,
+            ar.levels::text AS levels,
+            ar.created_at AS createdAt,
+            ar.updated_at AS updatedAt,
+            COALESCE(ar.enabled, false) AS enabled
+        FROM alarm_rules ar
+                 LEFT JOIN (
+            SELECT instance_id, instance_name
+            FROM monitor_instance
+        ) i ON ar.instance_id = i.instance_id
+                 LEFT JOIN (
+            SELECT database_id, database_name
+            FROM monitor_database
+        ) d ON ar.database_id = d.database_id
+        WHERE ar.alarm_rule_id = #{alarmRuleId}
+    </select>
+
+    <!-- 규칙 생성 -->
+    <insert id="insertRule" useGeneratedKeys="true" keyProperty="alarmRuleId">
+        INSERT INTO alarm_rules(
+            instance_id, database_id, metric_type, aggregation_type, operator,
+            enabled, levels, created_at, updated_at
+        ) VALUES (
+                     #{instanceId}, #{databaseId}, #{metricType}, #{aggregationType}, COALESCE(#{operator},'gt'),
+                     COALESCE(#{enabled}, true), CAST(#{levels} AS JSONB), NOW(), NOW()
+                 )
+    </insert>
+
+    <update id="updateRuleLevels">
+        UPDATE alarm_rules
+        SET levels = CAST(#{levels} AS JSONB),
+            aggregation_type = #{aggregationType},
+            enabled = #{enabled},
+            updated_at = NOW()
+        WHERE alarm_rule_id = #{alarmRuleId}
+    </update>
+
+    <!-- 규칙 삭제 (WITH 절 사용) -->
+    <delete id="deleteRule">
+        WITH deleted_rules AS (
+        DELETE FROM alarm_rules
+        WHERE alarm_rule_id = #{alarmRuleId}
+            RETURNING alarm_rule_id
+        )
+        DELETE FROM alarm_rules
+        WHERE alarm_rule_id = #{alarmRuleId}
+    </delete>
+
+    <!-- 규칙 활성화/비활성화 -->
+    <update id="updateRuleEnabled">
+        UPDATE alarm_rules
+        SET enabled = #{enabled},
+            updated_at = NOW()
+        WHERE alarm_rule_id = #{alarmRuleId}
+    </update>
+
+</mapper>
