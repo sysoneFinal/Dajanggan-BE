@@ -48,6 +48,32 @@
         WHERE instance_id = #{instanceId}
     </select>
 
+    <!-- Entity 반환용 (내부 로직에서 사용) -->
+    <select id="findDatabaseEntitiesByInstanceId" resultMap="DatabaseDtoMap">
+        SELECT
+            database_id,
+            instance_id,
+            database_name,
+            is_enabled,
+            connections,
+            size_bytes,
+            cache_hit_rate,
+            created_at,
+            updated_at
+        FROM monitor_database
+        WHERE instance_id = #{instanceId}
+    </select>
+
+    <delete id="deleteByInstanceId">
+        DELETE FROM monitor_database
+        WHERE instance_id = #{instanceId}
+    </delete>
+
+    <delete id="deleteMetricsByDatabaseId">
+        DELETE FROM session_metrics_raw
+        WHERE database_id = #{databaseId}
+    </delete>
+
     <!-- 메트릭 수집이 활성화된 데이터베이스 목록 조회 -->
     <select id="findAllEnabled" resultMap="DatabaseDtoMap">
         SELECT
@@ -64,5 +90,18 @@
         WHERE is_enabled = true
         ORDER BY instance_id, database_id
     </select>
+
+    <insert id="insert" parameterType="com.dajanggan.domain.instance.domain.Database"
+            useGeneratedKeys="true" keyProperty="databaseId">
+        INSERT INTO monitor_database (
+            instance_id,
+            database_name,
+            is_enabled
+        ) VALUES (
+                     #{instanceId},
+                     #{databaseName},
+                     #{isEnabled}
+                 )
+    </insert>
 
 </mapper>

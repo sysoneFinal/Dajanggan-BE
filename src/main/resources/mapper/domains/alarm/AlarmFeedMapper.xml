@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.alarm.repository.AlarmFeedMapper">
+
+    <!-- 알림 목록 조회 -->
+    <select id="selectAlarmList" resultType="com.dajanggan.domain.alarm.dto.AlarmFeedDto$AlarmListRaw">
+        SELECT
+        af.alarm_feed_id AS alarmFeedId,
+        af.alarm_title AS alarmTitle,
+        af.severity_level AS severityLevel,
+        af.occurred_at AS occurredAt,
+        af.message AS description,
+        af.is_read AS isRead
+        FROM alarm_feed af
+        WHERE 1=1
+        <if test="instanceId != null">
+            AND af.instance_id = #{instanceId}
+        </if>
+        <if test="databaseId != null">
+            AND af.database_id = #{databaseId}
+        </if>
+        <if test="severityLevel != null">
+            AND af.severity_level = #{severityLevel}
+        </if>
+        <if test="isRead != null">
+            AND af.is_read = #{isRead}
+        </if>
+        ORDER BY af.occurred_at DESC
+        LIMIT 100
+    </select>
+
+    <!-- 알림 상세 조회 -->
+    <select id="selectAlarmDetail" resultType="com.dajanggan.domain.alarm.domain.AlarmFeed">
+        SELECT
+            alarm_feed_id AS alarmFeedId,
+            alarm_history_id AS alarmHistoryId,
+            instance_id AS instanceId,
+            database_id AS databaseId,
+            alarm_title AS alarmTitle,
+            severity_level AS severityLevel,
+            metric_type AS metricType,
+            current_value AS currentValue,
+            threshold_value AS thresholdValue,
+            message,
+            occurred_at AS occurredAt,
+            resolved_at AS resolvedAt,
+            is_resolved AS isResolved,
+            is_read AS isRead,
+            acknowledged,
+            acknowledged_at AS acknowledgedAt
+        FROM alarm_feed
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </select>
+
+    <!-- Latency 데이터 조회 (24시간) -->
+    <select id="selectLatencyData" resultType="com.dajanggan.domain.alarm.dto.AlarmFeedDto$LatencyDataRaw">
+        SELECT
+            TO_CHAR(amh.recorded_at, 'HH24:00') AS hourLabel,
+            AVG(CAST(amh.metric_value AS DECIMAL)) AS avgLatency
+        FROM alarm_metric_history amh
+        WHERE amh.alarm_history_id = #{alarmHistoryId}
+          AND amh.recorded_at >= NOW() - INTERVAL '24 hours'
+        GROUP BY TO_CHAR(amh.recorded_at, 'HH24:00')
+        ORDER BY hourLabel
+    </select>
+
+    <!-- 관련 객체 조회 -->
+    <select id="selectRelatedObjects" resultType="com.dajanggan.domain.alarm.dto.AlarmFeedDto$RelatedObjectRaw">
+        SELECT
+            'table' AS objectType,
+            aro.object_name AS objectName,
+            CONCAT('Dead ', FORMAT(aro.metric_value, 0)) AS metricValue,
+            aro.status
+        FROM alarm_related_objects aro
+        WHERE aro.alarm_history_id = #{alarmHistoryId}
+        ORDER BY aro.metric_value DESC
+    </select>
+
+    <!-- 알림 읽음 처리 -->
+    <update id="updateAlarmRead">
+        UPDATE alarm_feed
+        SET is_read = TRUE
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </update>
+
+    <!-- 알림 확인 처리 -->
+    <update id="updateAlarmAcknowledged">
+        UPDATE alarm_feed
+        SET acknowledged = TRUE,
+            acknowledged_at = NOW()
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </update>
+
+    <!-- 알림 삭제 -->
+    <delete id="deleteAlarm">
+        DELETE FROM alarm_feed
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </delete>
+
+    <!-- 미확인 알림 개수 -->
+    <select id="countUnreadAlarms" resultType="int">
+        SELECT COUNT(*)
+        FROM alarm_feed
+        WHERE instance_id = #{instanceId}
+          AND is_read = FALSE
+    </select>
+
+</mapper>
