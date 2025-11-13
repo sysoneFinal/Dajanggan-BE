@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.query.repository.QueryAgg1mRepository">
+
+    <!-- ResultMap: TpsQpsDto -->
+    <resultMap id="TpsQpsDtoResultMap" type="com.dajanggan.domain.query.dto.agg1m.TpsQpsDto">
+        <result property="collectedAt" column="collected_at"/>
+        <result property="tps" column="tps"/>
+        <result property="qps" column="qps"/>
+    </resultMap>
+
+    <!-- ResultMap: QueryTypeDistributionDto -->
+    <resultMap id="QueryTypeDistributionDtoResultMap" type="com.dajanggan.domain.query.dto.agg1m.QueryTypeDistributionDto">
+        <result property="collectedAt" column="collected_at"/>
+        <result property="selectCount" column="select_count"/>
+        <result property="insertCount" column="insert_count"/>
+        <result property="updateCount" column="update_count"/>
+        <result property="deleteCount" column="delete_count"/>
+        <result property="otherCount" column="other_count"/>
+    </resultMap>
+
+    <!-- ResultMap: AvgExecutionTimeTrendDto -->
+    <resultMap id="AvgExecutionTimeTrendDtoResultMap" type="com.dajanggan.domain.query.dto.agg1m.AvgExecutionTimeTrendDto">
+        <result property="collectedAt" column="collected_at"/>
+        <result property="avgExecutionTimeMs" column="avg_execution_time_ms"/>
+    </resultMap>
+
+    <!-- ResultMap: ResourceUsageTrendDto -->
+    <resultMap id="ResourceUsageTrendDtoResultMap" type="com.dajanggan.domain.query.dto.agg1m.ResourceUsageTrendDto">
+        <result property="collectedAt" column="collected_at"/>
+        <result property="avgCpuPercent" column="avg_cpu_percent"/>
+        <result property="avgMemoryMb" column="avg_memory_mb"/>
+        <result property="avgIoBlocks" column="avg_io_blocks"/>
+    </resultMap>
+
+    <!-- ResultMap: QueryAgg1mDto -->
+    <resultMap id="QueryAgg1mDtoResultMap" type="com.dajanggan.domain.query.dto.agg1m.QueryAgg1mDto">
+        <result property="instanceId" column="instance_id"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="totalQueries" column="total_queries"/>
+        <result property="tps" column="tps"/>
+        <result property="qps" column="qps"/>
+        <result property="avgExecutionTimeMs" column="avg_execution_time_ms"/>
+        <result property="selectCount" column="select_count"/>
+        <result property="insertCount" column="insert_count"/>
+        <result property="updateCount" column="update_count"/>
+        <result property="deleteCount" column="delete_count"/>
+        <result property="otherCount" column="other_count"/>
+        <result property="avgCpuPercent" column="avg_cpu_percent"/>
+        <result property="avgMemoryMb" column="avg_memory_mb"/>
+        <result property="avgIoBlocks" column="avg_io_blocks"/>
+        <result property="slowQueryCount" column="slow_query_count"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- 1. TPS/QPS 추이 조회 (최근 N분) -->
+    <select id="findTpsQpsTrend" resultMap="TpsQpsDtoResultMap">
+        SELECT
+            collected_at,
+            tps,
+            qps
+        FROM query_agg_1m
+        WHERE database_id = #{databaseId}
+          AND collected_at >= NOW() - INTERVAL '#{minutes} minutes'
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- 2. 쿼리 타입 분포 조회 (최근 N분) -->
+    <select id="findQueryTypeTrend" resultMap="QueryTypeDistributionDtoResultMap">
+        SELECT
+            collected_at,
+            select_count,
+            insert_count,
+            update_count,
+            delete_count,
+            other_count
+        FROM query_agg_1m
+        WHERE database_id = #{databaseId}
+          AND collected_at >= NOW() - INTERVAL '#{minutes} minutes'
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- 3. 평균 실행시간 추이 조회 (최근 N분) -->
+    <select id="findAvgExecTimeTrend" resultMap="AvgExecutionTimeTrendDtoResultMap">
+        SELECT
+            collected_at,
+            avg_execution_time_ms
+        FROM query_agg_1m
+        WHERE database_id = #{databaseId}
+          AND collected_at >= NOW() - INTERVAL '#{minutes} minutes'
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- 4. 리소스 사용량 추이 조회 (최근 N분) -->
+    <select id="findResourceUsageTrend" resultMap="ResourceUsageTrendDtoResultMap">
+        SELECT
+            collected_at,
+            avg_cpu_percent,
+            avg_memory_mb,
+            avg_io_blocks
+        FROM query_agg_1m
+        WHERE database_id = #{databaseId}
+          AND collected_at >= NOW() - INTERVAL '#{minutes} minutes'
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- 5. 1분 집계 데이터 일괄 저장 -->
+    <insert id="insertBatch">
+        INSERT INTO query_agg_1m (
+        instance_id, database_id, collected_at,
+        total_queries, tps, qps, avg_execution_time_ms,
+        select_count, insert_count, update_count, delete_count, other_count,
+        avg_cpu_percent, avg_memory_mb, avg_io_blocks,
+        slow_query_count, created_at
+        ) VALUES
+        <foreach collection="agg1mList" item="agg" separator=",">
+            (
+            #{agg.instanceId},
+            #{agg.databaseId},
+            #{agg.collectedAt},
+            #{agg.totalQueries},
+            #{agg.tps},
+            #{agg.qps},
+            #{agg.avgExecutionTimeMs},
+            #{agg.selectCount},
+            #{agg.insertCount},
+            #{agg.updateCount},
+            #{agg.deleteCount},
+            #{agg.otherCount},
+            #{agg.avgCpuPercent},
+            #{agg.avgMemoryMb},
+            #{agg.avgIoBlocks},
+            #{agg.slowQueryCount},
+            #{agg.createdAt}
+            )
+        </foreach>
+    </insert>
+
+</mapper>
