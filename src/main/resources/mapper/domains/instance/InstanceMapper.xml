@@ -44,10 +44,10 @@
     <insert id="createInstance" parameterType="com.dajanggan.domain.instance.domain.Instance"
             useGeneratedKeys="true" keyProperty="instanceId">
         INSERT INTO monitor_instance (
-        instance_name, host, port, username, secret_ref
+        instance_name, host, port, username, secret_ref, sslmode
         ) VALUES (
         #{instanceName}, #{host}, #{port}, #{userName}, #{secretRef, jdbcType=VARCHAR,
-            typeHandler=com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler}
+            typeHandler=com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler}, #{sslmode}
         )
     </insert>
 

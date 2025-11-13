@@ -10,6 +10,7 @@ public class InstanceCreateRequest {
     private Integer port;
     private String userName;
     private String secretRef;
+    private String sslmode;  // 기본값은 여기서 설정 안 함
 
     public Instance toEntity() {
         return Instance.builder()
@@ -18,6 +19,9 @@ public class InstanceCreateRequest {
                 .port(this.port)
                 .userName(this.userName)
                 .secretRef(this.secretRef)
+                .sslmode(this.sslmode != null && !this.sslmode.trim().isEmpty()
+                        ? this.sslmode
+                        : "disable")
                 .build();
     }
 }
