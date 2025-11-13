@@ -38,6 +38,10 @@ public class InstanceService {
         entity.setSecretRef(encryptedPassword);
         log.info("비밀번호 암호화 완료");
 
+        // SSL 모드 기본값 설정 (null이거나 빈 값이면 disable로)
+        entity.setSslmode("disable");
+
+
         // 2. 인스턴스 저장
         instanceRepository.createInstance(entity);
         log.info("인스턴스 저장 완료. instanceId: {}", entity.getInstanceId());
@@ -71,18 +75,24 @@ public class InstanceService {
         return InstanceResponse.from(entity);
     }
 
+    // fetchDatabaseNames 메서드 수정 (sslMode 기본값 처리 강화)
     private List<String> fetchDatabaseNames(Instance instance, String password) {
-        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/postgres",
-                instance.getHost(), instance.getPort());
+        // sslMode가 null이거나 빈 문자열이면 "disable"로 설정
+        String sslMode = (instance.getSslmode() != null && !instance.getSslmode().trim().isEmpty())
+                ? instance.getSslmode()
+                : "disable";
 
-        log.info("PostgreSQL 연결 시도: {}", jdbcUrl);
+        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/postgres?sslmode=%s",
+                instance.getHost(), instance.getPort(), sslMode);
+
+        log.info("PostgreSQL 연결 시도: {} (sslMode: {})", jdbcUrl, sslMode);
 
         String query = """
-            SELECT datname 
-            FROM pg_database 
-            WHERE datistemplate = false
-            AND datname NOT IN ('template0', 'template1')
-            """;
+        SELECT datname 
+        FROM pg_database 
+        WHERE datistemplate = false
+        AND datname NOT IN ('template0', 'template1')
+        """;
 
         List<String> result = new ArrayList<>();
 
@@ -108,14 +118,19 @@ public class InstanceService {
         return result;
     }
 
-     // PostgreSQL 연결 테스트
+    // testConnection 메서드도 DTO의 sslMode를 존중하도록 수정
     public Map<String, Object> testConnection(InstanceCreateRequest dto) {
         Map<String, Object> result = new HashMap<>();
 
-        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/postgres",
-                dto.getHost(), dto.getPort());
+        // sslMode 처리 (DTO에 없으면 disable 사용)
+        String sslMode = (dto.getSslmode() != null && !dto.getSslmode().trim().isEmpty())
+                ? dto.getSslmode()
+                : "disable";
 
-        log.info("연결 테스트 시작: {}", jdbcUrl);
+        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/postgres?sslmode=%s",
+                dto.getHost(), dto.getPort(), sslMode);
+
+        log.info("연결 테스트 시작: {} (sslMode: {})", jdbcUrl, sslMode);
 
         try (Connection conn = DriverManager.getConnection(
                 jdbcUrl,
@@ -132,6 +147,7 @@ public class InstanceService {
 
                     result.put("success", true);
                     result.put("message", "연결 성공!");
+                    result.put("version", version);
                 }
             }
 
