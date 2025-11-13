@@ -4,6 +4,33 @@
 
 <mapper namespace="com.dajanggan.domain.session.repository.SessionAgg1mRepository">
 
+    <!-- 1분 집계 데이터 일괄 저장 -->
+    <insert id="insertAgg1m">
+        INSERT INTO session_metrics_agg_1m (
+            instance_id, database_id, collected_at,
+            total_sessions, active_sessions, waiting_sessions, idle_sessions,
+            idle_txn_sessions, idle_txn_aborted_sessions,
+            lock_wait_count, io_wait_count, lwlock_wait_count, client_wait_count,
+            avg_tx_duration_sec, avg_lock_wait_sec,
+            used_connections, max_connections,
+            deadlock_count,
+            created_at
+        )
+        VALUES
+        <foreach collection="metrics" item="m" separator=",">
+            (
+                #{m.instanceId}, #{m.databaseId}, #{m.collectedAt},
+                #{m.totalSessions}, #{m.activeSessions}, #{m.waitingSessions}, #{m.idleSessions},
+                #{m.idleInTxSessions}, #{m.idleInTxAbortedSessions},
+                #{m.lockWaitCount}, #{m.ioWaitCount}, #{m.lwlockWaitCount}, #{m.clientWaitCount},
+                #{m.avgTxDurationSec}, #{m.avgLockWaitSec},
+                #{m.usedConnections}, #{m.maxConnections},
+                #{m.deadlockCount},
+                NOW()
+            )
+        </foreach>
+    </insert>
+
             <!--  세션 상태 추이    -->
     <select id="getSessionStatTrend" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg1m.SessionStateDto">
         SELECT

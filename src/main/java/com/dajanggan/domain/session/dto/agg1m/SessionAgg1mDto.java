@@ -21,6 +21,8 @@ public class SessionAgg1mDto {
     private Double activeSessions;     // 활성 세션 수
     private Double waitingSessions;    // 대기 세션 수
     private Double idleSessions;       // 유휴 세션 수
+    private Double idleInTxSessions;   // idle in transaction 세션 수
+    private Double idleInTxAbortedSessions; // idle in transaction (aborted) 세션 수
 
     // Wait/Lock 관련
     private Integer lockWaitCount;     // Lock 대기 횟수
