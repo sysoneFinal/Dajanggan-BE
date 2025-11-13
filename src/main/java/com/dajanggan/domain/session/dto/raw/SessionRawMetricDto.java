@@ -11,6 +11,7 @@ import java.time.OffsetDateTime;
 public class SessionRawMetricDto {
 
     private Long databaseId;
+    private Long instanceId;
     private OffsetDateTime collectedAt;
 
     private Integer pid;
@@ -19,6 +20,7 @@ public class SessionRawMetricDto {
     private String clientAddr;
     private String applicationName;
     private String state;
+    private Integer maxConnections;
 
     private String waitEventType;
     private String waitEvent;
@@ -28,6 +30,7 @@ public class SessionRawMetricDto {
     private String impactLevel;
     private Double waitDurationSec;
     private Integer blockingPid;
+    private String blockingUsername;
 
     private String queryType;
     private String query;
@@ -44,5 +47,4 @@ public class SessionRawMetricDto {
     private String tableName;
 
     private OffsetDateTime createdAt;
-    private Long instanceId;
 }

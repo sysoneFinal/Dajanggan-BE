@@ -9,6 +9,7 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.JdbcCursorItemReader;
@@ -24,6 +25,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -70,42 +72,42 @@ public class Session1mAggregator {
     @Bean
     public JdbcCursorItemReader<SessionAgg1mDto> sessionAgg1mReader() {
         String sql = """
-            SELECT 
-                database_id,
-                instance_id,
-                DATE_TRUNC('minute', collected_at) as collected_at,
-                
-                -- 세션 수 집계
-                COUNT(*) as total_sessions,
-                COUNT(*) FILTER (WHERE state = 'active') as active_sessions,
-                COUNT(*) FILTER (WHERE state = 'idle') as idle_sessions,
-                COUNT(*) FILTER (WHERE state = 'idle in transaction') as idle_in_txn_sessions,
-                COUNT(*) FILTER (WHERE state = 'idle in transaction (aborted)') as idle_in_txn_aborted_sessions,
-                COUNT(*) FILTER (WHERE wait_event_type IS NOT NULL) as waiting_sessions,
-                
-                -- Wait Event 카운트
-                COUNT(*) FILTER (WHERE wait_event_type = 'Lock') as lock_wait_count,
-                COUNT(*) FILTER (WHERE wait_event_type = 'IO') as io_wait_count,
-                COUNT(*) FILTER (WHERE wait_event_type = 'LWLock') as lwlock_wait_count,
-                COUNT(*) FILTER (WHERE wait_event_type = 'Client') as client_wait_count,
-                
-                -- 평균 계산
-                AVG(wait_duration_sec) FILTER (WHERE wait_duration_sec IS NOT NULL) as avg_lock_wait_sec,
-                AVG(query_age_sec) FILTER (WHERE query_age_sec IS NOT NULL) as avg_tx_duration_sec,
-                
-                -- 커넥션 정보
-                COUNT(*) as used_connections,
-                100 as max_connections,
-                
-                -- 데드락 카운트
-                COUNT(*) FILTER (WHERE is_deadlock = true) as deadlock_count
-                
-            FROM session_metrics_raw
-            WHERE collected_at >= NOW() - INTERVAL '2 minutes'
-              AND collected_at < NOW() - INTERVAL '1 minute'
-            GROUP BY database_id, instance_id, DATE_TRUNC('minute', collected_at)
-            ORDER BY database_id, instance_id, collected_at
-            """;
+        SELECT 
+            database_id,
+            instance_id,
+            DATE_TRUNC('minute', collected_at) as collected_at,
+            
+            -- 세션 수 집계
+            COUNT(*) as total_sessions,
+            COUNT(*) FILTER (WHERE state = 'active') as active_sessions,
+            COUNT(*) FILTER (WHERE state = 'idle') as idle_sessions,
+            COUNT(*) FILTER (WHERE state = 'idle in transaction') as idle_in_txn_sessions,
+            COUNT(*) FILTER (WHERE state = 'idle in transaction (aborted)') as idle_in_txn_aborted_sessions,
+            COUNT(*) FILTER (WHERE wait_event_type IS NOT NULL) as waiting_sessions,
+            
+            -- Wait Event 카운트
+            COUNT(*) FILTER (WHERE wait_event_type = 'Lock') as lock_wait_count,
+            COUNT(*) FILTER (WHERE wait_event_type = 'IO') as io_wait_count,
+            COUNT(*) FILTER (WHERE wait_event_type = 'LWLock') as lwlock_wait_count,
+            COUNT(*) FILTER (WHERE wait_event_type = 'Client') as client_wait_count,
+            
+            -- 평균 계산
+            AVG(wait_duration_sec) FILTER (WHERE wait_duration_sec IS NOT NULL) as avg_lock_wait_sec,
+            AVG(query_age_sec) FILTER (WHERE query_age_sec IS NOT NULL) as avg_tx_duration_sec,
+            
+            -- 커넥션 정보 (원시 데이터에서 가져옴)
+            COUNT(*) as used_connections,
+            MAX(max_connections) as max_connections,
+            
+            -- 데드락 카운트
+            COUNT(*) FILTER (WHERE is_deadlock = true) as deadlock_count
+            
+        FROM session_metrics_raw
+        WHERE collected_at >= NOW() - INTERVAL '2 minutes'
+          AND collected_at < NOW() - INTERVAL '1 minute'
+        GROUP BY database_id, instance_id, DATE_TRUNC('minute', collected_at)
+        ORDER BY database_id, instance_id, collected_at
+        """;
 
         return new JdbcCursorItemReaderBuilder<SessionAgg1mDto>()
                 .name("sessionAgg1mReader")
@@ -141,17 +143,17 @@ public class Session1mAggregator {
      * Writer: 집계 데이터 저장
      */
     @Bean
-    @SuppressWarnings("unchecked")
     public ItemWriter<SessionAgg1mDto> sessionAgg1mWriter() {
-        return chunk -> {
-            List<SessionAgg1mDto> items = (List<SessionAgg1mDto>) chunk.getItems();
-            
+        return (Chunk<? extends SessionAgg1mDto> chunk) -> {
+            List<? extends SessionAgg1mDto> items = chunk.getItems();
+
             if (!items.isEmpty()) {
-                sessionAgg1mRepository.insertAgg1m(items);
-                log.info(">>>>>>>>>>>>>>1분 집계 완료: {} 건 저장", items.size());
+                sessionAgg1mRepository.insertAgg1m(new ArrayList<>(items));
+                log.info(">>>>>>>>>>>>>> 1분 집계 완료: {} 건 저장", items.size());
             }
         };
     }
+
 
     /**
      * RowMapper: DB 결과를 DTO로 매핑

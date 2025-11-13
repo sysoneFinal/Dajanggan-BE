@@ -4,7 +4,7 @@
 
 <mapper namespace="com.dajanggan.domain.session.repository.SessionAgg1mRepository">
 
-    <!-- 1분 집계 데이터 일괄 저장 -->
+    <!-- 1분 집계 데이터 일괄 저장 (UPSERT: 중복 시 UPDATE) -->
     <insert id="insertAgg1m">
         INSERT INTO session_metrics_agg_1m (
             instance_id, database_id, collected_at,
@@ -29,6 +29,24 @@
                 NOW()
             )
         </foreach>
+        ON CONFLICT (instance_id, database_id, collected_at)
+        DO UPDATE SET
+            total_sessions = EXCLUDED.total_sessions,
+            active_sessions = EXCLUDED.active_sessions,
+            waiting_sessions = EXCLUDED.waiting_sessions,
+            idle_sessions = EXCLUDED.idle_sessions,
+            idle_txn_sessions = EXCLUDED.idle_txn_sessions,
+            idle_txn_aborted_sessions = EXCLUDED.idle_txn_aborted_sessions,
+            lock_wait_count = EXCLUDED.lock_wait_count,
+            io_wait_count = EXCLUDED.io_wait_count,
+            lwlock_wait_count = EXCLUDED.lwlock_wait_count,
+            client_wait_count = EXCLUDED.client_wait_count,
+            avg_tx_duration_sec = EXCLUDED.avg_tx_duration_sec,
+            avg_lock_wait_sec = EXCLUDED.avg_lock_wait_sec,
+            used_connections = EXCLUDED.used_connections,
+            max_connections = EXCLUDED.max_connections,
+            deadlock_count = EXCLUDED.deadlock_count,
+            created_at = NOW()
     </insert>
 
             <!--  세션 상태 추이    -->
