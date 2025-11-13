@@ -19,7 +19,7 @@ public class Instance {
     private String status;
     private String userName;
     private String secretRef;
-    private String sslmode;
+    private String sslmode = "disable";
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private Boolean slackEnabled;
