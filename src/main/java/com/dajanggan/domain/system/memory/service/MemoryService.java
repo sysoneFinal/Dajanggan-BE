@@ -19,9 +19,6 @@ public class MemoryService {
 
     private final MemoryMapper memoryMapper;
 
-    // 기본 인스턴스 ID (실제 환경에서는 설정 파일이나 DB에서 조회)
-    private static final Long DEFAULT_INSTANCE_ID = 1L;
-
     /**
      * Memory 대시보드 데이터 조회
      * @param instanceId PostgreSQL 인스턴스 ID
@@ -30,8 +27,11 @@ public class MemoryService {
     public MemoryDto.DashboardResponse getMemoryDashboard(Long instanceId) {
         log.debug("Memory 대시보드 데이터 조회 시작 - instanceId: {}", instanceId);
 
-        // instanceId가 null이면 기본값 사용
-        Long targetInstanceId = (instanceId != null) ? instanceId : DEFAULT_INSTANCE_ID;
+        // instanceId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
 
         // 조회 시간 범위 설정 (최근 24시간)
         LocalDateTime endTime = LocalDateTime.now();
@@ -41,31 +41,31 @@ public class MemoryService {
 
         try {
             // 1. Memory 사용률 조회
-            MemoryDto.MemoryUtilization memoryUtilization = getMemoryUtilization(targetInstanceId);
+            MemoryDto.MemoryUtilization memoryUtilization = getMemoryUtilization(instanceId);
 
             // 2. Buffer Hit 비율 조회
-            MemoryDto.BufferHitRatio bufferHitRatio = getBufferHitRatio(targetInstanceId);
+            MemoryDto.BufferHitRatio bufferHitRatio = getBufferHitRatio(instanceId);
 
             // 3. Shared Buffer 사용량 조회
-            MemoryDto.SharedBufferUsage sharedBufferUsage = getSharedBufferUsage(targetInstanceId);
+            MemoryDto.SharedBufferUsage sharedBufferUsage = getSharedBufferUsage(instanceId);
 
             // 4. Eviction Rate 시계열 데이터 조회
-            MemoryDto.EvictionRate evictionRate = getEvictionRate(targetInstanceId, startTime, endTime);
+            MemoryDto.EvictionRate evictionRate = getEvictionRate(instanceId, startTime, endTime);
 
             // 5. Fsync Rate 시계열 데이터 조회
-            MemoryDto.FsyncRate fsyncRate = getFsyncRate(targetInstanceId, startTime, endTime);
+            MemoryDto.FsyncRate fsyncRate = getFsyncRate(instanceId, startTime, endTime);
 
             // 6. Dirty Buffer 추세 조회
-            MemoryDto.DirtyBufferTrend dirtyBufferTrend = getDirtyBufferTrend(targetInstanceId, startTime, endTime);
+            MemoryDto.DirtyBufferTrend dirtyBufferTrend = getDirtyBufferTrend(instanceId, startTime, endTime);
 
             // 7. Eviction vs Flush 비교 데이터 조회
-            MemoryDto.EvictionFlushRatio evictionFlushRatio = getEvictionFlushRatio(targetInstanceId, startTime, endTime);
+            MemoryDto.EvictionFlushRatio evictionFlushRatio = getEvictionFlushRatio(instanceId, startTime, endTime);
 
             // 8. 상위 버퍼 사용 객체 조회
-            MemoryDto.TopBufferObjects topBufferObjects = getTopBufferObjects(targetInstanceId, 10);
+            MemoryDto.TopBufferObjects topBufferObjects = getTopBufferObjects(instanceId, 10);
 
             // 9. 요약 통계 조회
-            MemoryDto.SummaryStats summaryStats = getSummaryStats(targetInstanceId);
+            MemoryDto.SummaryStats summaryStats = getSummaryStats(instanceId);
 
             return MemoryDto.DashboardResponse.builder()
                     .memoryUtilization(memoryUtilization)
@@ -370,15 +370,18 @@ public class MemoryService {
         log.debug("Memory 리스트 조회 시작 - instanceId: {}, typeList: {}, statusList: {}",
                 instanceId, typeList, statusList);
 
-        // instanceId가 null이면 기본값 사용
-        Long targetInstanceId = (instanceId != null) ? instanceId : DEFAULT_INSTANCE_ID;
+        // instanceId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
 
         try {
             List<Map<String, Object>> dataList = memoryMapper.selectMemoryList(
-                    targetInstanceId, typeList, statusList);
+                    instanceId, typeList, statusList);
 
             if (dataList == null || dataList.isEmpty()) {
-                log.warn("Memory 리스트 데이터 없음 - instanceId: {}", targetInstanceId);
+                log.warn("Memory 리스트 데이터 없음 - instanceId: {}", instanceId);
                 return MemoryDto.ListResponse.builder()
                         .data(new ArrayList<>())
                         .total(0L)
