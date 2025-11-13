@@ -1,129 +1,23 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-
 <mapper namespace="com.dajanggan.domain.query.repository.QueryRawRepository">
 
-    <!-- ResultMap 정의 -->
-    <resultMap id="QueryRawMetricResultMap" type="com.dajanggan.domain.query.dto.raw.QueryRawMetricDto">
-        <result property="databaseId" column="database_id"/>
-        <result property="instanceId" column="instance_id"/>
-        <result property="collectedAt" column="collected_at"/>
-        <result property="queryId" column="query_id"/>
-        <result property="queryHash" column="query_hash"/>
-        <result property="queryText" column="query_text"/>
-        <result property="shortQuery" column="short_query"/>
-        <result property="queryType" column="query_type"/>
-        <result property="executionCount" column="execution_count"/>
-        <result property="totalExecTimeMs" column="total_exec_time_ms"/>
-        <result property="meanExecTimeMs" column="mean_exec_time_ms"/>
-        <result property="minExecTimeMs" column="min_exec_time_ms"/>
-        <result property="maxExecTimeMs" column="max_exec_time_ms"/>
-        <result property="stddevExecTimeMs" column="stddev_exec_time_ms"/>
-        <result property="cpuUsagePercent" column="cpu_usage_percent"/>
-        <result property="memoryUsageMb" column="memory_usage_mb"/>
-        <result property="ioBlocks" column="io_blocks"/>
-        <result property="sharedBlksHit" column="shared_blks_hit"/>
-        <result property="sharedBlksRead" column="shared_blks_read"/>
-        <result property="sharedBlksDirtied" column="shared_blks_dirtied"/>
-        <result property="sharedBlksWritten" column="shared_blks_written"/>
-        <result property="planningTimeMs" column="planning_time_ms"/>
-        <result property="executionTimeMs" column="execution_time_ms"/>
-        <result property="username" column="username"/>
-        <result property="applicationName" column="application_name"/>
-        <result property="clientAddr" column="client_addr"/>
-        <result property="state" column="state"/>
-        <result property="isSlowQuery" column="is_slow_query"/>
-        <result property="cpuRank" column="cpu_rank"/>
-        <result property="memoryRank" column="memory_rank"/>
-        <result property="execTimeRank" column="exec_time_rank"/>
-        <result property="createdAt" column="created_at"/>
-    </resultMap>
-
-    <!-- 공통 컬럼 정의 -->
-    <sql id="queryRawColumns">
-        database_id, instance_id, collected_at, query_id, query_hash,
-        query_text, short_query, query_type, execution_count,
-        total_exec_time_ms, mean_exec_time_ms, min_exec_time_ms,
-        max_exec_time_ms, stddev_exec_time_ms,
-        cpu_usage_percent, memory_usage_mb, io_blocks,
-        shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,
-        planning_time_ms, execution_time_ms,
-        username, application_name, client_addr, state,
-        is_slow_query, cpu_rank, memory_rank, exec_time_rank, created_at
-    </sql>
-
-    <!-- 1. 원시 메트릭 일괄 저장 -->
-    <insert id="insertBatch">
-        INSERT INTO query_raw_metrics (
-        database_id, instance_id, collected_at, query_id, query_hash,
-        query_text, short_query, query_type, execution_count,
-        total_exec_time_ms, mean_exec_time_ms, min_exec_time_ms,
-        max_exec_time_ms, stddev_exec_time_ms,
-        cpu_usage_percent, memory_usage_mb, io_blocks,
-        shared_blks_hit, shared_blks_read, shared_blks_dirtied, shared_blks_written,
-        planning_time_ms, execution_time_ms,
-        username, application_name, client_addr, state,
-        is_slow_query, created_at
-        ) VALUES
-        <foreach collection="metrics" item="metric" separator=",">
-            (
-            #{metric.databaseId},
-            #{metric.instanceId},
-            #{metric.collectedAt},
-            #{metric.queryId},
-            #{metric.queryHash},
-            #{metric.queryText},
-            #{metric.shortQuery},
-            #{metric.queryType},
-            #{metric.executionCount},
-            #{metric.totalExecTimeMs},
-            #{metric.meanExecTimeMs},
-            #{metric.minExecTimeMs},
-            #{metric.maxExecTimeMs},
-            #{metric.stddevExecTimeMs},
-            #{metric.cpuUsagePercent},
-            #{metric.memoryUsageMb},
-            #{metric.ioBlocks},
-            #{metric.sharedBlksHit},
-            #{metric.sharedBlksRead},
-            #{metric.sharedBlksDirtied},
-            #{metric.sharedBlksWritten},
-            #{metric.planningTimeMs},
-            #{metric.executionTimeMs},
-            #{metric.username},
-            #{metric.applicationName},
-            #{metric.clientAddr},
-            #{metric.state},
-            #{metric.isSlowQuery},
-            #{metric.createdAt}
-            )
+    <!-- 쿼리 메트릭 데이터를 모니터링 DB에 일괄 저장 -->
+    <insert id="insertQueryMetrics" parameterType="com.dajanggan.domain.query.dto.raw.QueryRawMetricDto">
+        INSERT INTO query_metrics_raw (
+        database_id, instance_id, collected_at, query_id, query_hash, query_text,
+        short_query, query_type, execution_count, io_blocks, planning_time_ms,
+        execution_time_ms, cpu_usage_percent, memory_usage_mb, username,
+        application_name, client_addr, state, created_at
+        )
+        VALUES
+        <foreach collection="metrics" item="m" separator=",">
+            (#{m.databaseId}, #{m.instanceId}, #{m.collectedAt}, #{m.queryId}, #{m.queryHash},
+            #{m.queryText}, #{m.shortQuery}, #{m.queryType}, #{m.executionCount}, #{m.ioBlocks},
+            #{m.planningTimeMs}, #{m.executionTimeMs}, #{m.cpuUsagePercent}, #{m.memoryUsageMb},
+            #{m.username}, #{m.applicationName}, #{m.clientAddr}, #{m.state}, NOW())
         </foreach>
     </insert>
-
-    <!-- 2. 최근 N분간 원시 메트릭 조회 -->
-    <select id="findRecentByDatabaseId" resultMap="QueryRawMetricResultMap">
-        SELECT <include refid="queryRawColumns"/>
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-        AND collected_at >= NOW() - INTERVAL '#{minutes} minutes'
-        ORDER BY collected_at DESC
-    </select>
-
-    <!-- 3. 슬로우 쿼리 조회 -->
-    <select id="findSlowQueries" resultMap="QueryRawMetricResultMap">
-        SELECT <include refid="queryRawColumns"/>
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-        AND mean_exec_time_ms >= #{thresholdMs}
-        ORDER BY mean_exec_time_ms DESC
-        LIMIT #{limit}
-    </select>
-
-    <!-- 4. 오래된 데이터 삭제 (파티션 관리용) -->
-    <delete id="deleteOldData">
-        DELETE FROM query_raw_metrics
-        WHERE collected_at &lt; NOW() - INTERVAL '#{daysToKeep} days'
-    </delete>
 
 </mapper>

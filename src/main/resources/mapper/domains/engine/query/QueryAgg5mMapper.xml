@@ -4,305 +4,63 @@
 
 <mapper namespace="com.dajanggan.domain.query.repository.QueryAgg5mRepository">
 
-    <!-- ========== ResultMap 정의 ========== -->
-
-    <!-- QuerySummaryDto -->
-    <resultMap id="QuerySummaryDtoResultMap" type="com.dajanggan.domain.query.dto.agg5m.QuerySummaryDto">
-        <result property="instanceId" column="instance_id"/>
-        <result property="databaseId" column="database_id"/>
-        <result property="currentTps" column="current_tps"/>
-        <result property="currentQps" column="current_qps"/>
-        <result property="activeSessions" column="active_sessions"/>
-        <result property="avgResponseTimeMs" column="avg_response_time_ms"/>
-    </resultMap>
-
-    <!-- ResourceUsageDto -->
-    <resultMap id="ResourceUsageDtoResultMap" type="com.dajanggan.domain.query.dto.agg5m.ResourceUsageDto">
-        <result property="cpuUsagePercent" column="cpu_usage_percent"/>
-        <result property="memoryUsagePercent" column="memory_usage_percent"/>
-        <result property="diskIoPercent" column="disk_io_percent"/>
-    </resultMap>
-
-    <!-- TopQueryDto -->
-    <resultMap id="TopQueryDtoResultMap" type="com.dajanggan.domain.query.dto.agg5m.TopQueryDto">
-        <result property="rank" column="rank"/>
-        <result property="queryId" column="query_id"/>
-        <result property="shortQuery" column="short_query"/>
-        <result property="queryType" column="query_type"/>
-        <result property="value" column="value"/>
-        <result property="unit" column="unit"/>
-        <result property="executionCount" column="execution_count"/>
-        <result property="avgTimeMs" column="avg_time_ms"/>
-    </resultMap>
-
-    <!-- SlowQueryDto -->
-    <resultMap id="SlowQueryDtoResultMap" type="com.dajanggan.domain.query.dto.agg5m.SlowQueryDto">
-        <result property="queryId" column="query_id"/>
-        <result property="shortQuery" column="short_query"/>
-        <result property="fullQuery" column="full_query"/>
-        <result property="queryType" column="query_type"/>
-        <result property="executionTimeMs" column="execution_time_ms"/>
-        <result property="executionTimeSec" column="execution_time_sec"/>
-        <result property="severity" column="severity"/>
-        <result property="suggestion" column="suggestion"/>
-        <result property="occurredAt" column="occurred_at"/>
-        <result property="executionCount" column="execution_count"/>
-        <result property="cpuUsagePercent" column="cpu_usage_percent"/>
-        <result property="memoryUsageMb" column="memory_usage_mb"/>
-        <result property="ioBlocks" column="io_blocks"/>
-    </resultMap>
-
-    <!-- QueryAgg5mDto (전체) -->
-    <resultMap id="QueryAgg5mDtoResultMap" type="com.dajanggan.domain.query.dto.agg5m.QueryAgg5mDto">
-        <result property="instanceId" column="instance_id"/>
-        <result property="databaseId" column="database_id"/>
-        <result property="collectedAt" column="collected_at"/>
-        <result property="totalQueries" column="total_queries"/>
-        <result property="avgTps" column="avg_tps"/>
-        <result property="avgQps" column="avg_qps"/>
-        <result property="avgExecutionTimeMs" column="avg_execution_time_ms"/>
-        <result property="activeSessions" column="active_sessions"/>
-        <result property="avgResponseTimeMs" column="avg_response_time_ms"/>
-        <result property="slowQueryCount" column="slow_query_count"/>
-        <result property="topCpuQuery1" column="top_cpu_query_1"/>
-        <result property="topCpuQuery1Value" column="top_cpu_query_1_value"/>
-        <result property="topCpuQuery2" column="top_cpu_query_2"/>
-        <result property="topCpuQuery2Value" column="top_cpu_query_2_value"/>
-        <result property="topCpuQuery3" column="top_cpu_query_3"/>
-        <result property="topCpuQuery3Value" column="top_cpu_query_3_value"/>
-        <result property="topCpuQuery4" column="top_cpu_query_4"/>
-        <result property="topCpuQuery4Value" column="top_cpu_query_4_value"/>
-        <result property="topCpuQuery5" column="top_cpu_query_5"/>
-        <result property="topCpuQuery5Value" column="top_cpu_query_5_value"/>
-        <result property="topMemoryQuery1" column="top_memory_query_1"/>
-        <result property="topMemoryQuery1Value" column="top_memory_query_1_value"/>
-        <result property="topMemoryQuery2" column="top_memory_query_2"/>
-        <result property="topMemoryQuery2Value" column="top_memory_query_2_value"/>
-        <result property="topMemoryQuery3" column="top_memory_query_3"/>
-        <result property="topMemoryQuery3Value" column="top_memory_query_3_value"/>
-        <result property="topMemoryQuery4" column="top_memory_query_4"/>
-        <result property="topMemoryQuery4Value" column="top_memory_query_4_value"/>
-        <result property="topMemoryQuery5" column="top_memory_query_5"/>
-        <result property="topMemoryQuery5Value" column="top_memory_query_5_value"/>
-        <result property="createdAt" column="created_at"/>
-    </resultMap>
-
-    <!-- ========== 조회 쿼리 ========== -->
-
-    <!-- 1. 쿼리 요약 카드 조회 (최신 5분) -->
-    <select id="findLatestSummary" resultMap="QuerySummaryDtoResultMap">
+    <!-- 요약카드 (단일 DB용 - Details 페이지) -->
+    <select id="findLatestSummary" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.QuerySummaryDto">
         SELECT
-            instance_id,
-            database_id,
-            avg_tps as current_tps,
-            avg_qps as current_qps,
-            active_sessions,
-            avg_response_time_ms
-        FROM query_agg_5m
-        WHERE database_id = #{databaseId}
+            instance_id AS instanceId,
+            database_id AS databaseId,
+            total_queries AS totalQueries,
+            avg_execution_time_ms AS avgExecutionTimeMs,
+            slow_query_count AS slowQueryCount,
+            created_at AS createdAt
+        FROM query_metrics_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND database_id = #{databaseId}
+          AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'
         ORDER BY collected_at DESC
             LIMIT 1
     </select>
 
-    <!-- 2. 리소스 사용률 조회 (최신 5분) -->
-    <select id="findLatestResourceUsage" resultMap="ResourceUsageDtoResultMap">
+    <!-- 상위 슬로우 쿼리 Top 5 -->
+    <select id="findTopSlowQueries" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.TopSlowQueryDto">
         SELECT
-            AVG(cpu_usage_percent) as cpu_usage_percent,
-            AVG(memory_usage_percent) as memory_usage_percent,
-            AVG(disk_io_percent) as disk_io_percent
-        FROM (
-                 SELECT
-                     avg_cpu_percent as cpu_usage_percent,
-                     avg_memory_mb / 1024.0 * 100 as memory_usage_percent,
-                     avg_io_blocks / 1000.0 as disk_io_percent
-                 FROM query_agg_1m
-                 WHERE database_id = #{databaseId}
-                   AND collected_at >= NOW() - INTERVAL '5 minutes'
-             ) subquery
+            instance_id AS instanceId,
+            database_id AS databaseId,
+            top_slow_query_1 AS topSlowQuery1,
+            top_slow_query_1_time AS topSlowQuery1Time,
+            top_slow_query_2 AS topSlowQuery2,
+            top_slow_query_2_time AS topSlowQuery2Time,
+            top_slow_query_3 AS topSlowQuery3,
+            top_slow_query_3_time AS topSlowQuery3Time,
+            top_slow_query_4 AS topSlowQuery4,
+            top_slow_query_4_time AS topSlowQuery4Time,
+            top_slow_query_5 AS topSlowQuery5,
+            top_slow_query_5_time AS topSlowQuery5Time
+        FROM query_metrics_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND database_id = #{databaseId}
+          AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        ORDER BY collected_at DESC
+            LIMIT 1
     </select>
 
-    <!-- 3. CPU 사용량 Top N 쿼리 조회 -->
-    <select id="findTopCpuQueries" resultMap="TopQueryDtoResultMap">
+    <!-- 슬로우 쿼리 리스트 최신 10개 - ✅ instance_id 추가 -->
+    <select id="findSlowQueryList" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.SlowQueryListDto">
         SELECT
-            ROW_NUMBER() OVER (ORDER BY cpu_usage_percent DESC) as rank,
-            query_id,
-            short_query,
-            query_type,
-            cpu_usage_percent as value,
-            '%' as unit,
-            execution_count,
-            mean_exec_time_ms as avg_time_ms
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-          AND collected_at >= NOW() - INTERVAL '5 minutes'
-          AND cpu_usage_percent IS NOT NULL
-        ORDER BY cpu_usage_percent DESC
-            LIMIT #{limit}
+            query_metric_id AS queryMetricId,
+            collected_at AS collectedAt,
+            query_text AS queryText,
+            short_query AS shortQuery,
+            execution_time_ms AS executionTimeMs,
+            username,
+            query_type AS queryType
+        FROM query_metrics_raw
+        WHERE instance_id = #{instanceId}
+          AND database_id = #{databaseId}
+          AND execution_time_ms > 1000
+          AND collected_at >= NOW() - INTERVAL '24 hours'
+        ORDER BY execution_time_ms DESC
+            LIMIT 10
     </select>
-
-    <!-- 4. 메모리 사용량 Top N 쿼리 조회 -->
-    <select id="findTopMemoryQueries" resultMap="TopQueryDtoResultMap">
-        SELECT
-            ROW_NUMBER() OVER (ORDER BY memory_usage_mb DESC) as rank,
-            query_id,
-            short_query,
-            query_type,
-            memory_usage_mb as value,
-            'MB' as unit,
-            execution_count,
-            mean_exec_time_ms as avg_time_ms
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-          AND collected_at >= NOW() - INTERVAL '5 minutes'
-          AND memory_usage_mb IS NOT NULL
-        ORDER BY memory_usage_mb DESC
-            LIMIT #{limit}
-    </select>
-
-    <!-- 5. I/O 사용량 Top N 쿼리 조회 -->
-    <select id="findTopIoQueries" resultMap="TopQueryDtoResultMap">
-        SELECT
-            ROW_NUMBER() OVER (ORDER BY io_blocks DESC) as rank,
-            query_id,
-            short_query,
-            query_type,
-            io_blocks as value,
-            'MB/s' as unit,
-            execution_count,
-            mean_exec_time_ms as avg_time_ms
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-          AND collected_at >= NOW() - INTERVAL '5 minutes'
-          AND io_blocks IS NOT NULL
-        ORDER BY io_blocks DESC
-            LIMIT #{limit}
-    </select>
-
-    <!-- 6. 실행시간 Top N 쿼리 조회 -->
-    <select id="findTopExecTimeQueries" resultMap="TopQueryDtoResultMap">
-        SELECT
-            ROW_NUMBER() OVER (ORDER BY mean_exec_time_ms DESC) as rank,
-            query_id,
-            short_query,
-            query_type,
-            mean_exec_time_ms / 1000.0 as value,
-            '초' as unit,
-            execution_count,
-            mean_exec_time_ms as avg_time_ms
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-          AND collected_at >= NOW() - INTERVAL '5 minutes'
-          AND mean_exec_time_ms IS NOT NULL
-        ORDER BY mean_exec_time_ms DESC
-            LIMIT #{limit}
-    </select>
-
-    <!-- 7. 슬로우 쿼리 Top 5 조회 -->
-    <select id="findSlowQueriesTop5" resultMap="SlowQueryDtoResultMap">
-        SELECT
-            query_id,
-            short_query,
-            query_text as full_query,
-            query_type,
-            mean_exec_time_ms as execution_time_ms,
-            ROUND(mean_exec_time_ms / 1000.0, 2) || '초' as execution_time_sec,
-            CASE
-                WHEN mean_exec_time_ms >= 5000 THEN 'HIGH'
-                WHEN mean_exec_time_ms >= 2000 THEN 'MEDIUM'
-                ELSE 'LOW'
-                END as severity,
-            CASE
-                WHEN mean_exec_time_ms >= 5000 THEN '긴급 최적화 필요'
-                WHEN mean_exec_time_ms >= 2000 THEN '인덱스 검토 권장'
-                ELSE '모니터링 유지'
-                END as suggestion,
-            collected_at as occurred_at,
-            execution_count,
-            cpu_usage_percent,
-            memory_usage_mb,
-            io_blocks
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-          AND is_slow_query = true
-          AND collected_at >= NOW() - INTERVAL '5 minutes'
-        ORDER BY mean_exec_time_ms DESC
-            LIMIT 5
-    </select>
-
-    <!-- 8. 슬로우 쿼리 전체 조회 (페이징) -->
-    <select id="findSlowQueriesFull" resultMap="SlowQueryDtoResultMap">
-        SELECT
-            query_id,
-            short_query,
-            query_text as full_query,
-            query_type,
-            mean_exec_time_ms as execution_time_ms,
-            ROUND(mean_exec_time_ms / 1000.0, 2) || '초' as execution_time_sec,
-            CASE
-                WHEN mean_exec_time_ms >= 5000 THEN 'HIGH'
-                WHEN mean_exec_time_ms >= 2000 THEN 'MEDIUM'
-                ELSE 'LOW'
-                END as severity,
-            CASE
-                WHEN mean_exec_time_ms >= 5000 THEN '긴급 최적화 필요'
-                WHEN mean_exec_time_ms >= 2000 THEN '인덱스 검토 권장'
-                ELSE '모니터링 유지'
-                END as suggestion,
-            collected_at as occurred_at,
-            execution_count,
-            cpu_usage_percent,
-            memory_usage_mb,
-            io_blocks
-        FROM query_raw_metrics
-        WHERE database_id = #{databaseId}
-          AND is_slow_query = true
-        ORDER BY mean_exec_time_ms DESC
-            LIMIT #{limit} OFFSET #{offset}
-    </select>
-
-    <!-- 9. 5분 집계 데이터 일괄 저장 -->
-    <insert id="insertBatch">
-        INSERT INTO query_agg_5m (
-        instance_id, database_id, collected_at,
-        total_queries, avg_tps, avg_qps, avg_execution_time_ms,
-        active_sessions, avg_response_time_ms, slow_query_count,
-        top_cpu_query_1, top_cpu_query_1_value,
-        top_cpu_query_2, top_cpu_query_2_value,
-        top_cpu_query_3, top_cpu_query_3_value,
-        top_cpu_query_4, top_cpu_query_4_value,
-        top_cpu_query_5, top_cpu_query_5_value,
-        top_memory_query_1, top_memory_query_1_value,
-        top_memory_query_2, top_memory_query_2_value,
-        top_memory_query_3, top_memory_query_3_value,
-        top_memory_query_4, top_memory_query_4_value,
-        top_memory_query_5, top_memory_query_5_value,
-        created_at
-        ) VALUES
-        <foreach collection="agg5mList" item="agg" separator=",">
-            (
-            #{agg.instanceId},
-            #{agg.databaseId},
-            #{agg.collectedAt},
-            #{agg.totalQueries},
-            #{agg.avgTps},
-            #{agg.avgQps},
-            #{agg.avgExecutionTimeMs},
-            #{agg.activeSessions},
-            #{agg.avgResponseTimeMs},
-            #{agg.slowQueryCount},
-            #{agg.topCpuQuery1}, #{agg.topCpuQuery1Value},
-            #{agg.topCpuQuery2}, #{agg.topCpuQuery2Value},
-            #{agg.topCpuQuery3}, #{agg.topCpuQuery3Value},
-            #{agg.topCpuQuery4}, #{agg.topCpuQuery4Value},
-            #{agg.topCpuQuery5}, #{agg.topCpuQuery5Value},
-            #{agg.topMemoryQuery1}, #{agg.topMemoryQuery1Value},
-            #{agg.topMemoryQuery2}, #{agg.topMemoryQuery2Value},
-            #{agg.topMemoryQuery3}, #{agg.topMemoryQuery3Value},
-            #{agg.topMemoryQuery4}, #{agg.topMemoryQuery4Value},
-            #{agg.topMemoryQuery5}, #{agg.topMemoryQuery5Value},
-            #{agg.createdAt}
-            )
-        </foreach>
-    </insert>
 
 </mapper>

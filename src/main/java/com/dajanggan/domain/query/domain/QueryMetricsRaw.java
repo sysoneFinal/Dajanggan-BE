@@ -16,6 +16,9 @@ public class QueryMetricsRaw {
     // 쿼리 지표 고유 ID
     private Long queryMetricId;
 
+    // 인스턴스 ID
+    private Long instanceId;
+
     // 데이터베이스ID
     private Long databaseId;
 
@@ -84,7 +87,7 @@ public class QueryMetricsRaw {
     }
 
     // 전체 생성자
-    public QueryMetricsRaw(Long queryMetricId, Long databaseId, OffsetDateTime collectedAt,
+    public QueryMetricsRaw(Long queryMetricId, Long instanceId, Long databaseId, OffsetDateTime collectedAt,
                            String queryId, String queryHash, String queryText, String shortQuery,
                            String queryType, Integer executionCount, Long ioBlocks,
                            String explainPlan, BigDecimal planningTimeMs, BigDecimal executionTimeMs,
@@ -92,6 +95,7 @@ public class QueryMetricsRaw {
                            String applicationName, String clientAddr, String state,
                            OffsetDateTime createdAt, Integer cpuRank, Integer memoryRank) {
         this.queryMetricId = queryMetricId;
+        this.instanceId = instanceId;
         this.databaseId = databaseId;
         this.collectedAt = collectedAt;
         this.queryId = queryId;
@@ -115,6 +119,7 @@ public class QueryMetricsRaw {
         this.memoryRank = memoryRank;
     }
 
+
     // Getter/Setter
     public Long getQueryMetricId() {
         return queryMetricId;
@@ -123,6 +128,11 @@ public class QueryMetricsRaw {
     public void setQueryMetricId(Long queryMetricId) {
         this.queryMetricId = queryMetricId;
     }
+    public Long getInstanceId() {
+        return instanceId;
+    }
+
+    public void setInstanceId(Long instanceId) { this.instanceId = instanceId; }
 
     public Long getDatabaseId() {
         return databaseId;
@@ -296,6 +306,7 @@ public class QueryMetricsRaw {
     public String toString() {
         return "QueryMetricsRaw{" +
                 "queryMetricId=" + queryMetricId +
+                ", instanceId=" + instanceId +
                 ", databaseId=" + databaseId +
                 ", collectedAt=" + collectedAt +
                 ", queryId='" + queryId + '\'' +

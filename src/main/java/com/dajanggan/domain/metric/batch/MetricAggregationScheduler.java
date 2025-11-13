@@ -25,13 +25,9 @@ public class MetricAggregationScheduler {
     
     @Qualifier("sessionAgg1mJob")
     private final Job sessionAgg1mJob;
-    
-    // 향후 추가될 Job들
-    // @Qualifier("queryAgg1mJob")
-    // private final Job queryAgg1mJob;
-    
-    // @Qualifier("lockAgg1mJob")
-    // private final Job lockAgg1mJob;
+
+    @Qualifier("queryAgg1mJob")
+    private final Job queryAgg1mJob;
 
     /**
      * 1분마다 1분 집계 Job들 실행
