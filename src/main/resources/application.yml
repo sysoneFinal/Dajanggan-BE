@@ -12,6 +12,13 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
+#  # Redis 설정
+#  data:
+#    redis:
+#      host: ${REDIS_HOST:localhost}
+#      port: ${REDIS_PORT:6379}
+#      password: ${REDIS_PASSWORD:}
+
 mybatis:
 
   # crypto 설정

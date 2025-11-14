@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.osmetric.repository.OsMetricMapper">
+
+    <!-- ResultMap for OsMetricRaw -->
+    <resultMap id="OsMetricRawResultMap" type="com.dajanggan.domain.osmetric.domain.OsMetricRaw">
+        <id property="osMetricRawId" column="os_metric_raw_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="metricType" column="metric_type"/>
+        <result property="value" column="value"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- ResultMap for OsMetricAgg -->
+    <resultMap id="OsMetricAggResultMap" type="com.dajanggan.domain.osmetric.domain.OsMetricAgg">
+        <id property="osMetricAggId" column="os_metric_agg_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="metricType" column="metric_type"/>
+        <result property="avgValue" column="avg_value"/>
+        <result property="maxValue" column="max_value"/>
+        <result property="minValue" column="min_value"/>
+        <result property="sampleCount" column="sample_count"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- Insert Raw Data -->
+    <insert id="insertRaw" parameterType="com.dajanggan.domain.osmetric.domain.OsMetricRaw">
+        INSERT INTO os_metric_raw (
+            instance_id,
+            collected_at,
+            metric_type,
+            value,
+            created_at
+        ) VALUES (
+            #{instanceId},
+            #{collectedAt},
+            #{metricType},
+            #{value},
+            NOW()
+        )
+    </insert>
+
+    <!-- Insert Raw Data Batch -->
+    <insert id="insertRawBatch" parameterType="java.util.List">
+        INSERT INTO os_metric_raw (
+            instance_id,
+            collected_at,
+            metric_type,
+            value,
+            created_at
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.instanceId},
+                #{item.collectedAt},
+                #{item.metricType},
+                #{item.value},
+                NOW()
+            )
+        </foreach>
+    </insert>
+
+    <!-- Find Raw Data by Instance and Period -->
+    <select id="findRawByInstanceAndPeriod" resultMap="OsMetricRawResultMap">
+        SELECT 
+            os_metric_raw_id,
+            instance_id,
+            collected_at,
+            metric_type,
+            value,
+            created_at
+        FROM os_metric_raw
+        WHERE instance_id = #{instanceId}
+          AND metric_type = #{metricType}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- Insert Agg Data -->
+    <insert id="insertAgg" parameterType="com.dajanggan.domain.osmetric.domain.OsMetricAgg">
+        INSERT INTO os_metric_agg (
+            instance_id,
+            collected_at,
+            metric_type,
+            avg_value,
+            max_value,
+            min_value,
+            sample_count,
+            created_at
+        ) VALUES (
+            #{instanceId},
+            #{collectedAt},
+            #{metricType},
+            #{avgValue},
+            #{maxValue},
+            #{minValue},
+            #{sampleCount},
+            NOW()
+        )
+    </insert>
+
+    <!-- Insert Agg Data Batch -->
+    <insert id="insertAggBatch" parameterType="java.util.List">
+        INSERT INTO os_metric_agg (
+            instance_id,
+            collected_at,
+            metric_type,
+            avg_value,
+            max_value,
+            min_value,
+            sample_count,
+            created_at
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.instanceId},
+                #{item.collectedAt},
+                #{item.metricType},
+                #{item.avgValue},
+                #{item.maxValue},
+                #{item.minValue},
+                #{item.sampleCount},
+                NOW()
+            )
+        </foreach>
+    </insert>
+
+    <!-- Find Agg Data by Instance and Period -->
+    <select id="findAggByInstanceAndPeriod" resultMap="OsMetricAggResultMap">
+        SELECT 
+            os_metric_agg_id,
+            instance_id,
+            collected_at,
+            metric_type,
+            avg_value,
+            max_value,
+            min_value,
+            sample_count,
+            created_at
+        FROM os_metric_agg
+        WHERE instance_id = #{instanceId}
+          AND metric_type = #{metricType}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- Delete Raw Data Before Specific Time -->
+    <delete id="deleteRawBefore">
+        DELETE FROM os_metric_raw
+        WHERE collected_at &lt; #{beforeTime}
+    </delete>
+
+</mapper>
