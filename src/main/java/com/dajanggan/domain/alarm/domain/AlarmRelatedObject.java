@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 @Builder
 public class AlarmRelatedObject {
     private Long alarmRelatedObjectId;
-    private Long alarmHistoryId;
+    private Long alarmFeedId;
     private Long alarmRuleId;
     private String objectName;
     private BigDecimal metricValue;

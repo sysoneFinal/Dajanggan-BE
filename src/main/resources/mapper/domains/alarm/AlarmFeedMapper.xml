@@ -35,9 +35,10 @@
     <select id="selectAlarmDetail" resultType="com.dajanggan.domain.alarm.domain.AlarmFeed">
         SELECT
             alarm_feed_id AS alarmFeedId,
-            alarm_history_id AS alarmHistoryId,
             instance_id AS instanceId,
             database_id AS databaseId,
+            alarm_rule_id AS alarmRuleId,
+            alarm_tracking_id AS alarmTrackingId,
             alarm_title AS alarmTitle,
             severity_level AS severityLevel,
             metric_type AS metricType,
@@ -60,7 +61,7 @@
             TO_CHAR(amh.recorded_at, 'HH24:00') AS hourLabel,
             AVG(CAST(amh.metric_value AS DECIMAL)) AS avgLatency
         FROM alarm_metric_history amh
-        WHERE amh.alarm_history_id = #{alarmHistoryId}
+        WHERE amh.alarm_feed_id = #{alarmFeedId}
           AND amh.recorded_at >= NOW() - INTERVAL '24 hours'
         GROUP BY TO_CHAR(amh.recorded_at, 'HH24:00')
         ORDER BY hourLabel
@@ -69,12 +70,12 @@
     <!-- 관련 객체 조회 -->
     <select id="selectRelatedObjects" resultType="com.dajanggan.domain.alarm.dto.AlarmFeedDto$RelatedObjectRaw">
         SELECT
-            'table' AS objectType,
+            aro.object_type AS objectType,
             aro.object_name AS objectName,
-            CONCAT('Dead ', FORMAT(aro.metric_value, 0)) AS metricValue,
+            aro.metric_value AS metricValue,
             aro.status
         FROM alarm_related_objects aro
-        WHERE aro.alarm_history_id = #{alarmHistoryId}
+        WHERE aro.alarm_feed_id = #{alarmFeedId}
         ORDER BY aro.metric_value DESC
     </select>
 
@@ -107,4 +108,75 @@
           AND is_read = FALSE
     </select>
 
+    <!-- AlarmFeed 생성 -->
+    <insert id="insertAlarmFeed" useGeneratedKeys="true" keyProperty="alarmFeedId" keyColumn="alarm_feed_id">
+        INSERT INTO alarm_feed (
+            alarm_rule_id, alarm_tracking_id, instance_id, database_id,
+            alarm_title, severity_level, metric_type,
+            current_value, threshold_value, message,
+            occurred_at, is_resolved, is_read, acknowledged
+        ) VALUES (
+                     #{alarmRuleId}, #{alarmTrackingId}, #{instanceId}, #{databaseId},
+                     #{alarmTitle}, #{severityLevel}, #{metricType},
+                     #{currentValue}, #{thresholdValue}, #{message},
+                     #{occurredAt}, #{isResolved}, #{isRead}, #{acknowledged}
+                 )
+    </insert>
+
+    <!-- AlarmFeed 업데이트 -->
+    <update id="updateAlarmFeed">
+        UPDATE alarm_feed
+        SET alarm_title = #{alarmTitle},
+            severity_level = #{severityLevel},
+            current_value = #{currentValue},
+            threshold_value = #{thresholdValue},
+            message = #{message},
+            occurred_at = #{occurredAt}
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </update>
+
+    <!-- Feed ID로 해제 처리 -->
+    <update id="resolveByFeedId">
+        UPDATE alarm_feed
+        SET is_resolved = true,
+            resolved_at = NOW()
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </update>
+
+    <!-- 메트릭 히스토리 저장 -->
+    <insert id="insertMetricHistory">
+        INSERT INTO alarm_metric_history (
+            alarm_feed_id, metric_value, recorded_at, created_at
+        ) VALUES (
+                     #{alarmFeedId}, #{metricValue}, #{recordedAt}, NOW()
+                 )
+    </insert>
+
+    <!-- 관련 객체 저장 (alarm_feed_id 사용) -->
+    <insert id="insertRelatedObject">
+        INSERT INTO alarm_related_objects (
+            alarm_feed_id,
+            alarm_rule_id,
+            object_type,
+            object_name,
+            metric_value,
+            status
+        ) VALUES (
+                     #{alarmFeedId},
+                     #{alarmRuleId},
+                     #{objectType},
+                     #{objectName},
+                     #{metricValue},
+                     #{status}
+                 )
+    </insert>
+
+    <!-- trackingId로 최신 feed_id 조회 -->
+    <select id="selectLatestFeedIdByTrackingId" resultType="long">
+        SELECT alarm_feed_id
+        FROM alarm_feed
+        WHERE alarm_tracking_id = #{alarmTrackingId}
+        ORDER BY occurred_at DESC, alarm_feed_id DESC
+            LIMIT 1
+    </select>
 </mapper>
