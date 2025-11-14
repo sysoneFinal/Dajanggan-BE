@@ -4,6 +4,33 @@
 
 <mapper namespace="com.dajanggan.domain.query.repository.QueryAgg5mRepository">
 
+    <!-- 5분 집계 데이터 일괄 저장 -->
+    <insert id="insertAgg5m">
+        INSERT INTO query_metrics_agg_5m (
+        instance_id, database_id, collected_at,
+        total_queries, avg_execution_time_ms, slow_query_count, total_io_blocks,
+        top_slow_query_1, top_slow_query_1_time,
+        top_slow_query_2, top_slow_query_2_time,
+        top_slow_query_3, top_slow_query_3_time,
+        top_slow_query_4, top_slow_query_4_time,
+        top_slow_query_5, top_slow_query_5_time,
+        created_at
+        )
+        VALUES
+        <foreach collection="metrics" item="m" separator=",">
+            (
+            #{m.instanceId}, #{m.databaseId}, #{m.collectedAt},
+            #{m.totalQueries}, #{m.avgExecutionTimeMs}, #{m.slowQueryCount}, #{m.totalIoBlocks},
+            #{m.topSlowQuery1}, #{m.topSlowQuery1Time},
+            #{m.topSlowQuery2}, #{m.topSlowQuery2Time},
+            #{m.topSlowQuery3}, #{m.topSlowQuery3Time},
+            #{m.topSlowQuery4}, #{m.topSlowQuery4Time},
+            #{m.topSlowQuery5}, #{m.topSlowQuery5Time},
+            NOW()
+            )
+        </foreach>
+    </insert>
+
     <!-- 요약카드 (단일 DB용 - Details 페이지) -->
     <select id="findLatestSummary" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.QuerySummaryDto">
         SELECT
@@ -44,7 +71,7 @@
             LIMIT 1
     </select>
 
-    <!-- 슬로우 쿼리 리스트 최신 10개 - ✅ instance_id 추가 -->
+    <!-- 슬로우 쿼리 리스트 최신 10개 -->
     <select id="findSlowQueryList" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.SlowQueryListDto">
         SELECT
             query_metric_id AS queryMetricId,

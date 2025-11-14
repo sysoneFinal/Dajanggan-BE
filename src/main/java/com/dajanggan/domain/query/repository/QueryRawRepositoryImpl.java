@@ -39,6 +39,11 @@ public class QueryRawRepositoryImpl {
             JOIN pg_roles r ON s.userid = r.oid
             WHERE d.datname IS NOT NULL
               AND s.query NOT LIKE '%pg_stat_statements%'
+              AND s.query NOT LIKE '--%'                    -- 주석으로 시작하는 쿼리 제외
+              AND s.query NOT LIKE '%테이블%'               -- 한글 주석 제외
+              AND s.query NOT LIKE '%데이터%'               -- 한글 주석 제외
+              AND s.query NOT LIKE '%파티션%'               -- 한글 주석 제외
+              AND s.calls > 0                                -- 실제 실행된 쿼리만
             ORDER BY s.mean_exec_time DESC
             LIMIT 1000
             """;
