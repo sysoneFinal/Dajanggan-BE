@@ -26,6 +26,22 @@
             NOW()
             )
         </foreach>
+        <!-- PK 중복 시 UPDATE (UPSERT) -->
+        ON CONFLICT (instance_id, database_id, collected_at)
+        DO UPDATE SET
+        total_queries = EXCLUDED.total_queries,
+        select_queries = EXCLUDED.select_queries,
+        insert_queries = EXCLUDED.insert_queries,
+        update_queries = EXCLUDED.update_queries,
+        delete_queries = EXCLUDED.delete_queries,
+        other_queries = EXCLUDED.other_queries,
+        avg_execution_time_ms = EXCLUDED.avg_execution_time_ms,
+        max_execution_time_ms = EXCLUDED.max_execution_time_ms,
+        avg_planning_time_ms = EXCLUDED.avg_planning_time_ms,
+        total_io_blocks = EXCLUDED.total_io_blocks,
+        avg_io_blocks = EXCLUDED.avg_io_blocks,
+        slow_query_count = EXCLUDED.slow_query_count,
+        created_at = NOW()
     </insert>
 
     <!-- 쿼리 타입별 추이 -->
