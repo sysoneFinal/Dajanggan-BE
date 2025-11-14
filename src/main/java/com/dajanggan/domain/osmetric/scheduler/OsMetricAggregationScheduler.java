@@ -4,6 +4,7 @@ import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.osmetric.domain.OsMetricAgg;
 import com.dajanggan.domain.osmetric.dto.OsMetricResponse;
 import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -33,16 +34,23 @@ public class OsMetricAggregationScheduler {
     
     private static final String REDIS_KEY_PREFIX = "os:metric:live:";
     
+    @PostConstruct
+    public void init() {
+        log.info("========== OsMetricAggregationScheduler Bean Created ==========");
+    }
+    
     /**
      * 1분마다 실행 (정시에 실행: 매분 0초)
      */
     @Scheduled(cron = "0 * * * * *")
     public void aggregateMetrics() {
-        log.info("Starting OS metric aggregation...");
+        log.info("========== Starting OS metric aggregation ==========");
         
         try {
             // 1. Redis에서 모든 metric 키 조회
             Set<String> keys = redisTemplate.keys(REDIS_KEY_PREFIX + "*");
+            
+            log.info("Found {} keys in Redis", keys != null ? keys.size() : 0);
             
             if (keys == null || keys.isEmpty()) {
                 log.info("No metrics found in Redis");
@@ -56,9 +64,13 @@ public class OsMetricAggregationScheduler {
             // 2. 각 키에 대해 집계 수행
             for (String key : keys) {
                 try {
+                    log.debug("Processing key: {}", key);
                     OsMetricAgg agg = aggregateFromRedis(key, collectedAt);
                     if (agg != null) {
                         aggList.add(agg);
+                        log.debug("Successfully aggregated key: {}", key);
+                    } else {
+                        log.warn("Failed to aggregate key: {}", key);
                     }
                 } catch (Exception e) {
                     log.error("Error aggregating key: {}", key, e);
@@ -67,13 +79,18 @@ public class OsMetricAggregationScheduler {
             
             // 3. 집계 결과를 PostgreSQL에 배치 저장
             if (!aggList.isEmpty()) {
+                log.info("Inserting {} aggregated metrics to database", aggList.size());
                 osMetricMapper.insertAggBatch(aggList);
                 log.info("Successfully aggregated {} metrics", aggList.size());
+            } else {
+                log.warn("No metrics were aggregated");
             }
             
         } catch (Exception e) {
             log.error("Error in OS metric aggregation", e);
         }
+        
+        log.info("========== OS metric aggregation completed ==========");
     }
     
     /**
@@ -98,6 +115,15 @@ public class OsMetricAggregationScheduler {
             return null;
         }
         
+        log.debug("Found {} items in Redis for key: {}", dataList.size(), key);
+        
+        // 첫 번째 아이템의 타입 확인
+        if (!dataList.isEmpty()) {
+            Object firstItem = dataList.get(0);
+            log.debug("First item type: {}, value: {}", 
+                    firstItem.getClass().getName(), firstItem);
+        }
+        
         // 통계 계산
         double sum = 0.0;
         double max = Double.MIN_VALUE;
@@ -105,18 +131,20 @@ public class OsMetricAggregationScheduler {
         int count = 0;
         
         for (Object obj : dataList) {
-            if (obj instanceof OsMetricResponse) {
-                OsMetricResponse metric = (OsMetricResponse) obj;
-                double value = metric.getValue();
+            try {
+                double value = extractValue(obj);
                 
                 sum += value;
                 max = Math.max(max, value);
                 min = Math.min(min, value);
                 count++;
+            } catch (Exception e) {
+                log.warn("Failed to extract value from object: {}", obj, e);
             }
         }
         
         if (count == 0) {
+            log.warn("No valid values found in key: {}", key);
             return null;
         }
         
@@ -136,10 +164,28 @@ public class OsMetricAggregationScheduler {
         log.debug("Aggregated: instanceId={}, metricType={}, avg={}, max={}, min={}, samples={}", 
                 instanceId, metricType, avg, max, min, count);
         
-        // Redis 키 삭제 (집계 완료 후)
-        // 또는 오래된 데이터만 삭제하도록 수정 가능
-        // redisTemplate.delete(key);
-        
         return agg;
+    }
+    
+    /**
+     * Redis 객체에서 value 추출
+     * OsMetricResponse 객체 또는 Map 형태 모두 처리
+     */
+    private double extractValue(Object obj) {
+        if (obj instanceof OsMetricResponse) {
+            return ((OsMetricResponse) obj).getValue();
+        } else if (obj instanceof java.util.Map) {
+            // Jackson이 Map으로 역직렬화한 경우
+            java.util.Map<?, ?> map = (java.util.Map<?, ?>) obj;
+            Object valueObj = map.get("value");
+            
+            if (valueObj instanceof Number) {
+                return ((Number) valueObj).doubleValue();
+            } else if (valueObj instanceof String) {
+                return Double.parseDouble((String) valueObj);
+            }
+        }
+        
+        throw new IllegalArgumentException("Cannot extract value from object: " + obj.getClass().getName());
     }
 }

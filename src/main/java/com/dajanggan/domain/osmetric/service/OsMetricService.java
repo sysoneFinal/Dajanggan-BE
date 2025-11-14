@@ -70,24 +70,35 @@ public class OsMetricService {
      * Redis에 메트릭 저장
      */
     private void saveToRedis(Long instanceId, OsMetricRequest request) {
-        String key = REDIS_KEY_PREFIX + instanceId + ":" + request.getMetricType();
-        
-        OsMetricResponse response = OsMetricResponse.builder()
-                .instanceId(instanceId)
-                .instanceName(request.getInstanceName())
-                .metricType(request.getMetricType())
-                .value(request.getValue())
-                .timestamp(request.getTimestamp())
-                .build();
-        
-        // List로 저장 (최근 데이터를 앞에 추가)
-        redisTemplate.opsForList().leftPush(key, response);
-        
-        // TTL 설정
-        redisTemplate.expire(key, REDIS_TTL_SECONDS, TimeUnit.SECONDS);
-        
-        // 최대 60개만 유지 (5분 / 5초 = 60개)
-        redisTemplate.opsForList().trim(key, 0, 59);
+        try {
+            String key = REDIS_KEY_PREFIX + instanceId + ":" + request.getMetricType();
+            
+            log.debug("Attempting to save to Redis: key={}", key);
+            
+            OsMetricResponse response = OsMetricResponse.builder()
+                    .instanceId(instanceId)
+                    .instanceName(request.getInstanceName())
+                    .metricType(request.getMetricType())
+                    .value(request.getValue())
+                    .timestamp(request.getTimestamp())
+                    .build();
+            
+            // List로 저장 (최근 데이터를 앞에 추가)
+            redisTemplate.opsForList().leftPush(key, response);
+            
+            // TTL 설정
+            redisTemplate.expire(key, REDIS_TTL_SECONDS, TimeUnit.SECONDS);
+            
+            // 최대 60개만 유지 (5분 / 5초 = 60개)
+            redisTemplate.opsForList().trim(key, 0, 59);
+            
+            log.debug("Successfully saved to Redis: key={}, value={}", key, request.getValue());
+            
+        } catch (Exception e) {
+            log.error("Failed to save to Redis: instanceId={}, metricType={}, error={}", 
+                    instanceId, request.getMetricType(), e.getMessage(), e);
+            // Redis 저장 실패해도 PostgreSQL 저장은 계속 진행
+        }
     }
     
     /**
