@@ -1,5 +1,9 @@
 package com.dajanggan.domain.metric.collector;
 
+import com.dajanggan.domain.event.detector.SessionEventDetector;
+import com.dajanggan.domain.event.dto.EventLevel;
+import com.dajanggan.domain.event.dto.EventLog;
+import com.dajanggan.domain.event.service.EventService;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.session.dto.raw.LockSessionDto;
@@ -24,6 +28,8 @@ public class SessionMetricsCollector {
     private final SessionRawRepository sessionRawRepository;
     private final SessionRawRepositoryImpl sessionRawRepositoryImpl;
     private final DataSourceFactory dataSourceFactory;
+    private final SessionEventDetector sessionEventDetector;
+    private final EventService eventService;
 
     /** 세션 원시 지표 수집기 (Database 단위) */
     public void collect(Instance instance, Database database, OffsetDateTime collectedAt) {
@@ -46,7 +52,7 @@ public class SessionMetricsCollector {
         // 락 정보 조회
         Map<Integer, LockSessionDto> lockMap = sessionRawRepositoryImpl.getWaitingLocks(jdbc);
 
-        // 세션별 가공
+        // 1. 세션별 가공
         for (SessionRawMetricDto dto : sessions) {
             // 기본 정보 설정
             dto.setDatabaseId(database.getDatabaseId());
@@ -61,26 +67,46 @@ public class SessionMetricsCollector {
 
             // 락 정보 매핑
             LockSessionDto lockInfo = lockMap.get(dto.getPid());
+            dto.setLockInfo(lockInfo);
             if (lockInfo != null) {
                 dto.setLockType(lockInfo.getLockType());
                 dto.setTableName(lockInfo.getTableName());
                 dto.setWaitDurationSec(lockInfo.getWaitDurationSec());
             }
 
-            // 영향도 계산 (통합 - 한 번만!)
-            dto.setImpactLevel(calculateImpactLevel(dto, lockInfo));
+            // 영향도 계산 (세션별)
+            EventLevel impact = calculateImpactLevel(dto, lockInfo);
+            dto.setImpactLevel(impact.name());
         }
 
-        // 저장 - 모니터링 DB에 INSERT
-        sessionRawRepository.insertSessionMetrics(sessions);
-        log.info("[{}] Collected {} 세션 지표 for 데이터베이스: {} (instance: {}:{})",
-                collectedAt,
-                sessions.size(),
-                database.getDatabaseName(),
-                instance.getHost(),
-                instance.getPort());
-    }
+        // 원시 데이터 저장
+        try {
+            sessionRawRepository.insertSessionMetrics(sessions);
+            log.info("[{}] Collected {} 세션 지표 for 데이터베이스: {} (instance: {}:{})",
+                    collectedAt,
+                    sessions.size(),
+                    database.getDatabaseName(),
+                    instance.getHost(),
+                    instance.getPort());
+        } catch (Exception e) {
+            log.error("원시 데이터 저장 실패", e);
+            return; // 이벤트 생성 안 함
+        }
 
+
+        // 2. 전체 세션 대상으로 이벤트 감지
+        List<EventLog> events = sessionEventDetector.detectEvents(
+                sessions,
+                database.getDatabaseId(),
+                instance.getInstanceId(),
+                database.getDatabaseName(),
+                instance.getInstanceName()
+        );
+
+        // 3. 이벤트 저장
+        eventService.saveEvents(events);
+
+    }
 
 
     /** 쿼리 실행 시간 계산 */
@@ -106,44 +132,44 @@ public class SessionMetricsCollector {
 
 
     /** 영향도 계산  */
-    private String calculateImpactLevel(SessionRawMetricDto dto, LockSessionDto lockInfo) {
+    private EventLevel calculateImpactLevel(SessionRawMetricDto dto, LockSessionDto lockInfo) {
         String state = Optional.ofNullable(dto.getState()).orElse("").toLowerCase(Locale.ROOT);
         String waitEventType = Optional.ofNullable(dto.getWaitEventType()).orElse("").toLowerCase(Locale.ROOT);
         Integer blockingPid = dto.getBlockingPid();
 
         // CRITICAL 조건들
         if (blockingPid != null) {
-            return "CRITICAL";
+            return EventLevel.CRITICAL;
         }
         if ("lock".equals(waitEventType) || "lwlock".equals(waitEventType)) {
-            return "CRITICAL";
+            return EventLevel.CRITICAL;
         }
 
         // 락 mode 기반 판단
         if (lockInfo != null) {
             String mode = lockInfo.getMode();
             if ("AccessExclusiveLock".equals(mode) || "ExclusiveLock".equals(mode)) {
-                return "CRITICAL";
+                return EventLevel.CRITICAL;
             }
         }
 
         // WARN 조건들
         if (state.contains("idle in transaction")) {
-            return "WARN";
+            return EventLevel.WARN;
         }
         if ("active".equals(state) && waitEventType.contains("io")) {
-            return "WARN";
+            return EventLevel.WARN;
         }
 
         // 락 mode 기반 WARN
         if (lockInfo != null) {
             String mode = lockInfo.getMode();
             if ("RowExclusiveLock".equals(mode) || "ShareLock".equals(mode)) {
-                return "WARN";
+                return EventLevel.WARN;
             }
         }
 
         // 기본: INFO
-        return "INFO";
+        return EventLevel.INFO;
     }
 }

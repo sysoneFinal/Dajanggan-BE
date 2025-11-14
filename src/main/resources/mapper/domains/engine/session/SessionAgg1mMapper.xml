@@ -59,7 +59,7 @@
         FROM session_metrics_agg_1m
         WHERE instance_id = #{instanceId}
         AND database_id = #{databaseId}
-        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'
         ORDER BY collected_at
     </select>
 
@@ -74,7 +74,7 @@
         FROM session_metrics_agg_1m
         WHERE instance_id = #{instanceId}
         AND database_id = #{databaseId}
-        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'
         ORDER BY collected_at
     </select>
 
@@ -86,7 +86,7 @@
         FROM session_metrics_agg_1m
         WHERE instance_id = #{instanceId}
         AND database_id = #{databaseId}
-        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'
         ORDER BY collected_at
     </select>
     
@@ -97,7 +97,7 @@
         FROM session_metrics_agg_1m
         WHERE instance_id = #{instanceId}
         AND database_id = #{databaseId}
-        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'
         ORDER BY collected_at;
     </select>
 
@@ -108,7 +108,7 @@
         FROM session_metrics_agg_1m
         WHERE instance_id = #{instanceId}
         AND database_id = #{databaseId}
-        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'
         ORDER BY collected_at;
     </select>
 

@@ -1,6 +1,7 @@
 package com.dajanggan.domain.session.dto.raw;
 
 import lombok.*;
+import org.springframework.data.annotation.Transient;
 
 import java.time.OffsetDateTime;
 
@@ -32,6 +33,7 @@ public class SessionRawMetricDto {
     private Integer blockingPid;
     private String blockingUsername;
 
+    private OffsetDateTime xactStart;  // 트랜잭션 시작 시간
     private String queryType;
     private String query;
     private OffsetDateTime queryStart;
@@ -47,4 +49,8 @@ public class SessionRawMetricDto {
     private String tableName;
 
     private OffsetDateTime createdAt;
+
+
+    @Transient  // 임시저장 - 마이바티스면 매퍼에서 제외
+    private LockSessionDto lockInfo;
 }

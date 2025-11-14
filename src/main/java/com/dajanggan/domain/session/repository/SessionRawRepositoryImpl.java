@@ -40,6 +40,7 @@ public class SessionRawRepositoryImpl {
                 a.wait_event_type,
                 a.wait_event,
                 a.query,
+                a.xact_start,
                 a.query_start,
                 b.blocking_pid,
                 b.blocking_username,
@@ -125,6 +126,14 @@ public class SessionRawRepositoryImpl {
             dto.setBlockingUsername(rs.getString("blocking_username"));
 
             // Timestamp를 OffsetDateTime으로 변환
+            Timestamp xactStartTs = rs.getTimestamp("xact_start");
+            if (xactStartTs != null) {
+                dto.setXactStart(OffsetDateTime.ofInstant(
+                        xactStartTs.toInstant(),
+                        ZoneId.systemDefault()
+                ));
+            }
+
             Timestamp queryStartTs = rs.getTimestamp("query_start");
             if (queryStartTs != null) {
                 dto.setQueryStart(OffsetDateTime.ofInstant(
