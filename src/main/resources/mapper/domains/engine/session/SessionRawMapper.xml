@@ -7,18 +7,18 @@
     <insert id="insertSessionMetrics" parameterType="com.dajanggan.domain.session.dto.raw.SessionRawMetricDto">
         INSERT INTO session_metrics_raw (
             database_id, instance_id, collected_at, pid, username, databasename, client_addr,
-            application_name, state, wait_event_type, wait_event, wait_class,
-            bottleneck_cause, impact_level, wait_duration_sec, blocking_pid,
-            query_type, query, query_start, query_age_sec,
+            application_name, state, max_connections, wait_event_type, wait_event, wait_class,
+            bottleneck_cause, impact_level, wait_duration_sec, blocking_pid, blocking_username,
+            xact_start, query_type, query, query_start, query_age_sec,
             cpu_usage, memory_usage_mb, lock_type, lock_duration_ms, is_deadlock, created_at
         )
         VALUES
         <foreach collection="metrics" item="m" separator=",">
             (#{m.databaseId}, #{m.instanceId}, #{m.collectedAt}, #{m.pid}, #{m.username}, #{m.databasename},
-            #{m.clientAddr}, #{m.applicationName}, #{m.state},
+            #{m.clientAddr}, #{m.applicationName}, #{m.state}, #{m.maxConnections},
             #{m.waitEventType}, #{m.waitEvent}, #{m.waitClass}, #{m.bottleneckCause},
-            #{m.impactLevel}, #{m.waitDurationSec}, #{m.blockingPid},
-            #{m.queryType}, #{m.query}, #{m.queryStart}, #{m.queryAgeSec},
+            #{m.impactLevel}, #{m.waitDurationSec}, #{m.blockingPid}, #{m.blockingUsername},
+            #{m.xactStart}, #{m.queryType}, #{m.query}, #{m.queryStart}, #{m.queryAgeSec},
             #{m.cpuUsage}, #{m.memoryUsageMb}, #{m.lockType}, #{m.lockDurationMs},
             #{m.isDeadlock}, NOW())
         </foreach>

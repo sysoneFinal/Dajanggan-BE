@@ -5,8 +5,11 @@ import com.dajanggan.domain.event.repository.EventRepository;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -16,6 +19,7 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final InstanceRepository instanceRepository;
+
 
     public EventService(EventRepository eventRepository, InstanceRepository instanceRepository){
         this.eventRepository = eventRepository;
@@ -53,5 +57,66 @@ public class EventService {
                 "page", params.get("page"),
                 "size", params.get("pageSize")
         );
+    }
+
+    /**
+     * 이벤트 저장
+     * - 별도 트랜잭션으로 처리하여 모니터링 로직과 분리
+     * - 저장 실패 시에도 모니터링이 계속 진행되도록 예외를 먹음
+     */
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void saveEvents(List<EventLog> events) {
+        if (events == null || events.isEmpty()) {
+            log.debug("저장할 이벤트가 없습니다.");
+            return;
+        }
+
+        try {
+            // 검증 및 기본값 설정
+            for (EventLog event : events) {
+                validateRequired(event);
+                setDefaults(event);
+            }
+
+            // 배치 INSERT
+            eventRepository.insertEventsBatch(events);
+
+            log.info("총 {} 개의 이벤트 저장 완료", events.size());
+
+        } catch (Exception e) {
+            log.error("이벤트 저장 실패 - 개수: {}, error: {}",
+                    events.size(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 필수 필드 검증
+     */
+    private void validateRequired(EventLog event) {
+        if (event.getInstanceId() == null) {
+            throw new IllegalArgumentException("instanceId는 필수입니다.");
+        }
+        if (event.getDatabaseId() == null) {
+            throw new IllegalArgumentException("databaseId는 필수입니다.");
+        }
+        if (event.getCategory() == null || event.getCategory().isBlank()) {
+            throw new IllegalArgumentException("category는 필수입니다.");
+        }
+        if (event.getEventType() == null || event.getEventType().isBlank()) {
+            throw new IllegalArgumentException("eventType은 필수입니다.");
+        }
+        if (event.getLevel() == null || event.getLevel().isBlank()) {
+            throw new IllegalArgumentException("level은 필수입니다.");
+        }
+    }
+
+    /**
+     * 기본값 설정
+     */
+    private void setDefaults(EventLog event) {
+        if (event.getDetectedAt() == null) {
+            event.setDetectedAt(OffsetDateTime.now());
+        }
     }
 }

@@ -71,6 +71,9 @@ public class CommonMetricsCollector {
                         database.getDatabaseName());
 
                 sessionMetricsCollector.collect(instance, database, collectedAt);
+
+
+
                 // 쿼리 메트릭 수집
                 queryMetricsCollector.collect(instance, database, collectedAt);
 

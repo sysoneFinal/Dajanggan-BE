@@ -22,7 +22,7 @@ public class SessionAgg5mService {
     /** 지표 : 요약카드 4개 (단일 DB - Details 페이지) */
     public SessionSummaryDto findLatestSummary(Map<String, Object> params) {
         SessionSummaryDto result = sessionAgg5mRepository.findLatestSummary(params);
-        log.debug("findLatestSummary 결과: {}", result);
+        log.info("findLatestSummary 결과: {}", result);
         return result;
     }
     /** 지표 : 데드락 요약카드 1개*/
