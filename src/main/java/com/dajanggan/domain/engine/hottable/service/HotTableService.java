@@ -23,37 +23,43 @@ public class HotTableService {
 
     /**
      * HotTable 대시보드 데이터 조회
+     * @param instanceId 인스턴스 ID
      * @param databaseId 데이터베이스 ID
      * @return HotTable 대시보드 데이터
      */
-    public HotTableDto.DashboardResponse getHotTableDashboard(Long databaseId) {
-        log.info("HotTable 대시보드 조회 시작 - databaseId: {}", databaseId);
+    public HotTableDto.DashboardResponse getHotTableDashboard(Long instanceId, Long databaseId) {
+        log.info("HotTable 대시보드 조회 시작 - instanceId: {}, databaseId: {}", instanceId, databaseId);
 
-        // 기본값 설정
+        // instanceId와 databaseId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
         if (databaseId == null) {
-            databaseId = 1L; // 기본 데이터베이스 ID
+            log.error("databaseId가 필수입니다");
+            throw new IllegalArgumentException("databaseId는 필수 파라미터입니다");
         }
 
         LocalDateTime endTime = LocalDateTime.now();
         LocalDateTime startTime = endTime.minusHours(24); // 최근 24시간
 
         return HotTableDto.DashboardResponse.builder()
-                .topTables(getTopTables(databaseId))
-                .tableActivity(getTableActivity(databaseId, startTime, endTime))
-                .cacheHitRatio(getCacheHitRatio(databaseId, startTime, endTime))
-                .bloatStatus(getBloatStatus(databaseId))
-                .vacuumStatus(getVacuumStatus(databaseId))
-                .recentStats(getRecentStats(databaseId))
+                .topTables(getTopTables(instanceId, databaseId))
+                .tableActivity(getTableActivity(instanceId, databaseId, startTime, endTime))
+                .cacheHitRatio(getCacheHitRatio(instanceId, databaseId, startTime, endTime))
+                .bloatStatus(getBloatStatus(instanceId, databaseId))
+                .vacuumStatus(getVacuumStatus(instanceId, databaseId))
+                .recentStats(getRecentStats(instanceId, databaseId))
                 .build();
     }
 
     /**
      * Top 테이블 정보 조회
      */
-    private HotTableDto.TopTables getTopTables(Long databaseId) {
-        List<Map<String, Object>> topBySize = hotTableMapper.selectTopTablesBySize(databaseId);
-        List<Map<String, Object>> topByScan = hotTableMapper.selectTopTablesByScan(databaseId);
-        List<Map<String, Object>> topByBloat = hotTableMapper.selectTopTablesByBloat(databaseId);
+    private HotTableDto.TopTables getTopTables(Long instanceId, Long databaseId) {
+        List<Map<String, Object>> topBySize = hotTableMapper.selectTopTablesBySize(instanceId, databaseId);
+        List<Map<String, Object>> topByScan = hotTableMapper.selectTopTablesByScan(instanceId, databaseId);
+        List<Map<String, Object>> topByBloat = hotTableMapper.selectTopTablesByBloat(instanceId, databaseId);
 
         return HotTableDto.TopTables.builder()
                 .topBySize(convertToTableSummary(topBySize))
@@ -65,8 +71,8 @@ public class HotTableService {
     /**
      * 테이블 활동 시계열 데이터 조회
      */
-    private HotTableDto.TableActivity getTableActivity(Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> data = hotTableMapper.selectTableActivityTimeSeries(databaseId, startTime, endTime);
+    private HotTableDto.TableActivity getTableActivity(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+        List<Map<String, Object>> data = hotTableMapper.selectTableActivityTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
         List<Long> seqScans = new ArrayList<>();
@@ -97,8 +103,8 @@ public class HotTableService {
     /**
      * 캐시 히트율 시계열 데이터 조회
      */
-    private HotTableDto.CacheHitRatio getCacheHitRatio(Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> data = hotTableMapper.selectCacheHitRatioTimeSeries(databaseId, startTime, endTime);
+    private HotTableDto.CacheHitRatio getCacheHitRatio(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+        List<Map<String, Object>> data = hotTableMapper.selectCacheHitRatioTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
         List<Double> ratios = new ArrayList<>();
@@ -124,8 +130,8 @@ public class HotTableService {
     /**
      * Bloat 상태 조회
      */
-    private HotTableDto.BloatStatus getBloatStatus(Long databaseId) {
-        List<Map<String, Object>> data = hotTableMapper.selectBloatStatus(databaseId);
+    private HotTableDto.BloatStatus getBloatStatus(Long instanceId, Long databaseId) {
+        List<Map<String, Object>> data = hotTableMapper.selectBloatStatus(instanceId, databaseId);
 
         List<String> categories = new ArrayList<>();
         List<Double> bloatData = new ArrayList<>();
@@ -161,8 +167,8 @@ public class HotTableService {
     /**
      * Vacuum 상태 조회
      */
-    private HotTableDto.VacuumStatus getVacuumStatus(Long databaseId) {
-        List<Map<String, Object>> data = hotTableMapper.selectVacuumStatus(databaseId);
+    private HotTableDto.VacuumStatus getVacuumStatus(Long instanceId, Long databaseId) {
+        List<Map<String, Object>> data = hotTableMapper.selectVacuumStatus(instanceId, databaseId);
 
         List<String> categories = new ArrayList<>();
         List<Long> delaySeconds = new ArrayList<>();
@@ -188,8 +194,8 @@ public class HotTableService {
     /**
      * 최근 통계 조회
      */
-    private HotTableDto.RecentStats getRecentStats(Long databaseId) {
-        Map<String, Object> data = hotTableMapper.selectRecentStats(databaseId);
+    private HotTableDto.RecentStats getRecentStats(Long instanceId, Long databaseId) {
+        Map<String, Object> data = hotTableMapper.selectRecentStats(instanceId, databaseId);
 
         return HotTableDto.RecentStats.builder()
                 .totalTables(getLongValue(data.get("total_tables")))
@@ -203,18 +209,24 @@ public class HotTableService {
 
     /**
      * HotTable 리스트 데이터 조회
+     * @param instanceId 인스턴스 ID
      * @param databaseId 데이터베이스 ID
      * @param timeRange 시간 범위
      * @param statusList 상태 필터 리스트
      * @return HotTable 리스트 데이터
      */
-    public HotTableDto.ListResponse getHotTableList(Long databaseId, String timeRange, List<String> statusList) {
-        log.info("HotTable 리스트 조회 시작 - databaseId: {}, timeRange: {}, statusList: {}",
-                databaseId, timeRange, statusList);
+    public HotTableDto.ListResponse getHotTableList(Long instanceId, Long databaseId, String timeRange, List<String> statusList) {
+        log.info("HotTable 리스트 조회 시작 - instanceId: {}, databaseId: {}, timeRange: {}, statusList: {}",
+                instanceId, databaseId, timeRange, statusList);
 
-        // 기본값 설정
+        // instanceId와 databaseId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
         if (databaseId == null) {
-            databaseId = 1L;
+            log.error("databaseId가 필수입니다");
+            throw new IllegalArgumentException("databaseId는 필수 파라미터입니다");
         }
 
         // 시간 범위 계산
@@ -223,7 +235,7 @@ public class HotTableService {
 
         // 데이터 조회
         List<Map<String, Object>> dataList = hotTableMapper.selectHotTableList(
-                databaseId, startTime, endTime, statusList);
+                instanceId, databaseId, startTime, endTime, statusList);
 
         // DTO 변환
         List<HotTableDto.ListItem> items = dataList.stream()
@@ -274,7 +286,7 @@ public class HotTableService {
                 .lastVacuum(formatTimestamp(row.get("last_vacuum")))
                 .lastAutoVacuum(formatTimestamp(row.get("last_autovacuum")))
                 .cacheHit(calculateCacheHitRatio(row))
-                .status(determineStatus(row))
+                .status((String) row.get("status"))  // DB에서 계산된 status 사용
                 .build();
     }
 
@@ -324,22 +336,6 @@ public class HotTableService {
         }
 
         return (heapBlksHit * 100.0) / (heapBlksRead + heapBlksHit);
-    }
-
-    /**
-     * 상태 결정
-     */
-    private String determineStatus(Map<String, Object> row) {
-        Double bloatPercent = getDoubleValue(row.get("bloat_percent"));
-        Double cacheHitRatio = calculateCacheHitRatio(row);
-
-        if (bloatPercent >= 30 || cacheHitRatio < 80) {
-            return "위험";
-        } else if (bloatPercent >= 15 || cacheHitRatio < 90) {
-            return "주의";
-        } else {
-            return "정상";
-        }
     }
 
     /**

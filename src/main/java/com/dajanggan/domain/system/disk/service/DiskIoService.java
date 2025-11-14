@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 public class DiskIoService {
 
     private final DiskIoMapper diskIoMapper;
-    private static final Long DEFAULT_INSTANCE_ID = 1L;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     /**
@@ -26,7 +25,8 @@ public class DiskIoService {
      */
     public DiskIoDto.DashboardResponse getDiskIoDashboard(Long instanceId) {
         if (instanceId == null) {
-            instanceId = DEFAULT_INSTANCE_ID;
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
         }
 
         LocalDateTime endTime = LocalDateTime.now();
@@ -331,7 +331,8 @@ public class DiskIoService {
      */
     public DiskIoDto.ListResponse getDiskIoList(Long instanceId, String timeRange, List<String> statusList) {
         if (instanceId == null) {
-            instanceId = DEFAULT_INSTANCE_ID;
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
         }
 
         LocalDateTime endTime = LocalDateTime.now();

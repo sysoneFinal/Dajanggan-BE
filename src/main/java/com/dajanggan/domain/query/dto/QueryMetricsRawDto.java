@@ -6,12 +6,14 @@ import java.time.OffsetDateTime;
 
 /**
  * 쿼리 메트릭스 응답 DTO
+ * instance_id 포함
  *
  * @author 이해든
  */
 public class QueryMetricsRawDto {
 
     private Long queryMetricId;
+    private Long instanceId;
     private Long databaseId;
     private OffsetDateTime collectedAt;
     private String queryId;
@@ -47,6 +49,7 @@ public class QueryMetricsRawDto {
 
         QueryMetricsRawDto dto = new QueryMetricsRawDto();
         dto.setQueryMetricId(entity.getQueryMetricId());
+        dto.setInstanceId(entity.getInstanceId());
         dto.setDatabaseId(entity.getDatabaseId());
         dto.setCollectedAt(entity.getCollectedAt());
         dto.setQueryId(entity.getQueryId());
@@ -79,6 +82,14 @@ public class QueryMetricsRawDto {
 
     public void setQueryMetricId(Long queryMetricId) {
         this.queryMetricId = queryMetricId;
+    }
+
+    public Long getInstanceId() {
+        return instanceId;
+    }
+
+    public void setInstanceId(Long instanceId) {
+        this.instanceId = instanceId;
     }
 
     public Long getDatabaseId() {

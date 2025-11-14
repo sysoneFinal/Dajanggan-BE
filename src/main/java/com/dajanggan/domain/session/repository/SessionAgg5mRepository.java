@@ -2,6 +2,7 @@ package com.dajanggan.domain.session.repository;
 
 import com.dajanggan.domain.session.dto.agg5m.*;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,8 @@ import java.util.Map;
 
 @Mapper
 public interface SessionAgg5mRepository {
+
+    void insert5mAgg(@Param("metrics") List<SessionAgg5mDto> metrics);
 
     /** 요약카드 및 5분 집계 connection (단일 DB용 - Details 페이지) */
     SessionSummaryDto findLatestSummary(Map<String, Object> params);
