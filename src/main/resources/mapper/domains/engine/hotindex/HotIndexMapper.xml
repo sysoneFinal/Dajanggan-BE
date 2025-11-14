@@ -7,32 +7,38 @@
     <!-- 인덱스 사용 분포 조회 -->
     <select id="selectUsageDistribution" resultType="map">
         SELECT
-            COUNT(CASE WHEN status = '정상' THEN 1 END) as used_count,
-            COUNT(CASE WHEN status = '미사용' THEN 1 END) as unused_count,
-            COUNT(CASE WHEN status = '비효율' THEN 1 END) as inefficient_count
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
+            COALESCE(COUNT(CASE WHEN hi.status = '정상' THEN 1 END), 0) as used_count,
+            COALESCE(COUNT(CASE WHEN hi.status = '미사용' THEN 1 END), 0) as unused_count,
+            COALESCE(COUNT(CASE WHEN hi.status = '비효율' THEN 1 END), 0) as inefficient_count
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
     </select>
 
     <!-- Top 사용 인덱스 조회 -->
     <select id="selectTopUsageIndexes" resultType="map">
         SELECT
-            index_name,
-            total_idx_scan as idx_scan
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
-        ORDER BY total_idx_scan DESC
+            hi.index_name,
+            hi.total_idx_scan as idx_scan
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
+        ORDER BY hi.total_idx_scan DESC
             LIMIT 5
     </select>
 
     <!-- 비효율 인덱스 조회 -->
     <select id="selectInefficientIndexes" resultType="map">
         SELECT
-            index_name,
-            (100 - avg_idx_efficiency) as inefficiency_score
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
-          AND status = '비효율'
+            hi.index_name,
+            (100 - hi.avg_idx_efficiency) as inefficiency_score
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
+          AND hi.status = '비효율'
         ORDER BY inefficiency_score DESC
             LIMIT 5
     </select>
@@ -40,86 +46,115 @@
     <!-- 캐시 히트율 시계열 -->
     <select id="selectCacheHitRatioTimeSeries" resultType="map">
         SELECT
-            collected_at as timestamp,
-            avg_idx_hit_ratio as cache_hit_ratio
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
-        ORDER BY collected_at
+            hi.collected_at as timestamp,
+            hi.avg_idx_hit_ratio as cache_hit_ratio
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
+          AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY hi.collected_at
     </select>
 
     <!-- 인덱스 효율성 -->
     <select id="selectIndexEfficiency" resultType="map">
         SELECT
-            index_name,
-            total_idx_scan as idx_scan,
-            avg_idx_efficiency as efficiency
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
+            hi.index_name,
+            hi.total_idx_scan as idx_scan,
+            hi.avg_idx_efficiency as efficiency
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
     </select>
 
     <!-- 접근 추이 시계열 -->
     <select id="selectAccessTrendTimeSeries" resultType="map">
         SELECT
-            collected_at as timestamp,
-            total_idx_tup_read as idx_tup_read,
-            total_idx_tup_fetch as idx_tup_fetch
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
-        ORDER BY collected_at
+            hi.collected_at as timestamp,
+            hi.total_idx_tup_read as idx_tup_read,
+            hi.total_idx_tup_fetch as idx_tup_fetch
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
+          AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY hi.collected_at
     </select>
 
     <!-- 스캔 속도 시계열 -->
     <select id="selectScanSpeedTimeSeries" resultType="map">
         SELECT
-            collected_at as timestamp,
-            avg_scan_time_ms
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
-        ORDER BY collected_at
+            hi.collected_at as timestamp,
+            hi.avg_scan_time_ms
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
+          AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY hi.collected_at
     </select>
 
     <!-- 최근 통계 -->
     <select id="selectRecentStats" resultType="map">
         SELECT
-            AVG(avg_idx_hit_ratio) as cache_hit_ratio,
-            AVG(avg_scan_time_ms) as avg_scan_speed,
-            SUM(total_idx_tup_read) as total_reads,
-            SUM(total_idx_tup_fetch) as total_writes,
-            COUNT(CASE WHEN status = '비효율' THEN 1 END) as inefficient_count
-        FROM hot_index_agg
-        WHERE database_id = #{databaseId}
+            COALESCE(AVG(hi.avg_idx_hit_ratio), 0) as cache_hit_ratio,
+            COALESCE(AVG(hi.avg_scan_time_ms), 0) as avg_scan_speed,
+            COALESCE(SUM(hi.total_idx_tup_read), 0) as total_reads,
+            COALESCE(SUM(hi.total_idx_tup_fetch), 0) as total_writes,
+            COALESCE(COUNT(CASE WHEN hi.status = '비효율' THEN 1 END), 0) as inefficient_count
+        FROM hot_index_agg hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+          AND hi.database_id = #{databaseId}
     </select>
 
     <!-- HotIndex 리스트 조회 -->
     <select id="selectHotIndexList" resultType="map">
         SELECT
-        hot_index_raw_id,
-        schema_name,
-        table_name,
-        index_name,
-        index_type,
-        index_size,
-        idx_scan,
-        idx_tup_read,
-        idx_tup_fetch,
-        idx_blks_read,
-        idx_blks_hit,
-        bloat_percent,
-        avg_scan_time_ms,
-        last_idx_scan
-        FROM hot_index_raw
-        WHERE database_id = #{databaseId}
-        AND collected_at BETWEEN #{startTime} AND #{endTime}
+        hi.hot_index_raw_id,
+        hi.schema_name,
+        hi.table_name,
+        hi.index_name,
+        hi.index_type,
+        hi.index_size,
+        hi.idx_scan,
+        hi.idx_tup_read,
+        hi.idx_tup_fetch,
+        hi.idx_blks_read,
+        hi.idx_blks_hit,
+        hi.bloat_percent,
+        hi.avg_scan_time_ms,
+        hi.last_idx_scan,
+        CASE
+            WHEN hi.idx_scan = 0 THEN '미사용'
+            WHEN hi.bloat_percent >= 30 THEN 'bloat'
+            WHEN (CASE WHEN (hi.idx_blks_read + hi.idx_blks_hit) = 0 THEN 0
+                       ELSE (hi.idx_blks_hit * 100.0 / (hi.idx_blks_read + hi.idx_blks_hit))
+                  END) <![CDATA[<]]> 85
+                 OR hi.avg_scan_time_ms > 10 THEN '비효율'
+            ELSE '정상'
+        END as status
+        FROM hot_index_raw hi
+        INNER JOIN database d ON hi.database_id = d.database_id
+        WHERE d.instance_id = #{instanceId}
+        AND hi.database_id = #{databaseId}
+        AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
         <if test="statusList != null and statusList.size() > 0">
-            AND status IN
+            AND CASE
+                WHEN hi.idx_scan = 0 THEN '미사용'
+                WHEN hi.bloat_percent >= 30 THEN 'bloat'
+                WHEN (CASE WHEN (hi.idx_blks_read + hi.idx_blks_hit) = 0 THEN 0
+                           ELSE (hi.idx_blks_hit * 100.0 / (hi.idx_blks_read + hi.idx_blks_hit))
+                      END) <![CDATA[<]]> 85
+                     OR hi.avg_scan_time_ms > 10 THEN '비효율'
+                ELSE '정상'
+            END IN
             <foreach collection="statusList" item="status" open="(" separator="," close=")">
                 #{status}
             </foreach>
         </if>
-        ORDER BY collected_at DESC
+        ORDER BY hi.collected_at DESC
     </select>
 
 </mapper>
