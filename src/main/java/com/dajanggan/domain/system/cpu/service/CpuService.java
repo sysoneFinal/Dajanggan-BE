@@ -23,7 +23,6 @@ public class CpuService {
 
     private final CpuMapper cpuMapper;
 
-    private static final Long DEFAULT_INSTANCE_ID = 1L;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     /**
@@ -32,7 +31,11 @@ public class CpuService {
     public CpuDto.DashboardResponse getCpuDashboard(Long instanceId) {
         log.debug("CPU 대시보드 데이터 조회 시작 - instanceId: {}", instanceId);
 
-        Long targetInstanceId = (instanceId != null) ? instanceId : DEFAULT_INSTANCE_ID;
+        // instanceId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
 
         OffsetDateTime endTime = OffsetDateTime.now();
         OffsetDateTime startTime = endTime.minusHours(24);
@@ -40,10 +43,10 @@ public class CpuService {
         log.info("데이터 조회 범위: {} ~ {}", startTime, endTime);
 
         try {
-            List<CpuAgg> cpuAggList = cpuMapper.selectCpuAggByTimeRange(targetInstanceId, startTime, endTime);
+            List<CpuAgg> cpuAggList = cpuMapper.selectCpuAggByTimeRange(instanceId, startTime, endTime);
 
             if (cpuAggList == null || cpuAggList.isEmpty()) {
-                log.warn("CPU 데이터 없음 - instanceId: {}", targetInstanceId);
+                log.warn("CPU 데이터 없음 - instanceId: {}", instanceId);
                 return createEmptyDashboard();
             }
 
@@ -320,14 +323,18 @@ public class CpuService {
         log.debug("CPU 리스트 조회 시작 - instanceId: {}, timeRange: {}, statusList: {}",
                 instanceId, timeRange, statusList);
 
-        Long targetInstanceId = (instanceId != null) ? instanceId : DEFAULT_INSTANCE_ID;
+        // instanceId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
 
         OffsetDateTime endTime = OffsetDateTime.now();
         OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
 
         try {
             List<CpuAgg> cpuAggList = cpuMapper.selectCpuListWithFilter(
-                    targetInstanceId, startTime, endTime, statusList);
+                    instanceId, startTime, endTime, statusList);
 
             if (cpuAggList == null || cpuAggList.isEmpty()) {
                 log.warn("CPU 리스트 데이터 없음");
