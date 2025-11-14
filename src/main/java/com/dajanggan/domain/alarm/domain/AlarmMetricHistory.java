@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
 @Builder
 public class AlarmMetricHistory {
     private Long alarmMetricHistoryId;
-    private Long alarmHistoryId;
+    private Long alarmFeedId;
     private String metricValue;
     private OffsetDateTime recordedAt;
     private OffsetDateTime createdAt;

@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 @Mapper
 public interface AlarmTrackingMapper {
@@ -30,4 +31,10 @@ public interface AlarmTrackingMapper {
             @Param("alarmTrackingId") Long alarmTrackingId,
             @Param("status") String status
     );
+
+    // 규칙 ID로 트래킹 조회
+    Optional<AlarmTracking> findByRuleId(@Param("alarmRuleId") Long alarmRuleId);
+
+    // 트래킹 삭제
+    int delete(@Param("alarmTrackingId") Long alarmTrackingId);
 }
