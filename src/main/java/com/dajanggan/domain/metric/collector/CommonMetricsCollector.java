@@ -38,8 +38,6 @@ public class CommonMetricsCollector {
             return;
         }
 
-        log.info("수집 대상 데이터베이스: {} 개", databases.size());
-
         // (2) 인스턴스 정보 한 번에 조회 (N+1 문제 방지) - secret_ref 포함!
         List<Long> instanceIds = databases.stream()
                 .map(Database::getInstanceId)

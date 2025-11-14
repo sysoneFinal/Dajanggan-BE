@@ -6,6 +6,7 @@ import com.dajanggan.domain.overview.dto.MetricDefinition;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface OverviewRepository {
@@ -15,4 +16,10 @@ public interface OverviewRepository {
 
     // 대시보드 조회
     DashboardLayoutResponse getUserLayout(Long instanceId);
+
+    // 메트릭 정의 조회 (metric_definition 테이블)
+    List<MetricDefinition> getMetricDefinitions(List<String> metricNames);
+
+    // 동적 메트릭 데이터 조회
+    List<Map<String, Object>> queryMetrics(Map<String, Object> params);
 }
