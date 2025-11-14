@@ -15,12 +15,16 @@ public class AlarmTrackingDto {
     public static class TrackingStatusRaw {
         private Long alarmTrackingId;
         private Long alarmRuleId;
+        private Long alarmFeedId;
+        private Long instanceId;
+        private Long databaseId;
         private String instanceName;
         private String databaseName;
         private String metricType;
         private BigDecimal currentValue;
         private Integer consecutiveCount;
         private String status;
+        private OffsetDateTime firstTriggeredAt;
         private OffsetDateTime lastCheckedAt;
     }
 
@@ -31,11 +35,11 @@ public class AlarmTrackingDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TrackingStatus {
-        private Long trackingId;
-        private Long ruleId;
-        private String instance;
-        private String database;
-        private String metric;
+        private Long alarmTrackingId;
+        private Long alarmRuleId;
+        private String instanceName;
+        private String databaseName;
+        private String metricType;
         private String currentValue;
         private Integer consecutiveCount;
         private String status;

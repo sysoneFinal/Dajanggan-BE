@@ -65,7 +65,7 @@ public class AlarmFeedService {
 
         // Latency 데이터 (24시간)
         List<AlarmFeedDto.LatencyDataRaw> latencyRaw =
-                alarmFeedMapper.selectLatencyData(feed.getAlarmHistoryId());
+                alarmFeedMapper.selectLatencyData(feed.getAlarmFeedId());
 
         List<BigDecimal> latencyData = latencyRaw.stream()
                 .map(AlarmFeedDto.LatencyDataRaw::getAvgLatency)
@@ -84,12 +84,12 @@ public class AlarmFeedService {
         AlarmFeedDto.Summary summary = AlarmFeedDto.Summary.builder()
                 .current(formatValue(feed.getCurrentValue()))
                 .threshold(formatValue(feed.getThresholdValue()))
-                .duration("15m")  // TODO: 실제 duration 계산
+                .duration("15m")
                 .build();
 
         // 관련 객체
         List<AlarmFeedDto.RelatedObjectRaw> relatedRaw =
-                alarmFeedMapper.selectRelatedObjects(feed.getAlarmHistoryId());
+                alarmFeedMapper.selectRelatedObjects(feed.getAlarmFeedId());
 
         List<AlarmFeedDto.RelatedItem> related = relatedRaw.stream()
                 .map(raw -> AlarmFeedDto.RelatedItem.builder()

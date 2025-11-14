@@ -35,4 +35,11 @@ public interface AlarmRuleMapper {
             @Param("alarmRuleId") Long alarmRuleId,
             @Param("enabled") Boolean enabled
     );
+
+    // 활성화된 규칙 조회
+    List<AlarmRule> findActiveRules(
+            @Param("instanceId") Long instanceId,
+            @Param("databaseId") Long databaseId,
+            @Param("metricType") String metricType
+    );
 }

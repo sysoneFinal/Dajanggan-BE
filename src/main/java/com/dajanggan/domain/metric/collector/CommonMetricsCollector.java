@@ -76,6 +76,10 @@ public class CommonMetricsCollector {
                 queryMetricsCollector.collect(instance, database, collectedAt);
 
 
+                // 쿼리 메트릭 수집
+                queryMetricsCollector.collect(instance, database, collectedAt);
+
+
                 successCount++;
 
             } catch (Exception e) {
