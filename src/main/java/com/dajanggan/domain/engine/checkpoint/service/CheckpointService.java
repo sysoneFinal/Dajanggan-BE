@@ -18,9 +18,6 @@ import java.util.stream.Collectors;
 public class CheckpointService {
 
     private final CheckpointMapper checkpointMapper;
-    
-    // 기본 인스턴스 ID (실제 환경에서는 설정 파일이나 DB에서 조회)
-    private static final Long DEFAULT_INSTANCE_ID = 1L;
 
     /**
      * Checkpoint 대시보드 데이터 조회
@@ -30,8 +27,11 @@ public class CheckpointService {
     public CheckpointDto.DashboardResponse getCheckpointDashboard(Long instanceId) {
         log.debug("Checkpoint 대시보드 데이터 조회 시작 - instanceId: {}", instanceId);
 
-        // instanceId가 null이면 기본값 사용
-        Long targetInstanceId = (instanceId != null) ? instanceId : DEFAULT_INSTANCE_ID;
+        // instanceId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
         
         // 조회 시간 범위 설정 (최근 24시간)
         LocalDateTime endTime = LocalDateTime.now();
@@ -41,28 +41,28 @@ public class CheckpointService {
 
         try {
             // 1. 요청형 체크포인트 비율 조회
-            CheckpointDto.RequestRatio requestRatio = getRequestRatio(targetInstanceId);
+            CheckpointDto.RequestRatio requestRatio = getRequestRatio(instanceId);
             
             // 2. 평균 쓰기 시간 시계열 데이터 조회
-            CheckpointDto.AvgWriteTime avgWriteTime = getAvgWriteTime(targetInstanceId, startTime, endTime);
+            CheckpointDto.AvgWriteTime avgWriteTime = getAvgWriteTime(instanceId, startTime, endTime);
             
             // 3. 체크포인트 발생 횟수 데이터 조회
-            CheckpointDto.Occurrence occurrence = getOccurrence(targetInstanceId, startTime, endTime);
+            CheckpointDto.Occurrence occurrence = getOccurrence(instanceId, startTime, endTime);
             
             // 4. WAL 생성량 데이터 조회
-            CheckpointDto.WalGeneration walGeneration = getWalGeneration(targetInstanceId, startTime, endTime);
+            CheckpointDto.WalGeneration walGeneration = getWalGeneration(instanceId, startTime, endTime);
             
             // 5. 처리 시간 데이터 조회
-            CheckpointDto.ProcessTime processTime = getProcessTime(targetInstanceId, startTime, endTime);
+            CheckpointDto.ProcessTime processTime = getProcessTime(instanceId, startTime, endTime);
             
             // 6. 버퍼 처리량 데이터 조회
-            CheckpointDto.Buffer buffer = getBuffer(targetInstanceId, startTime.plusHours(23), endTime);
+            CheckpointDto.Buffer buffer = getBuffer(instanceId, startTime.plusHours(23), endTime);
             
             // 7. 체크포인트 간격 데이터 조회
-            CheckpointDto.CheckpointInterval checkpointInterval = getCheckpointInterval(targetInstanceId, startTime, endTime);
+            CheckpointDto.CheckpointInterval checkpointInterval = getCheckpointInterval(instanceId, startTime, endTime);
             
             // 8. 최근 통계 조회
-            CheckpointDto.RecentStats recentStats = getRecentStats(targetInstanceId);
+            CheckpointDto.RecentStats recentStats = getRecentStats(instanceId);
 
             return CheckpointDto.DashboardResponse.builder()
                     .requestRatio(requestRatio)
@@ -340,8 +340,11 @@ public class CheckpointService {
         log.debug("Checkpoint 리스트 데이터 조회 시작 - instanceId: {}, timeRange: {}, statusList: {}", 
                 instanceId, timeRange, statusList);
 
-        // instanceId가 null이면 기본값 사용
-        Long targetInstanceId = (instanceId != null) ? instanceId : DEFAULT_INSTANCE_ID;
+        // instanceId가 null이면 예외 발생
+        if (instanceId == null) {
+            log.error("instanceId가 필수입니다");
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
         
         // 시간 범위 계산
         LocalDateTime endTime = LocalDateTime.now();
@@ -352,14 +355,14 @@ public class CheckpointService {
         try {
             // 리스트 데이터 조회
             List<Map<String, Object>> dataList = checkpointMapper.selectCheckpointList(
-                    targetInstanceId, 
+                    instanceId, 
                     startTime, 
                     endTime, 
                     statusList
             );
             
             if (dataList == null || dataList.isEmpty()) {
-                log.warn("Checkpoint 리스트 데이터 없음 - instanceId: {}, timeRange: {}", targetInstanceId, timeRange);
+                log.warn("Checkpoint 리스트 데이터 없음 - instanceId: {}, timeRange: {}", instanceId, timeRange);
                 return CheckpointDto.ListResponse.builder()
                         .data(new ArrayList<>())
                         .total(0L)
