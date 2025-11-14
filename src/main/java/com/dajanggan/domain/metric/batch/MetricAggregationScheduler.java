@@ -26,6 +26,9 @@ public class MetricAggregationScheduler {
     @Qualifier("sessionAgg1mJob")
     private final Job sessionAgg1mJob;
 
+    @Qualifier("sessionAgg5mJob")
+    private final Job sessionAgg5mJob;
+
     @Qualifier("queryAgg1mJob")
     private final Job queryAgg1mJob;
 
@@ -42,8 +45,9 @@ public class MetricAggregationScheduler {
         
         // 세션 1분 집계
         runJob(sessionAgg1mJob, "세션 1분 집계", runTime);
+
         runJob(queryAgg1mJob, "쿼리 1분 집계", runTime);
-        
+
         log.info("========== 1분 집계 배치 완료 ==========");
     }
 
@@ -55,11 +59,15 @@ public class MetricAggregationScheduler {
     public void runAgg5mJobs() {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 5분 집계 배치 시작: {} ==========", runTime);
-        
+
+         // 세션 5분 집계
+         runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
+        // runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
+
         // 향후 추가
         // runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
          runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
-        
+
         log.info("========== 5분 집계 배치 완료 ==========");
     }
 

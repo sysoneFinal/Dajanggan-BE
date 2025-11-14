@@ -28,7 +28,8 @@
             #{m.topSlowQuery5}, #{m.topSlowQuery5Time},
             NOW()
             )
-        </foreach> <!-- PK 중복 시 UPDATE (UPSERT) -->
+        </foreach>
+        <!-- PK 중복 시 UPDATE (UPSERT) -->
         ON CONFLICT (instance_id, database_id, collected_at)
         DO UPDATE SET
         total_queries = EXCLUDED.total_queries,

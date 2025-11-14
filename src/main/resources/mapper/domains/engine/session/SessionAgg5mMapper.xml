@@ -35,6 +35,66 @@
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
+
+    <!-- 5분 집계 데이터 일괄 저장 (UPSERT: 중복 시 UPDATE) -->
+    <insert id="insert5mAgg">
+        INSERT INTO session_metrics_agg_5m (
+        instance_id, database_id, collected_at,
+        total_sessions, active_sessions, waiting_sessions, idle_sessions,
+        idle_txn_sessions, avg_tx_duration_sec, deadlock_count,
+        used_connections, max_connections,
+        active_ratio,
+        top_user_1, top_user_1_sessions,
+        top_user_2, top_user_2_sessions,
+        top_user_3, top_user_3_sessions,
+        top_user_4, top_user_4_sessions,
+        top_user_5, top_user_5_sessions,
+        created_at
+        )
+        VALUES
+        <foreach collection="metrics" item="m" separator=",">
+            (
+            #{m.instanceId}, #{m.databaseId}, #{m.collectedAt},
+            #{m.totalSessions}, #{m.activeSessions}, #{m.waitingSessions}, #{m.idleSessions},
+            #{m.idleTxnSessions}, #{m.avgTxDurationSec}, #{m.deadlockCount},
+            #{m.usedConnections}, #{m.maxConnections}, #{m.activeRatio},
+            #{m.topUser1}, #{m.topUser1Sessions},
+            #{m.topUser2}, #{m.topUser2Sessions},
+            #{m.topUser3}, #{m.topUser3Sessions},
+            #{m.topUser4}, #{m.topUser4Sessions},
+            #{m.topUser5}, #{m.topUser5Sessions},
+            NOW()
+            )
+        </foreach>
+        ON CONFLICT (instance_id, database_id, collected_at)
+        DO UPDATE SET
+        total_sessions = EXCLUDED.total_sessions,
+        active_sessions = EXCLUDED.active_sessions,
+        waiting_sessions = EXCLUDED.waiting_sessions,
+        idle_sessions = EXCLUDED.idle_sessions,
+        idle_txn_sessions = EXCLUDED.idle_txn_sessions,
+        avg_tx_duration_sec = EXCLUDED.avg_tx_duration_sec,
+        deadlock_count = EXCLUDED.deadlock_count,
+        used_connections = EXCLUDED.used_connections,
+        max_connections = EXCLUDED.max_connections,
+        active_ratio = EXCLUDED.active_ratio,
+        top_user_1 = EXCLUDED.top_user_1,
+        top_user_1_sessions = EXCLUDED.top_user_1_sessions,
+        top_user_2 = EXCLUDED.top_user_2,
+        top_user_2_sessions = EXCLUDED.top_user_2_sessions,
+        top_user_3 = EXCLUDED.top_user_3,
+        top_user_3_sessions = EXCLUDED.top_user_3_sessions,
+        top_user_4 = EXCLUDED.top_user_4,
+        top_user_4_sessions = EXCLUDED.top_user_4_sessions,
+        top_user_5 = EXCLUDED.top_user_5,
+        top_user_5_sessions = EXCLUDED.top_user_5_sessions,
+        created_at = NOW()
+    </insert>
+
+
+
+
+
     <!-- 요약카드 및 커넥션 5분 집계 (단일 DB용 - Details 페이지) -->
     <select id="findLatestSummary" parameterType="map" resultType="com.dajanggan.domain.session.dto.agg5m.SessionSummaryDto">
         SELECT

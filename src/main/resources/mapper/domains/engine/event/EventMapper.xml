@@ -166,4 +166,39 @@
         </choose>
     </select>
 
+
+    <!-- 이벤트 로그 일괄 삽입 -->
+    <insert id="insertEventsBatch" parameterType="java.util.List">
+        INSERT INTO event_log (
+        database_id,
+        instance_id,
+        instance_name,
+        db_name,
+        category,
+        event_type,
+        level,
+        user_name,
+        resource_type,
+        detected_at,
+        duration,
+        description
+        ) VALUES
+        <foreach collection="events" item="event" separator=",">
+            (
+            #{event.databaseId},
+            #{event.instanceId},
+            #{event.instanceName},
+            #{event.databaseName},
+            #{event.category},
+            #{event.eventType},
+            #{event.level},
+            #{event.userName},
+            #{event.resourceType},
+            #{event.detectedAt},
+            #{event.duration},
+            #{event.description}
+            )
+        </foreach>
+    </insert>
+
 </mapper>

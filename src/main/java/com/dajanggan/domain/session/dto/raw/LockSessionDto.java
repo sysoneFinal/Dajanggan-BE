@@ -1,18 +1,15 @@
 package com.dajanggan.domain.session.dto.raw;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
-@Builder
-@Data
+
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 public class LockSessionDto {
-    private Integer pid;
-    private String lockType;
-    private String mode;
-    private Boolean granted;
+    private String mode; // 락의 강도
+    private String lockType;  // 무슨 락인지
+    private String tableName;
+    private Double waitDurationSec;  // 실제 대기 시간
 
 }

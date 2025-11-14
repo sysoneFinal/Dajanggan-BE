@@ -2,12 +2,15 @@ package com.dajanggan.domain.event.repository;
 
 import com.dajanggan.domain.event.dto.EventLog;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 import java.util.Map;
 
 @Mapper
 public interface EventRepository {
+    /**이벤트 로그 일괄 삽입*/
+    void insertEventsBatch(@Param("events") List<EventLog> events);
 
     List<String> findDistinctDatabases(Long instanceId);
     List<String> findDistinctCategories(Long instanceId);

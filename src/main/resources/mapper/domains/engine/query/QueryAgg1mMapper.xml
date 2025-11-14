@@ -5,7 +5,7 @@
 <mapper namespace="com.dajanggan.domain.query.repository.QueryAgg1mRepository">
 
     <!-- 1분 집계 데이터 일괄 저장 -->
-    <insert id="upsertAgg1m">
+    <insert id="insertAgg1m">
         INSERT INTO query_metrics_agg_1m (
         instance_id, database_id, collected_at,
         total_queries, select_queries, insert_queries, update_queries, delete_queries, other_queries,
