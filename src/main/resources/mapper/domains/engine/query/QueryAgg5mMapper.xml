@@ -28,7 +28,24 @@
             #{m.topSlowQuery5}, #{m.topSlowQuery5Time},
             NOW()
             )
-        </foreach>
+        </foreach> <!-- PK 중복 시 UPDATE (UPSERT) -->
+        ON CONFLICT (instance_id, database_id, collected_at)
+        DO UPDATE SET
+        total_queries = EXCLUDED.total_queries,
+        avg_execution_time_ms = EXCLUDED.avg_execution_time_ms,
+        slow_query_count = EXCLUDED.slow_query_count,
+        total_io_blocks = EXCLUDED.total_io_blocks,
+        top_slow_query_1 = EXCLUDED.top_slow_query_1,
+        top_slow_query_1_time = EXCLUDED.top_slow_query_1_time,
+        top_slow_query_2 = EXCLUDED.top_slow_query_2,
+        top_slow_query_2_time = EXCLUDED.top_slow_query_2_time,
+        top_slow_query_3 = EXCLUDED.top_slow_query_3,
+        top_slow_query_3_time = EXCLUDED.top_slow_query_3_time,
+        top_slow_query_4 = EXCLUDED.top_slow_query_4,
+        top_slow_query_4_time = EXCLUDED.top_slow_query_4_time,
+        top_slow_query_5 = EXCLUDED.top_slow_query_5,
+        top_slow_query_5_time = EXCLUDED.top_slow_query_5_time,
+        created_at = NOW()
     </insert>
 
     <!-- 요약카드 (단일 DB용 - Details 페이지) -->
