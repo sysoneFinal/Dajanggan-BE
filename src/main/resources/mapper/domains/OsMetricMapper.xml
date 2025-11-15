@@ -153,5 +153,12 @@
         DELETE FROM os_metric_raw
         WHERE collected_at &lt; #{beforeTime}
     </delete>
+    
+    <!-- Select Active Instance IDs -->
+    <select id="selectActiveInstanceIds" resultType="java.lang.Long">
+        SELECT instance_id
+        FROM monitor_instance
+        ORDER BY instance_id ASC
+    </select>
 
 </mapper>

@@ -1,191 +1,183 @@
 package com.dajanggan.domain.osmetric.scheduler;
 
-import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.osmetric.domain.OsMetricAgg;
-import com.dajanggan.domain.osmetric.dto.OsMetricResponse;
+import com.dajanggan.domain.osmetric.domain.OsMetricRaw;
+import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
 import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
+import com.dajanggan.domain.osmetric.service.OsMetricRedisService;
+import com.dajanggan.domain.osmetric.service.OsMetricSseService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * OS 메트릭 집계 스케줄러
- * 1분마다 Redis 데이터를 집계하여 PostgreSQL에 저장
+ * 1분마다 실행:
+ * 1. Redis에서 최근 1분간 데이터 조회 (12개)
+ * 2. 첫 번째 데이터만 os_metric_raw에 저장
+ * 3. 12개 데이터로 집계 계산 후 os_metric_agg에 저장
+ * 4. SSE로 실시간 데이터 브로드캐스트
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class OsMetricAggregationScheduler {
     
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final OsMetricRedisService redisService;
     private final OsMetricMapper osMetricMapper;
-    private final InstanceRepository instanceRepository;
-    
-    private static final String REDIS_KEY_PREFIX = "os:metric:live:";
+    private final OsMetricSseService sseService;
     
     @PostConstruct
     public void init() {
-        log.info("========== OsMetricAggregationScheduler Bean Created ==========");
+        log.info("========== OsMetricAggregationScheduler 초기화 완료 ==========");
     }
     
     /**
-     * 1분마다 실행 (정시에 실행: 매분 0초)
+     * 1분마다 실행 (매분 0초)
+     * SSE 브로드캐스트는 더 자주 실행 (5초마다)
      */
     @Scheduled(cron = "0 * * * * *")
     public void aggregateMetrics() {
-        log.info("========== Starting OS metric aggregation ==========");
+        log.info("========== OS 메트릭 집계 시작 ==========");
         
         try {
-            // 1. Redis에서 모든 metric 키 조회
-            Set<String> keys = redisTemplate.keys(REDIS_KEY_PREFIX + "*");
+            LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
+            LocalDateTime startTime = now.minusMinutes(1).truncatedTo(ChronoUnit.MINUTES);
+            LocalDateTime endTime = now.truncatedTo(ChronoUnit.MINUTES);
             
-            log.info("Found {} keys in Redis", keys != null ? keys.size() : 0);
+            List<Long> instanceIds = getActiveInstanceIds();
+            log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
             
-            if (keys == null || keys.isEmpty()) {
-                log.info("No metrics found in Redis");
-                return;
-            }
+            int successCount = 0;
+            int failCount = 0;
             
-            List<OsMetricAgg> aggList = new ArrayList<>();
-            OffsetDateTime collectedAt = OffsetDateTime.now()
-                    .truncatedTo(ChronoUnit.MINUTES); // 현재 시간을 분 단위로 절삭
-            
-            // 2. 각 키에 대해 집계 수행
-            for (String key : keys) {
+            for (Long instanceId : instanceIds) {
                 try {
-                    log.debug("Processing key: {}", key);
-                    OsMetricAgg agg = aggregateFromRedis(key, collectedAt);
-                    if (agg != null) {
-                        aggList.add(agg);
-                        log.debug("Successfully aggregated key: {}", key);
-                    } else {
-                        log.warn("Failed to aggregate key: {}", key);
-                    }
+                    processInstanceMetrics(instanceId, startTime, endTime);
+                    successCount++;
                 } catch (Exception e) {
-                    log.error("Error aggregating key: {}", key, e);
+                    failCount++;
+                    log.error("OS 메트릭 처리 실패: instanceId={}", instanceId, e);
                 }
             }
             
-            // 3. 집계 결과를 PostgreSQL에 배치 저장
-            if (!aggList.isEmpty()) {
-                log.info("Inserting {} aggregated metrics to database", aggList.size());
-                osMetricMapper.insertAggBatch(aggList);
-                log.info("Successfully aggregated {} metrics", aggList.size());
-            } else {
-                log.warn("No metrics were aggregated");
-            }
+            log.info("========== OS 메트릭 집계 완료: 성공={}, 실패={} ==========", successCount, failCount);
             
         } catch (Exception e) {
-            log.error("Error in OS metric aggregation", e);
+            log.error("OS 메트릭 집계 중 오류 발생", e);
         }
-        
-        log.info("========== OS metric aggregation completed ==========");
     }
     
     /**
-     * Redis 키에서 데이터를 읽어서 집계
+     * SSE 브로드캐스트 (5초마다)
      */
-    private OsMetricAgg aggregateFromRedis(String key, OffsetDateTime collectedAt) {
-        // 키 파싱: os:metric:live:{instanceId}:{metricType}
-        String[] parts = key.split(":");
-        if (parts.length != 5) {
-            log.warn("Invalid key format: {}", key);
-            return null;
+    @Scheduled(fixedDelay = 5000, initialDelay = 1000)
+    public void broadcastMetrics() {
+        try {
+            log.debug("SSE 브로드캐스트 시작");
+            sseService.broadcastAllInstances();
+        } catch (Exception e) {
+            log.error("SSE 브로드캐스트 실패", e);
+        }
+    }
+    
+    /**
+     * 특정 인스턴스의 메트릭 처리
+     */
+    private void processInstanceMetrics(Long instanceId, 
+                                         LocalDateTime startTime, 
+                                         LocalDateTime endTime) {
+        List<RedisOsMetricData> allMetrics = redisService.getRecentMetrics(
+                instanceId, startTime, endTime);
+        
+        if (allMetrics.isEmpty()) {
+            return;
         }
         
-        Long instanceId = Long.parseLong(parts[3]);
-        String metricType = parts[4];
+        Map<String, List<RedisOsMetricData>> metricsByType = allMetrics.stream()
+                .collect(Collectors.groupingBy(RedisOsMetricData::getMetricType));
         
-        // Redis에서 데이터 조회
-        List<Object> dataList = redisTemplate.opsForList().range(key, 0, -1);
+        List<OsMetricRaw> rawList = new ArrayList<>();
+        List<OsMetricAgg> aggList = new ArrayList<>();
         
-        if (dataList == null || dataList.isEmpty()) {
-            log.debug("No data for key: {}", key);
-            return null;
-        }
+        OffsetDateTime collectedAt = OffsetDateTime.now()
+                .truncatedTo(ChronoUnit.MINUTES);
         
-        log.debug("Found {} items in Redis for key: {}", dataList.size(), key);
-        
-        // 첫 번째 아이템의 타입 확인
-        if (!dataList.isEmpty()) {
-            Object firstItem = dataList.get(0);
-            log.debug("First item type: {}, value: {}", 
-                    firstItem.getClass().getName(), firstItem);
-        }
-        
-        // 통계 계산
-        double sum = 0.0;
-        double max = Double.MIN_VALUE;
-        double min = Double.MAX_VALUE;
-        int count = 0;
-        
-        for (Object obj : dataList) {
-            try {
-                double value = extractValue(obj);
-                
+        for (Map.Entry<String, List<RedisOsMetricData>> entry : metricsByType.entrySet()) {
+            String metricType = entry.getKey();
+            List<RedisOsMetricData> typeMetrics = entry.getValue();
+            
+            typeMetrics.sort(Comparator.comparing(RedisOsMetricData::getCollectedAt));
+            
+            if (!typeMetrics.isEmpty()) {
+                RedisOsMetricData firstMetric = typeMetrics.get(0);
+                OsMetricRaw raw = OsMetricRaw.builder()
+                        .instanceId(instanceId)
+                        .collectedAt(OffsetDateTime.of(firstMetric.getCollectedAt(), 
+                                OffsetDateTime.now().getOffset()))
+                        .metricType(metricType)
+                        .value(firstMetric.getValue())
+                        .build();
+                rawList.add(raw);
+            }
+            
+            double sum = 0.0;
+            double max = Double.MIN_VALUE;
+            double min = Double.MAX_VALUE;
+            int count = 0;
+            
+            for (RedisOsMetricData metric : typeMetrics) {
+                double value = metric.getValue();
                 sum += value;
                 max = Math.max(max, value);
                 min = Math.min(min, value);
                 count++;
-            } catch (Exception e) {
-                log.warn("Failed to extract value from object: {}", obj, e);
+            }
+            
+            if (count > 0) {
+                double avg = sum / count;
+                
+                OsMetricAgg agg = OsMetricAgg.builder()
+                        .instanceId(instanceId)
+                        .collectedAt(collectedAt)
+                        .metricType(metricType)
+                        .avgValue(avg)
+                        .maxValue(max)
+                        .minValue(min)
+                        .sampleCount(count)
+                        .build();
+                aggList.add(agg);
             }
         }
         
-        if (count == 0) {
-            log.warn("No valid values found in key: {}", key);
-            return null;
+        if (!rawList.isEmpty()) {
+            osMetricMapper.insertRawBatch(rawList);
+            log.debug("Raw 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, rawList.size());
         }
         
-        double avg = sum / count;
-        
-        // 집계 객체 생성
-        OsMetricAgg agg = OsMetricAgg.builder()
-                .instanceId(instanceId)
-                .collectedAt(collectedAt)
-                .metricType(metricType)
-                .avgValue(avg)
-                .maxValue(max)
-                .minValue(min)
-                .sampleCount(count)
-                .build();
-        
-        log.debug("Aggregated: instanceId={}, metricType={}, avg={}, max={}, min={}, samples={}", 
-                instanceId, metricType, avg, max, min, count);
-        
-        return agg;
+        if (!aggList.isEmpty()) {
+            osMetricMapper.insertAggBatch(aggList);
+            log.debug("Agg 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, aggList.size());
+        }
+
+        log.info("메트릭 처리 완료: instanceId={}, raw={}, agg={}, samples={}", 
+                instanceId, rawList.size(), aggList.size(), allMetrics.size());
     }
     
     /**
-     * Redis 객체에서 value 추출
-     * OsMetricResponse 객체 또는 Map 형태 모두 처리
+     * 활성 인스턴스 ID 목록 조회
+     * TODO: 실제로는 InstanceService에서 is_enabled=true인 인스턴스 조회
      */
-    private double extractValue(Object obj) {
-        if (obj instanceof OsMetricResponse) {
-            return ((OsMetricResponse) obj).getValue();
-        } else if (obj instanceof java.util.Map) {
-            // Jackson이 Map으로 역직렬화한 경우
-            java.util.Map<?, ?> map = (java.util.Map<?, ?>) obj;
-            Object valueObj = map.get("value");
-            
-            if (valueObj instanceof Number) {
-                return ((Number) valueObj).doubleValue();
-            } else if (valueObj instanceof String) {
-                return Double.parseDouble((String) valueObj);
-            }
-        }
-        
-        throw new IllegalArgumentException("Cannot extract value from object: " + obj.getClass().getName());
+    private List<Long> getActiveInstanceIds() {
+        // 임시로 하드코딩 (실제로는 DB 조회)
+        return osMetricMapper.selectActiveInstanceIds();
     }
 }

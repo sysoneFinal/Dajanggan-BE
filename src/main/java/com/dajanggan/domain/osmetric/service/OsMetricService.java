@@ -2,10 +2,10 @@ package com.dajanggan.domain.osmetric.service;
 
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.osmetric.domain.OsMetricAgg;
-import com.dajanggan.domain.osmetric.domain.OsMetricRaw;
 import com.dajanggan.domain.osmetric.dto.OsMetricAggResponse;
 import com.dajanggan.domain.osmetric.dto.OsMetricRequest;
 import com.dajanggan.domain.osmetric.dto.OsMetricResponse;
+import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
 import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
 import com.dajanggan.global.exception.ExceptionMessage;
 import com.dajanggan.global.exception.NotFoundException;
@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -37,33 +36,16 @@ public class OsMetricService {
     
     /**
      * Agent로부터 메트릭 수신 및 저장
+     * Redis에만 저장 (실시간 조회용)
      */
     @Transactional
     public void receiveMetric(OsMetricRequest request) {
-        log.debug("Receiving OS metric: instanceName={}, metricType={}, value={}", 
-                request.getInstanceName(), request.getMetricType(), request.getValue());
-        
         // 1. instance_name으로 instance_id 조회
         Long instanceId = instanceRepository.findIdByInstanceName(request.getInstanceName())
                 .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
         
-        // 2. Redis에 저장 (실시간 조회용)
+        // 2. Redis에만 저장 (실시간 조회용)
         saveToRedis(instanceId, request);
-        
-        // 3. PostgreSQL Raw 테이블에 저장
-        OsMetricRaw raw = OsMetricRaw.builder()
-                .instanceId(instanceId)
-                .collectedAt(OffsetDateTime.ofInstant(
-                        request.getTimestamp().atZone(ZoneId.systemDefault()).toInstant(),
-                        ZoneId.systemDefault()))
-                .metricType(request.getMetricType())
-                .value(request.getValue())
-                .build();
-        
-        osMetricMapper.insertRaw(raw);
-        
-        log.debug("OS metric saved successfully: instanceId={}, metricType={}", 
-                instanceId, request.getMetricType());
     }
     
     /**
@@ -73,18 +55,16 @@ public class OsMetricService {
         try {
             String key = REDIS_KEY_PREFIX + instanceId + ":" + request.getMetricType();
             
-            log.debug("Attempting to save to Redis: key={}", key);
-            
-            OsMetricResponse response = OsMetricResponse.builder()
+            // RedisOsMetricData 객체 생성
+            RedisOsMetricData data = RedisOsMetricData.builder()
                     .instanceId(instanceId)
-                    .instanceName(request.getInstanceName())
                     .metricType(request.getMetricType())
                     .value(request.getValue())
-                    .timestamp(request.getTimestamp())
+                    .collectedAt(request.getTimestamp())
                     .build();
             
             // List로 저장 (최근 데이터를 앞에 추가)
-            redisTemplate.opsForList().leftPush(key, response);
+            redisTemplate.opsForList().leftPush(key, data);
             
             // TTL 설정
             redisTemplate.expire(key, REDIS_TTL_SECONDS, TimeUnit.SECONDS);
@@ -92,26 +72,84 @@ public class OsMetricService {
             // 최대 60개만 유지 (5분 / 5초 = 60개)
             redisTemplate.opsForList().trim(key, 0, 59);
             
-            log.debug("Successfully saved to Redis: key={}, value={}", key, request.getValue());
-            
         } catch (Exception e) {
-            log.error("Failed to save to Redis: instanceId={}, metricType={}, error={}", 
-                    instanceId, request.getMetricType(), e.getMessage(), e);
-            // Redis 저장 실패해도 PostgreSQL 저장은 계속 진행
+            log.error("Redis 저장 실패: instanceId={}, metricType={}", 
+                    instanceId, request.getMetricType(), e);
         }
     }
     
     /**
-     * Redis에서 실시간 메트릭 조회
+     * Redis에서 실시간 메트릭 조회 (Controller용)
      */
     public List<OsMetricResponse> getRealTimeMetrics(Long instanceId, String metricType) {
         String key = REDIS_KEY_PREFIX + instanceId + ":" + metricType;
         
         List<Object> data = redisTemplate.opsForList().range(key, 0, -1);
         
+        if (data == null || data.isEmpty()) {
+            return List.of();
+        }
+        
         return data.stream()
-                .map(obj -> (OsMetricResponse) obj)
+                .map(this::convertToOsMetricResponse)
                 .toList();
+    }
+    
+    /**
+     * Redis 객체를 OsMetricResponse로 변환
+     */
+    private OsMetricResponse convertToOsMetricResponse(Object obj) {
+        try {
+            if (obj instanceof RedisOsMetricData) {
+                RedisOsMetricData data = (RedisOsMetricData) obj;
+                return OsMetricResponse.builder()
+                        .instanceId(data.getInstanceId())
+                        .instanceName(null) // instanceName은 필요시 조회
+                        .metricType(data.getMetricType())
+                        .value(data.getValue())
+                        .timestamp(data.getCollectedAt())
+                        .build();
+            } else if (obj instanceof java.util.Map) {
+                // Jackson이 Map으로 역직렬화한 경우
+                java.util.Map<?, ?> map = (java.util.Map<?, ?>) obj;
+                
+                return OsMetricResponse.builder()
+                        .instanceId(getLongValue(map.get("instanceId")))
+                        .instanceName(null)
+                        .metricType((String) map.get("metricType"))
+                        .value(getDoubleValue(map.get("value")))
+                        .timestamp(getLocalDateTime(map.get("collectedAt")))
+                        .build();
+            }
+            
+            throw new IllegalArgumentException("Cannot convert object to OsMetricResponse: " + obj.getClass().getName());
+        } catch (Exception e) {
+            log.error("Failed to convert to OsMetricResponse", e);
+            return null;
+        }
+    }
+    
+    private Long getLongValue(Object obj) {
+        if (obj instanceof Number) {
+            return ((Number) obj).longValue();
+        }
+        return null;
+    }
+    
+    private Double getDoubleValue(Object obj) {
+        if (obj instanceof Number) {
+            return ((Number) obj).doubleValue();
+        }
+        return null;
+    }
+    
+    private java.time.LocalDateTime getLocalDateTime(Object obj) {
+        if (obj instanceof String) {
+            return java.time.LocalDateTime.parse((String) obj);
+        } else if (obj instanceof java.time.LocalDateTime) {
+            return (java.time.LocalDateTime) obj;
+        }
+        return null;
     }
     
     /**

@@ -37,11 +37,7 @@ public class OsMetricController {
     @Operation(summary = "메트릭 수신", description = "OSHI Agent로부터 OS 메트릭 데이터 수신")
     @PostMapping
     public ResponseEntity<Void> receiveMetric(@Valid @RequestBody OsMetricRequest request) {
-        log.info("Received OS metric from agent: instance={}, type={}", 
-                request.getInstanceName(), request.getMetricType());
-        
         osMetricService.receiveMetric(request);
-        
         return ResponseEntity.ok().build();
     }
     

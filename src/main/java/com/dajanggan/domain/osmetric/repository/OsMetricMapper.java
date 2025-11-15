@@ -58,4 +58,9 @@ public interface OsMetricMapper {
      * Raw 데이터 삭제 (특정 시간 이전)
      */
     int deleteRawBefore(@Param("beforeTime") OffsetDateTime beforeTime);
+    
+    /**
+     * 활성화된 인스턴스 ID 목록 조회
+     */
+    List<Long> selectActiveInstanceIds();
 }
