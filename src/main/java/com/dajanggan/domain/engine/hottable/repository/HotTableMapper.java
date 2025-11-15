@@ -1,5 +1,8 @@
 package com.dajanggan.domain.engine.hottable.repository;
 
+import com.dajanggan.domain.engine.hottable.domain.HotTableAgg;
+import com.dajanggan.domain.engine.hottable.domain.HotTableRaw;
+import com.dajanggan.domain.instance.domain.Database;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -122,4 +125,37 @@ public interface HotTableMapper {
             @Param("endTime") LocalDateTime endTime,
             @Param("statusList") List<String> statusList
     );
+
+    // ========== 데이터 수집용 메서드 ==========
+
+    /**
+     * 활성화된 데이터베이스 목록 조회
+     * @return 데이터베이스 리스트
+     */
+    List<Database> selectActiveDatabases();
+
+    /**
+     * 특정 테이블의 이전 Raw 데이터 조회 (증분 계산용)
+     * @param databaseId 데이터베이스 ID
+     * @param schemaName 스키마명
+     * @param tableName 테이블명
+     * @return 이전 Raw 데이터
+     */
+    HotTableRaw selectPreviousRawByTable(
+            @Param("databaseId") Long databaseId,
+            @Param("schemaName") String schemaName,
+            @Param("tableName") String tableName
+    );
+
+    /**
+     * Raw 데이터 일괄 삽입
+     * @param rawList Raw 데이터 리스트
+     */
+    void insertRawBatch(List<HotTableRaw> rawList);
+
+    /**
+     * Agg 데이터 일괄 삽입
+     * @param aggList Agg 데이터 리스트
+     */
+    void insertAggBatch(List<HotTableAgg> aggList);
 }
