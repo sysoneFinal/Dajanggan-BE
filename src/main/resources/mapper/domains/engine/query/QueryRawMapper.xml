@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dajanggan.domain.query.repository.QueryRawRepository">
+
+    <!-- 쿼리 메트릭 데이터를 모니터링 DB에 일괄 저장 -->
+    <insert id="insertQueryMetrics" parameterType="com.dajanggan.domain.query.dto.raw.QueryRawMetricDto">
+        INSERT INTO query_metrics_raw (
+        database_id, instance_id, collected_at, query_id, query_hash, query_text,
+        short_query, query_type, execution_count, io_blocks, planning_time_ms,
+        execution_time_ms, cpu_usage_percent, memory_usage_mb, username,
+        application_name, client_addr, state, created_at
+        )
+        VALUES
+        <foreach collection="metrics" item="m" separator=",">
+            (#{m.databaseId}, #{m.instanceId}, #{m.collectedAt}, #{m.queryId}, #{m.queryHash},
+            #{m.queryText}, #{m.shortQuery}, #{m.queryType}, #{m.executionCount}, #{m.ioBlocks},
+            #{m.planningTimeMs}, #{m.executionTimeMs}, #{m.cpuUsagePercent}, #{m.memoryUsageMb},
+            #{m.username}, #{m.applicationName}, #{m.clientAddr}, #{m.state}, NOW())
+        </foreach>
+    </insert>
+
+</mapper>

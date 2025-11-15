@@ -20,7 +20,7 @@
         END AS section,
         ar.metric_type AS metricType,
         COALESCE(ar.enabled, false) AS enabled
-        FROM alarm_rules ar
+        FROM alarm_rule ar
         LEFT JOIN (
         SELECT instance_id, instance_name
         FROM monitor_instance
@@ -60,7 +60,7 @@
             ar.created_at AS createdAt,
             ar.updated_at AS updatedAt,
             COALESCE(ar.enabled, false) AS enabled
-        FROM alarm_rules ar
+        FROM alarm_rule ar
                  LEFT JOIN (
             SELECT instance_id, instance_name
             FROM monitor_instance
@@ -74,7 +74,7 @@
 
     <!-- 규칙 생성 -->
     <insert id="insertRule" useGeneratedKeys="true" keyProperty="alarmRuleId">
-        INSERT INTO alarm_rules(
+        INSERT INTO alarm_rule(
             instance_id, database_id, metric_type, aggregation_type, operator,
             enabled, levels, created_at, updated_at
         ) VALUES (
@@ -84,7 +84,7 @@
     </insert>
 
     <update id="updateRuleLevels">
-        UPDATE alarm_rules
+        UPDATE alarm_rule
         SET levels = CAST(#{levels} AS JSONB),
             aggregation_type = #{aggregationType},
             enabled = #{enabled},
@@ -95,20 +95,64 @@
     <!-- 규칙 삭제 (WITH 절 사용) -->
     <delete id="deleteRule">
         WITH deleted_rules AS (
-        DELETE FROM alarm_rules
+        DELETE FROM alarm_rule
         WHERE alarm_rule_id = #{alarmRuleId}
             RETURNING alarm_rule_id
         )
-        DELETE FROM alarm_rules
+        DELETE FROM alarm_rule
         WHERE alarm_rule_id = #{alarmRuleId}
     </delete>
 
     <!-- 규칙 활성화/비활성화 -->
     <update id="updateRuleEnabled">
-        UPDATE alarm_rules
+        UPDATE alarm_rule
         SET enabled = #{enabled},
             updated_at = NOW()
         WHERE alarm_rule_id = #{alarmRuleId}
     </update>
+    <!-- 활성화된 규칙 조회 -->
+    <select id="findActiveRules" resultType="com.dajanggan.domain.alarm.domain.AlarmRule">
+        SELECT
+        alarm_rule_id AS alarmRuleId,
+        instance_id AS instanceId,
+        database_id AS databaseId,
+        metric_type AS metricType,
+        aggregation_type AS aggregationType,
+        operator,
+        levels,
+        enabled
+        FROM alarm_rule
+        WHERE enabled = true
+        AND metric_type = #{metricType}
+        <if test="instanceId != null">
+            AND (instance_id = #{instanceId} OR instance_id IS NULL)
+        </if>
+        <if test="databaseId != null">
+            AND (database_id = #{databaseId} OR database_id IS NULL)
+        </if>
+    </select>
 
+
+
+    <!-- 규칙 ID로 트래킹 조회 -->
+    <select id="findByRuleId" resultType="com.dajanggan.domain.alarm.domain.AlarmTracking">
+        SELECT
+            alarm_tracking_id AS alarmTrackingId,
+            alarm_rule_id AS alarmRuleId,
+            instance_id AS instanceId,
+            database_id AS databaseId,
+            first_triggered_at AS firstTriggeredAt,
+            last_checked_at AS lastCheckedAt,
+            consecutive_count AS consecutiveCount,
+            current_value AS currentValue,
+            status
+        FROM alarm_tracking
+        WHERE alarm_rule_id = #{alarmRuleId}
+    </select>
+
+    <!-- 트래킹 삭제 -->
+    <delete id="delete">
+        DELETE FROM alarm_tracking
+        WHERE alarm_tracking_id = #{alarmTrackingId}
+    </delete>
 </mapper>

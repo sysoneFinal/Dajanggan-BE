@@ -14,7 +14,8 @@ import java.time.OffsetDateTime;
 @Builder
 public class AlarmFeed {
     private Long alarmFeedId;
-    private Long alarmHistoryId;
+    private Long alarmRuleId;
+    private Long alarmTrackingId;
     private Long instanceId;
     private Long databaseId;
     private String alarmTitle;

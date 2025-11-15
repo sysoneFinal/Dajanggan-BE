@@ -104,4 +104,17 @@
                  )
     </insert>
 
+    <select id="findById" parameterType="long" resultMap="DatabaseDtoMap">
+        SELECT
+            database_id,
+            instance_id,
+            database_name,
+            connections,
+            size_bytes,
+            cache_hit_rate,
+            created_at,
+            updated_at
+        FROM monitor_database
+        WHERE database_id = #{databaseId}
+    </select>
 </mapper>

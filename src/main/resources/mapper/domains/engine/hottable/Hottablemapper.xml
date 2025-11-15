@@ -25,7 +25,7 @@
             ht.avg_table_size as value,
             ht.status
         FROM hot_table_agg ht
-            INNER JOIN monitor_database d ON ht.database_id = d.database_id
+        INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
@@ -45,7 +45,7 @@
             (ht.total_seq_scan + ht.total_idx_scan) as value,
             ht.status
         FROM hot_table_agg ht
-            INNER JOIN monitor_database d ON ht.database_id = d.database_id
+        INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
@@ -65,7 +65,7 @@
             ht.avg_bloat_percent as value,
             ht.status
         FROM hot_table_agg ht
-            INNER JOIN monitor_database d ON ht.database_id = d.database_id
+        INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
@@ -87,7 +87,7 @@
             SUM(ht.total_tup_upd) as n_tup_upd,
             SUM(ht.total_tup_del) as n_tup_del
         FROM hot_table_agg ht
-            INNER JOIN monitor_database d ON ht.database_id = d.database_id
+        INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at BETWEEN #{startTime} AND #{endTime}
@@ -101,7 +101,7 @@
             DATE_TRUNC('hour', ht.collected_at) as timestamp,
             AVG(ht.avg_cache_hit_ratio) as cache_hit_ratio
         FROM hot_table_agg ht
-            INNER JOIN monitor_database d ON ht.database_id = d.database_id
+        INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at BETWEEN #{startTime} AND #{endTime}
@@ -115,7 +115,7 @@
             ht.table_name,
             ht.avg_bloat_percent as bloat_percent
         FROM hot_table_agg ht
-                 INNER JOIN monitor_database d ON ht.database_id = d.database_id
+        INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
@@ -133,7 +133,7 @@
             ht.table_name,
             ht.vacuum_delay_seconds
         FROM hot_table_agg ht
-                 INNER JOIN monitor_database d ON ht.database_id = d.database_id
+        INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
@@ -397,5 +397,4 @@
         ORDER BY (ps.seq_scan + COALESCE(ps.idx_scan, 0)) DESC
             LIMIT 20
     </select>
-
 </mapper>
