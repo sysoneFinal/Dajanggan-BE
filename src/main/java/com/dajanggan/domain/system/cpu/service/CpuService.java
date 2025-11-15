@@ -4,6 +4,8 @@ import com.dajanggan.domain.system.cpu.domain.CpuAgg;
 import com.dajanggan.domain.system.cpu.domain.CpuRaw;
 import com.dajanggan.domain.system.cpu.dto.CpuDto;
 import com.dajanggan.domain.system.cpu.repository.CpuMapper;
+import com.dajanggan.domain.osmetric.domain.OsMetricAgg;
+import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ import java.util.stream.Collectors;
 public class CpuService {
 
     private final CpuMapper cpuMapper;
+    private final OsMetricMapper osMetricMapper;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -461,5 +464,101 @@ public class CpuService {
                 .contextSwitches(0L)
                 .postgresqlBackendCpu(0.0)
                 .build();
+    }
+
+    /**
+     * os_metric_agg 테이블에서 간단한 CPU 사용률 트렌드 조회
+     * @param instanceId 인스턴스 ID
+     * @param hours 조회 시간 (기본 1시간)
+     * @return CPU 사용률 트렌드 데이터
+     */
+    public CpuDto.CpuUsageTrend getSimpleCpuTrend(Long instanceId, int hours) {
+        log.debug("간단한 CPU 트렌드 조회 - instanceId: {}, hours: {}", instanceId, hours);
+
+        OffsetDateTime endTime = OffsetDateTime.now();
+        OffsetDateTime startTime = endTime.minusHours(hours);
+
+        try {
+            // os_metric_agg 테이블에서 CPU 데이터 조회
+            List<OsMetricAgg> cpuMetrics = osMetricMapper.findAggByInstanceAndPeriod(
+                    instanceId, "CPU", startTime, endTime);
+
+            if (cpuMetrics == null || cpuMetrics.isEmpty()) {
+                log.warn("CPU 메트릭 데이터 없음 - instanceId: {}", instanceId);
+                return CpuDto.CpuUsageTrend.builder()
+                        .categories(new ArrayList<>())
+                        .data(new ArrayList<>())
+                        .build();
+            }
+
+            List<String> categories = cpuMetrics.stream()
+                    .map(metric -> metric.getCollectedAt().format(TIME_FORMATTER))
+                    .collect(Collectors.toList());
+
+            List<Double> data = cpuMetrics.stream()
+                    .map(OsMetricAgg::getAvgValue)
+                    .collect(Collectors.toList());
+
+            return CpuDto.CpuUsageTrend.builder()
+                    .categories(categories)
+                    .data(data)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("간단한 CPU 트렌드 조회 중 오류 발생", e);
+            throw new RuntimeException("CPU 트렌드 조회 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * os_metric_agg 테이블에서 현재 CPU 사용률 조회
+     * @param instanceId 인스턴스 ID
+     * @return 현재 CPU 사용률
+     */
+    public CpuDto.CpuUsage getSimpleCpuUsage(Long instanceId) {
+        log.debug("현재 CPU 사용률 조회 - instanceId: {}", instanceId);
+
+        OffsetDateTime endTime = OffsetDateTime.now();
+        OffsetDateTime startTime = endTime.minusMinutes(5); // 최근 5분
+
+        try {
+            List<OsMetricAgg> cpuMetrics = osMetricMapper.findAggByInstanceAndPeriod(
+                    instanceId, "CPU", startTime, endTime);
+
+            if (cpuMetrics == null || cpuMetrics.isEmpty()) {
+                return CpuDto.CpuUsage.builder()
+                        .value(0.0)
+                        .description("데이터 없음")
+                        .runningQueries(0L)
+                        .waitingQueries(0L)
+                        .idleConnections(0L)
+                        .build();
+            }
+
+            // 최신 데이터 사용
+            OsMetricAgg latest = cpuMetrics.get(cpuMetrics.size() - 1);
+            double cpuValue = latest.getAvgValue();
+
+            String description;
+            if (cpuValue < 50) {
+                description = "정상";
+            } else if (cpuValue < 80) {
+                description = "주의";
+            } else {
+                description = "위험";
+            }
+
+            return CpuDto.CpuUsage.builder()
+                    .value(cpuValue)
+                    .description(description)
+                    .runningQueries(0L) // TODO: 세션 정보에서 가져오기
+                    .waitingQueries(0L)
+                    .idleConnections(0L)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("현재 CPU 사용률 조회 중 오류 발생", e);
+            throw new RuntimeException("CPU 사용률 조회 실패: " + e.getMessage(), e);
+        }
     }
 }

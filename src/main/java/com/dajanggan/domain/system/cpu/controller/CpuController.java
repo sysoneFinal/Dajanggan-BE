@@ -57,4 +57,36 @@ public class CpuController {
 
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * 간단한 CPU 사용률 트렌드 조회 (os_metric_agg 사용)
+     * @param instanceId PostgreSQL 인스턴스 ID
+     * @param hours 조회 시간 (기본 1시간)
+     * @return CPU 사용률 트렌드
+     */
+    @GetMapping("/trend")
+    public ResponseEntity<CpuDto.CpuUsageTrend> getSimpleCpuTrend(
+            @RequestParam Long instanceId,
+            @RequestParam(defaultValue = "1") int hours) {
+        log.debug("간단한 CPU 트렌드 조회 요청 - instanceId: {}, hours: {}", instanceId, hours);
+
+        CpuDto.CpuUsageTrend response = cpuService.getSimpleCpuTrend(instanceId, hours);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 현재 CPU 사용률 조회 (os_metric_agg 사용)
+     * @param instanceId PostgreSQL 인스턴스 ID
+     * @return 현재 CPU 사용률
+     */
+    @GetMapping("/current")
+    public ResponseEntity<CpuDto.CpuUsage> getSimpleCpuUsage(
+            @RequestParam Long instanceId) {
+        log.debug("현재 CPU 사용률 조회 요청 - instanceId: {}", instanceId);
+
+        CpuDto.CpuUsage response = cpuService.getSimpleCpuUsage(instanceId);
+
+        return ResponseEntity.ok(response);
+    }
 }
