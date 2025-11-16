@@ -4,70 +4,130 @@
 
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumBloatDetailMapper">
 
-    <!-- 특정 테이블의 최신 메트릭 조회 -->
-    <select id="findLatestMetricsByTable" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
-        SELECT
-            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
-            database_id AS databaseId,
-            table_name AS tableName,
-            collected_at AS collectedAt,
-            bloat_bytes AS bloatBytes,
-            bloat_ratio AS bloatRatio,
-            dead_tuple_total AS deadTupleTotal,
-            last_vacuum AS lastVacuum,
-            last_autovacuum AS lastAutovacuum
-        FROM vacuum_trend_metrics
-        WHERE database_id = #{databaseId}
-          AND table_name = #{tableName}
-        ORDER BY collected_at DESC
-            LIMIT 1
-    </select>
-
-    <!-- 특정 테이블의 Bloat % 트렌드 조회 (30일) -->
-    <select id="findBloatTrendByTable" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
-        SELECT
-            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
-            collected_at AS collectedAt,
-            bloat_ratio AS bloatRatio
-        FROM vacuum_trend_metrics
-        WHERE database_id = #{databaseId}
-          AND table_name = #{tableName}
-          AND collected_at BETWEEN #{startDate} AND #{endDate}
-          AND bloat_ratio IS NOT NULL
-        ORDER BY collected_at ASC
-    </select>
-
-    <!-- 특정 테이블의 Dead Tuples 트렌드 조회 (30일) -->
-    <select id="findDeadTuplesTrendByTable" resultType="com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics">
-        SELECT
-            vacuum_trend_metrics_id AS vacuumTrendMetricsId,
-            collected_at AS collectedAt,
-            dead_tuple_total AS deadTupleTotal
-        FROM vacuum_trend_metrics
-        WHERE database_id = #{databaseId}
-          AND table_name = #{tableName}
-          AND collected_at BETWEEN #{startDate} AND #{endDate}
-          AND dead_tuple_total IS NOT NULL
-        ORDER BY collected_at ASC
-    </select>
-
-    <!-- 특정 테이블의 인덱스별 Bloat 트렌드 조회 (30일) -->
-    <!-- 인덱스 메트릭 테이블이 없으므로 빈 결과 반환 -->
-    <select id="findIndexBloatTrendByTable" resultType="map">
-        SELECT
-            CAST(NULL AS VARCHAR) as index_name,
-            CAST(NULL AS NUMERIC) as bloat_ratio,
-            CAST(NULL AS TIMESTAMP) as collected_at
-            WHERE 1=0
-    </select>
+    <!--
+        ✅ vacuum_raw_metrics 테이블 사용
+        - 테이블별 상세 정보 (table_name, bloat, dead tuples 등)
+        - 최근 30일 데이터만 조회
+    -->
 
     <!-- 데이터베이스 내 테이블 목록 조회 -->
     <select id="findTableList" resultType="string">
         SELECT DISTINCT table_name
-        FROM vacuum_trend_metrics
+        FROM vacuum_raw_metrics
         WHERE database_id = #{databaseId}
           AND table_name IS NOT NULL
+          AND collected_at >= NOW() - INTERVAL '30 days'
         ORDER BY table_name ASC
+    </select>
+
+    <!-- 특정 테이블의 최신 메트릭 조회 (KPI용) -->
+    <select id="findLatestMetricsByTable" resultType="map">
+        SELECT DISTINCT ON (table_name)
+            table_name,
+            collected_at,
+            -- Bloat 계산
+            CASE
+            WHEN relsize_total_bytes > 0 AND (n_live_tup + n_dead_tup) > 0
+            THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup + 1))
+            ELSE 0
+        END AS bloat_ratio,
+            -- Bloat Bytes (dead tuple이 차지하는 예상 공간)
+            (n_dead_tup * 100) AS bloat_bytes,  -- 튜플당 평균 100바이트로 가정
+            -- Dead Tuples
+            n_dead_tup AS dead_tuple_total,
+            -- Table Size
+            relsize_total_bytes AS table_size,
+            -- Vacuum 정보
+            session_started_at AS last_vacuum
+        FROM vacuum_raw_metrics
+        WHERE database_id = #{databaseId}
+        AND table_name = #{tableName}
+        AND collected_at >= NOW() - INTERVAL '30 days'
+        ORDER BY table_name, collected_at DESC
+    </select>
+
+    <!-- 특정 테이블의 Bloat % 트렌드 조회 (30일) -->
+    <select id="findBloatTrendByTable" resultType="map">
+        WITH daily_bloat AS (
+            SELECT
+                DATE_TRUNC('day', collected_at) AS day,
+            AVG(
+            CASE
+            WHEN relsize_total_bytes > 0 AND (n_live_tup + n_dead_tup) > 0
+            THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup + 1))
+            ELSE 0
+            END
+            ) AS bloat_ratio
+        FROM vacuum_raw_metrics
+        WHERE database_id = #{databaseId}
+          AND table_name = #{tableName}
+          AND collected_at BETWEEN #{startDate} AND #{endDate}
+          AND n_dead_tup IS NOT NULL
+        GROUP BY DATE_TRUNC('day', collected_at)
+            )
+        SELECT
+            day AS collected_at,
+            bloat_ratio
+        FROM daily_bloat
+        WHERE bloat_ratio IS NOT NULL
+        ORDER BY day ASC
+    </select>
+
+    <!-- 특정 테이블의 Dead Tuples 트렌드 조회 (30일) -->
+    <select id="findDeadTuplesTrendByTable" resultType="map">
+        WITH daily_dead_tuples AS (
+            SELECT
+                DATE_TRUNC('day', collected_at) AS day,
+            AVG(n_dead_tup) AS dead_tuple_total
+        FROM vacuum_raw_metrics
+        WHERE database_id = #{databaseId}
+          AND table_name = #{tableName}
+          AND collected_at BETWEEN #{startDate} AND #{endDate}
+          AND n_dead_tup IS NOT NULL
+        GROUP BY DATE_TRUNC('day', collected_at)
+            )
+        SELECT
+            day AS collected_at,
+            ROUND(dead_tuple_total) AS dead_tuple_total
+        FROM daily_dead_tuples
+        WHERE dead_tuple_total IS NOT NULL
+        ORDER BY day ASC
+    </select>
+
+    <!-- 특정 테이블의 인덱스별 Bloat 트렌드 조회 (30일) -->
+    <!--
+        ⚠️ vacuum_raw_metrics에는 인덱스 정보가 없음
+        향후 index_raw_metrics 테이블 추가 시 구현
+        현재는 빈 결과 반환
+    -->
+    <select id="findIndexBloatTrendByTable" resultType="map">
+        SELECT
+        CAST(NULL AS VARCHAR) AS index_name,
+        CAST(NULL AS NUMERIC) AS bloat_ratio,
+        CAST(NULL AS TIMESTAMP) AS collected_at
+        WHERE 1=0
+
+        <!--
+        TODO: index_raw_metrics 테이블 생성 후 활성화
+
+        WITH daily_index_bloat AS (
+            SELECT
+                index_name,
+                DATE_TRUNC('day', collected_at) AS day,
+                AVG(bloat_ratio) AS bloat_ratio
+            FROM index_raw_metrics
+            WHERE database_id = #{databaseId}
+              AND table_name = #{tableName}
+              AND collected_at BETWEEN #{startDate} AND #{endDate}
+            GROUP BY index_name, DATE_TRUNC('day', collected_at)
+        )
+        SELECT
+            index_name,
+            day AS collected_at,
+            bloat_ratio
+        FROM daily_index_bloat
+        ORDER BY index_name, day ASC
+        -->
     </select>
 
 </mapper>
