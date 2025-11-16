@@ -1,7 +1,7 @@
 package com.dajanggan.domain.vacuum.service;
 
 import com.dajanggan.domain.vacuum.dto.VacuumRiskDto;
-import com.dajanggan.domain.vacuum.repository.VacuumRiskRepository;
+import com.dajanggan.domain.vacuum.repository.VacuumRiskMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,7 +17,7 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class VacuumRiskService {
 
-    private final VacuumRiskRepository repo;
+    private final VacuumRiskMapper vacuumRiskMapper;
 
     private OffsetDateTime[] window(OffsetDateTime start, OffsetDateTime end) {
         var e = (end != null) ? end : OffsetDateTime.now();
@@ -86,32 +86,32 @@ public class VacuumRiskService {
     public List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(
             Long dbId, OffsetDateTime start, OffsetDateTime end) {
         var w = window(start, end);
-        return repo.getBlockersPerHour(dbId, w[0], w[1]);
+        return vacuumRiskMapper.getBlockersPerHour(dbId, w[0], w[1]);
     }
 
     public List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(
             Long dbId, Integer limit, OffsetDateTime start, OffsetDateTime end) {
         var w = window(start, end);
         int lim = (limit == null || limit <= 0) ? 10 : limit;
-        return repo.getTopBloatTables(dbId, lim, w[0], w[1]);
+        return vacuumRiskMapper.getTopBloatTables(dbId, lim, w[0], w[1]);
     }
 
     public List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers(
             Long dbId, OffsetDateTime start, OffsetDateTime end) {
         var w = window(start, end);
-        return repo.getVacuumBlockers(dbId, w[0], w[1]);
+        return vacuumRiskMapper.getVacuumBlockers(dbId, w[0], w[1]);
     }
 
     public List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress(
             Long dbId, OffsetDateTime start, OffsetDateTime end) {
         var w = window(start, end);
-        return repo.getWraparoundProgress(dbId, w[0], w[1]);
+        return vacuumRiskMapper.getWraparoundProgress(dbId, w[0], w[1]);
     }
 
     public VacuumRiskDto.ScatterDto getTransactionScatter(
             Long dbId, OffsetDateTime start, OffsetDateTime end) {
         var w = window(start, end);
-        var list = repo.getVacuumBlockers(dbId, w[0], w[1]);
+        var list = vacuumRiskMapper.getVacuumBlockers(dbId, w[0], w[1]);
 
         var points = new ArrayList<List<Long>>(list.size());
         for (var v : list) {
