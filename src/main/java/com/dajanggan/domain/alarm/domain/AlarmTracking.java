@@ -21,6 +21,7 @@ public class AlarmTracking {
     private OffsetDateTime lastCheckedAt;
     private Integer consecutiveCount;
     private BigDecimal currentValue;
+    private String currentLevel;
     private String status;  // PENDING_FIRED, FIRED, RESOLVED
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
