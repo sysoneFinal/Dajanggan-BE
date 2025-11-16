@@ -28,7 +28,7 @@ public class CommonMetricsCollector {
     @Scheduled(fixedRate = 60000)  // 60,000ms = 1분
     public void collectAllDatabases() {
         OffsetDateTime collectedAt = OffsetDateTime.now();
-        log.info("========== Metric Collection Started at {} ==========", collectedAt);
+        log.info("========== 원시 데이터 수집 시작  at {} ==========", collectedAt);
 
         // (1) 활성화된 데이터베이스 목록 조회 (is_enabled = true)
         List<Database> databases = databaseRepository.findAllEnabled();
@@ -69,16 +69,8 @@ public class CommonMetricsCollector {
                         database.getDatabaseName());
 
                 sessionMetricsCollector.collect(instance, database, collectedAt);
-
-
-
                 // 쿼리 메트릭 수집
                 queryMetricsCollector.collect(instance, database, collectedAt);
-
-
-                // 쿼리 메트릭 수집
-                queryMetricsCollector.collect(instance, database, collectedAt);
-
 
                 successCount++;
 
@@ -94,7 +86,7 @@ public class CommonMetricsCollector {
             }
         }
 
-        log.info("========== Metric Collection Completed: Success={}, Failure={} ==========", 
+        log.info("========== 원시 데이터 수집 완료 : Success={}, Failure={} ==========",
                 successCount, failureCount);
     }
 }

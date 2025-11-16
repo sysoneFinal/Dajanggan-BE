@@ -35,11 +35,18 @@ public class MetricsQueryService {
             String timeRange
     ) {
         try {
+            // 0. 카테고리 제거 (SESSION.total_sessions -> total_sessions)
+            List<String> cleanMetricNames = metricNames.stream()
+                    .map(name -> name.contains(".") ? name.substring(name.lastIndexOf(".") + 1) : name)
+                    .collect(Collectors.toList());
+
+            log.debug("메트릭명 변환: {} -> {}", metricNames, cleanMetricNames);
+
             // 1. metric_definition 테이블에서 메트릭 메타정보 조회
-            List<MetricDefinition> metricDefinitions = overviewRepository.getMetricDefinitions(metricNames);
+            List<MetricDefinition> metricDefinitions = overviewRepository.getMetricDefinitions(cleanMetricNames);
 
             if (metricDefinitions == null || metricDefinitions.isEmpty()) {
-                log.warn("메트릭 정의를 찾을 수 없음: {}", metricNames);
+                log.warn("메트릭 정의를 찾을 수 없음: 원본={}, 변환후={}", metricNames, cleanMetricNames);
                 // 메트릭 정의가 없으면 빈 리스트 반환 (에러 던지지 않음)
                 return Collections.emptyList();
             }
@@ -49,7 +56,7 @@ public class MetricsQueryService {
                     .map(MetricDefinition::getName)
                     .collect(Collectors.toList());
             
-            List<String> missingMetrics = metricNames.stream()
+            List<String> missingMetrics = cleanMetricNames.stream()
                     .filter(name -> !foundMetrics.contains(name))
                     .collect(Collectors.toList());
             

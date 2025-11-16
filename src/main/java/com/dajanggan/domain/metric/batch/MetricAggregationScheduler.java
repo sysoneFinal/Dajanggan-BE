@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 public class MetricAggregationScheduler {
 
     private final JobLauncher jobLauncher;
-    
+
     @Qualifier("sessionAgg1mJob")
     private final Job sessionAgg1mJob;
 
@@ -34,6 +34,12 @@ public class MetricAggregationScheduler {
 
     @Qualifier("queryAgg5mJob")
     private final Job queryAgg5mJob;
+
+    @Qualifier("databaseMetricsAggJob")
+    private final Job databaseMetricsAggJob;
+
+
+
     /**
      * 1분마다 1분 집계 Job들 실행
      * 매분 5초에 실행 (수집이 완료된 후 실행하기 위해)
@@ -42,10 +48,8 @@ public class MetricAggregationScheduler {
     public void runAgg1mJobs() {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 1분 집계 배치 시작: {} ==========", runTime);
-        
-        // 세션 1분 집계
-        runJob(sessionAgg1mJob, "세션 1분 집계", runTime);
 
+        runJob(sessionAgg1mJob, "세션 1분 집계", runTime);
         runJob(queryAgg1mJob, "쿼리 1분 집계", runTime);
 
         log.info("========== 1분 집계 배치 완료 ==========");
@@ -60,15 +64,24 @@ public class MetricAggregationScheduler {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 5분 집계 배치 시작: {} ==========", runTime);
 
-         // 세션 5분 집계
-         runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
-        // runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
-
-        // 향후 추가
-        // runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
-         runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
+        runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
+        runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
 
         log.info("========== 5분 집계 배치 완료 ==========");
+    }
+
+    /**
+     * 데이터베이스 메트릭 집계 (매 1분마다, 45초에 실행)
+     * - 도메인별 1분 집계가 완료된 후 실행되도록 시간 조정
+     */
+    @Scheduled(cron = "45 * * * * *")
+    public void aggregateDatabaseMetrics() {
+        LocalDateTime runTime = LocalDateTime.now();
+        log.info("=== 데이터베이스 메트릭 집계 작업 시작: {} ===", runTime);
+
+        runJob(databaseMetricsAggJob, "데이터베이스 메트릭 집계", runTime);
+
+        log.info("=== 데이터베이스 메트릭 집계 작업 완료 ===");
     }
 
     /**
@@ -77,13 +90,13 @@ public class MetricAggregationScheduler {
     private void runJob(Job job, String jobName, LocalDateTime runTime) {
         try {
             log.info(">>>>>>>>>>>>>>>>>>>>>> {} 시작", jobName);
-            
+
             JobParameters params = new JobParametersBuilder()
                     .addLocalDateTime("runTime", runTime)
                     .toJobParameters();
-            
+
             jobLauncher.run(job, params);
-            
+
             log.info("{} 완료", jobName);
         } catch (Exception e) {
             log.error("{} 실패: {}", jobName, e.getMessage(), e);

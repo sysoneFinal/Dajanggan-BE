@@ -27,7 +27,18 @@ public class OverviewController {
     @GetMapping
     public ResponseEntity<DashboardDataResponse> getDashboard(@RequestParam Long instanceId){
         DashboardDataResponse response = overviewService.getDashboardWithData(instanceId);
-        log.info("대시보드 데이터 ", response);
+        
+        log.info("대시보드 데이터 조회 완료: instanceId={}, widgetCount={}", 
+                instanceId, response.getWidgets().size());
+        
+        // 각 위젯의 데이터 개수 로그
+        response.getWidgets().forEach(widget -> {
+            log.info("  Widget[{}]: dataCount={}, error={}", 
+                    widget.getId(), 
+                    widget.getData() != null ? widget.getData().size() : 0,
+                    widget.getError());
+        });
+        
         return ResponseEntity.ok(response);
     }
 
