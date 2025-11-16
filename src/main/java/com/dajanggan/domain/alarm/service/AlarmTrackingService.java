@@ -35,6 +35,7 @@ public class AlarmTrackingService {
                         .databaseName(raw.getDatabaseName())
                         .metricType(raw.getMetricType())
                         .currentValue(formatValue(raw.getCurrentValue()))
+                        .currentLevel(raw.getCurrentLevel())
                         .consecutiveCount(raw.getConsecutiveCount())
                         .status(raw.getStatus())
                         .lastChecked(raw.getLastCheckedAt().format(FORMATTER))
