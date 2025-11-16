@@ -13,19 +13,24 @@ public class VacuumRiskRepository {
 
     private final VacuumRiskMapper mapper;
 
-    public List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(Long dbId, OffsetDateTime start, OffsetDateTime end) {
-        return mapper.getBlockersPerHour(dbId, start, end);
+    // ✅ aggTable 파라미터 추가
+    public List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(
+            Long dbId, OffsetDateTime start, OffsetDateTime end, String aggTable) {
+        return mapper.getBlockersPerHour(dbId, start, end, aggTable);
     }
 
-    public List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(Long dbId, int limit, OffsetDateTime start, OffsetDateTime end) {
-        return mapper.getTopBloatTables(dbId, limit, start, end);
+    public List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(
+            Long dbId, int limit, OffsetDateTime start, OffsetDateTime end, String aggTable) {
+        return mapper.getTopBloatTables(dbId, limit, start, end, aggTable);
     }
 
-    public List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers(Long dbId, OffsetDateTime start, OffsetDateTime end) {
-        return mapper.getVacuumBlockers(dbId, start, end);
+    public List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers(
+            Long dbId, OffsetDateTime start, OffsetDateTime end, String aggTable) {
+        return mapper.getVacuumBlockers(dbId, start, end, aggTable);
     }
 
-    public List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress(Long dbId, OffsetDateTime start, OffsetDateTime end) {
-        return mapper.getWraparoundProgress(dbId, start, end);
+    public List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress(
+            Long dbId, OffsetDateTime start, OffsetDateTime end, String aggTable) {
+        return mapper.getWraparoundProgress(dbId, start, end, aggTable);
     }
 }
