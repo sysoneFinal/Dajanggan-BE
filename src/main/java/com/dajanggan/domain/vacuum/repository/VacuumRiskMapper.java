@@ -10,33 +10,29 @@ import java.util.List;
 @Mapper
 public interface VacuumRiskMapper {
 
-    // ✅ aggTable 파라미터 추가
+    // ✅ aggTable 제거 (항상 vacuum_raw_metrics 사용)
     List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(
             @Param("databaseId") Long databaseId,
             @Param("start") OffsetDateTime start,
-            @Param("end") OffsetDateTime end,
-            @Param("aggTable") String aggTable
+            @Param("end") OffsetDateTime end
     );
 
     List<VacuumRiskDto.TopBloatRaw> getTopBloatTables(
             @Param("databaseId") Long databaseId,
             @Param("limit") int limit,
             @Param("start") OffsetDateTime start,
-            @Param("end") OffsetDateTime end,
-            @Param("aggTable") String aggTable
+            @Param("end") OffsetDateTime end
     );
 
     List<VacuumRiskDto.VacuumBlockerDetailRaw> getVacuumBlockers(
             @Param("databaseId") Long databaseId,
             @Param("start") OffsetDateTime start,
-            @Param("end") OffsetDateTime end,
-            @Param("aggTable") String aggTable
+            @Param("end") OffsetDateTime end
     );
 
     List<VacuumRiskDto.WraparoundProgressRaw> getWraparoundProgress(
             @Param("databaseId") Long databaseId,
             @Param("start") OffsetDateTime start,
-            @Param("end") OffsetDateTime end,
-            @Param("aggTable") String aggTable
+            @Param("end") OffsetDateTime end
     );
 }
