@@ -22,6 +22,7 @@ public class AlarmTrackingDto {
         private String databaseName;
         private String metricType;
         private BigDecimal currentValue;
+        private String currentLevel;
         private Integer consecutiveCount;
         private String status;
         private OffsetDateTime firstTriggeredAt;
@@ -41,6 +42,7 @@ public class AlarmTrackingDto {
         private String databaseName;
         private String metricType;
         private String currentValue;
+        private String currentLevel;
         private Integer consecutiveCount;
         private String status;
         private String lastChecked;
