@@ -21,30 +21,66 @@ public class QueryRawRepositoryImpl {
 
     /**
      * 대상 PostgreSQL 인스턴스의 쿼리 메트릭 조회
-     * pg_stat_statements 뷰 사용
+     * pg_stat_statements와 pg_stat_activity 조인하여 CPU/메모리 정보 포함
      */
     public List<QueryRawMetricDto> getQueryMetrics(JdbcTemplate jdbcTemplate) {
         String sql = """
+            WITH query_stats AS (
+                SELECT 
+                    s.queryid::text as query_id,
+                    s.query as query_text,
+                    s.calls as execution_count,
+                    s.mean_exec_time as execution_time_ms,
+                    CASE WHEN s.calls > 0 THEN s.total_plan_time / s.calls ELSE 0 END as planning_time_ms,
+                    (s.shared_blks_hit + s.shared_blks_read + s.local_blks_hit + s.local_blks_read) as io_blocks,
+                    -- CPU 사용량 추정: execution_time 기반 (단위: %)
+                    CASE 
+                        WHEN s.mean_exec_time > 0 THEN 
+                            LEAST(100, (s.mean_exec_time / 1000.0) * 10)
+                        ELSE 0 
+                    END as cpu_usage_percent,
+                    -- 메모리 사용량 추정: temp blocks 기반 (단위: MB)
+                    ROUND(
+                        ((s.temp_blks_written + s.temp_blks_read) * 8.0 / 1024.0)::numeric, 
+                        2
+                    ) as memory_usage_mb,
+                    d.datname as database_name,
+                    r.rolname as username,
+                    -- pg_stat_activity 정보 (현재 실행 중인 쿼리)
+                    a.state,
+                    a.application_name,
+                    a.client_addr::text as client_addr
+                FROM pg_stat_statements s
+                JOIN pg_database d ON s.dbid = d.oid
+                JOIN pg_roles r ON s.userid = r.oid
+                LEFT JOIN pg_stat_activity a ON a.query = s.query 
+                    AND a.datname = d.datname 
+                    AND a.usename = r.rolname
+                    AND a.state = 'active'
+                WHERE d.datname IS NOT NULL
+                  AND s.query NOT LIKE '%pg_stat_statements%'
+                  AND s.query NOT LIKE '--%'
+                  AND s.query NOT LIKE '%테이블%'
+                  AND s.query NOT LIKE '%데이터%'
+                  AND s.query NOT LIKE '%파티션%'
+                  AND s.calls > 0
+            )
             SELECT 
-                s.queryid::text as query_id,
-                s.query as query_text,
-                s.calls as execution_count,
-                s.mean_exec_time as execution_time_ms,
-                s.total_plan_time / s.calls as planning_time_ms,
-                (s.shared_blks_hit + s.shared_blks_read + s.local_blks_hit + s.local_blks_read) as io_blocks,
-                d.datname as database_name,
-                r.rolname as username
-            FROM pg_stat_statements s
-            JOIN pg_database d ON s.dbid = d.oid
-            JOIN pg_roles r ON s.userid = r.oid
-            WHERE d.datname IS NOT NULL
-              AND s.query NOT LIKE '%pg_stat_statements%'
-              AND s.query NOT LIKE '--%'                    -- 주석으로 시작하는 쿼리 제외
-              AND s.query NOT LIKE '%테이블%'               -- 한글 주석 제외
-              AND s.query NOT LIKE '%데이터%'               -- 한글 주석 제외
-              AND s.query NOT LIKE '%파티션%'               -- 한글 주석 제외
-              AND s.calls > 0                                -- 실제 실행된 쿼리만
-            ORDER BY s.mean_exec_time DESC
+                query_id,
+                query_text,
+                execution_count,
+                execution_time_ms,
+                planning_time_ms,
+                io_blocks,
+                cpu_usage_percent,
+                memory_usage_mb,
+                database_name,
+                username,
+                COALESCE(state, 'idle') as state,
+                COALESCE(application_name, 'unknown') as application_name,
+                client_addr
+            FROM query_stats
+            ORDER BY execution_time_ms DESC
             LIMIT 1000
             """;
 
@@ -74,6 +110,27 @@ public class QueryRawRepositoryImpl {
 
             Long ioBlocks = rs.getLong("io_blocks");
             dto.setIoBlocks(ioBlocks);
+
+            // ⭐ CPU 사용량 - NULL 처리 수정!
+            double cpuUsage = rs.getDouble("cpu_usage_percent");
+            if (!rs.wasNull()) {
+                dto.setCpuUsagePercent(BigDecimal.valueOf(cpuUsage));
+            } else {
+                dto.setCpuUsagePercent(null);
+            }
+
+            // ⭐ 메모리 사용량 - NULL 처리 수정!
+            double memoryUsage = rs.getDouble("memory_usage_mb");
+            if (!rs.wasNull()) {
+                dto.setMemoryUsageMb(BigDecimal.valueOf(memoryUsage));
+            } else {
+                dto.setMemoryUsageMb(null);
+            }
+
+            // ⭐ pg_stat_activity 추가 정보
+            dto.setState(rs.getString("state"));
+            dto.setApplicationName(rs.getString("application_name"));
+            dto.setClientAddr(rs.getString("client_addr"));
 
             return dto;
         }

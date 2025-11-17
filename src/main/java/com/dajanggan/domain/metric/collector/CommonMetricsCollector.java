@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +24,6 @@ public class CommonMetricsCollector {
     private final SessionMetricsCollector sessionMetricsCollector;
     private final QueryMetricsCollector queryMetricsCollector;
     private final VacuumMetricsCollector vacuumMetricsCollector;
-
 
     /** 1분마다 전체 활성화된 데이터베이스의 메트릭 수집 */
     @Scheduled(fixedRate = 60000)  // 60,000ms = 1분
@@ -41,11 +41,6 @@ public class CommonMetricsCollector {
 
         log.info("수집 대상 데이터베이스: {} 개", databases.size());
 
-        for (Database db : databases) {
-            log.info("  - DB: {} (database_id={}, instance_id={})",
-                    db.getDatabaseName(), db.getDatabaseId(), db.getInstanceId());
-        }
-
         // (2) 인스턴스 정보 한 번에 조회 (N+1 문제 방지) - secret_ref 포함!
         List<Long> instanceIds = databases.stream()
                 .map(Database::getInstanceId)
@@ -58,29 +53,51 @@ public class CommonMetricsCollector {
         // (3) 데이터베이스별 수집 실행
         int successCount = 0;
         int failureCount = 0;
-
+        
         for (Database database : databases) {
             Instance instance = instanceMap.get(database.getInstanceId());
-
+            
             if (instance == null) {
-                log.error("❌ Database ID {} - 연결된 Instance를 찾을 수 없음 (instance_id: {})",
+                log.error("************* Database ID {} - 연결된 Instance를 찾을 수 없음 (instance_id: {})",
                         database.getDatabaseId(), database.getInstanceId());
                 failureCount++;
                 continue;
             }
 
-            // 세션 메트릭 수집
-            sessionMetricsCollector.collect(instance, database, collectedAt);
+            try {
+                log.info(">>>>>>>>>>>>>>>> [{}] Collecting metrics from {}:{} / {}",
+                        collectedAt,
+                        instance.getHost(),
+                        instance.getPort(),
+                        database.getDatabaseName());
+
+                sessionMetricsCollector.collect(instance, database, collectedAt);
+                // 쿼리 메트릭 수집
+                queryMetricsCollector.collect(instance, database, collectedAt);
 
 
-            // 쿼리 메트릭 수집
-            queryMetricsCollector.collect(instance, database, collectedAt);
+                // 쿼리 메트릭 수집
+                queryMetricsCollector.collect(instance, database, collectedAt);
 
-            // Vacuum 메트릭 수집
-            vacuumMetricsCollector.collect(instance, database, collectedAt);
+                // Vacuum 메트릭 수집
+                vacuumMetricsCollector.collect(instance, database, collectedAt);
 
-            log.info("========== Metric Collection Completed: Success={}, Failure={} ==========",
-                    successCount, failureCount);
+
+                successCount++;
+
+            } catch (Exception e) {
+                failureCount++;
+                log.error("************* [{}] {}:{}/{} 수집 실패: {}",
+                        collectedAt,
+                        instance.getHost(),
+                        instance.getPort(),
+                        database.getDatabaseName(),
+                        e.getMessage(), 
+                        e);
+            }
         }
+
+        log.info("========== Metric Collection Completed: Success={}, Failure={} ==========", 
+                successCount, failureCount);
     }
 }

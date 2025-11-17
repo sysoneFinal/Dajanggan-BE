@@ -25,8 +25,10 @@ public interface SessionRawRepository {
 
     /**
      * 대상 PostgreSQL 인스턴스의 현재 락 정보 조회
-     * (JdbcTemplate 사용 - 동적으로 다른 DB 조회)
      * @return Map<PID, LockMode>
      */
     Map<Integer, String> getCurrentLocks(JdbcTemplate jdbcTemplate);
+
+
 }
+
