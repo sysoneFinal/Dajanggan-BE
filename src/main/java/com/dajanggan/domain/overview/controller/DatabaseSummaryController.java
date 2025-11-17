@@ -24,9 +24,8 @@ public class DatabaseSummaryController {
 
     @Operation(summary = "요약페이지 지표 조회", description = "DB 요약페이지 모든 지표를 조회합니다")
     @GetMapping
-    public ResponseEntity<List<DatabaseMetricsAgg>> findSummaryMetrics(@RequestParam Long databaseId){
+    public ResponseEntity<List<DatabaseMetricsAgg>> findSummaryMetrics(@RequestParam Long databaseId) {
         List<DatabaseMetricsAgg> response = databaseSummaryService.getDatabaseSummaryMetrics(databaseId);
         return ResponseEntity.ok(response);
     }
-
 }

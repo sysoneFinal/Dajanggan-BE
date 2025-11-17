@@ -32,7 +32,6 @@ public class CommonMetricsCollector {
 
         // (1) 활성화된 데이터베이스 목록 조회 (is_enabled = true)
         List<Database> databases = databaseRepository.findAllEnabled();
-        
         if (databases.isEmpty()) {
             log.warn("수집 대상 데이터베이스가 없습니다. (is_enabled = true인 DB가 없음)");
             return;
