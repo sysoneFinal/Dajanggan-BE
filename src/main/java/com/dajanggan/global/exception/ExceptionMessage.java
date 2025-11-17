@@ -100,6 +100,7 @@ public enum ExceptionMessage {
     DATA_SERIALIZATION_FAILED("데이터 직렬화 중 오류가 발생했습니다."),
 
     // Dashboard 관련 예외
+    DASHBOARD_NOT_FOUND("대시보드를 찾을 수 없습니다."),
     INVALID_DASHBOARD_JSON("대시보드 JSON 형식이 유효하지 않습니다."),
     INVALID_WIDGET_STRUCTURE("위젯 구조가 올바르지 않습니다."),
     WIDGET_COUNT_EXCEEDED("허용된 위젯 개수를 초과했습니다."),

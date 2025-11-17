@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.overview.repository.DatabaseMetricsAggRepository">
+
+
+    <resultMap id="DatabaseMetricsAggResultMap" type="com.dajanggan.domain.overview.dto.DatabaseMetricsAgg">
+        <result property="instanceId" column="instance_id"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="collectedAt" column="collected_at"/>
+
+        <!-- 세션/커넥션 -->
+        <result property="activeSessions" column="active_sessions"/>
+        <result property="usedConnections" column="used_connections"/>
+        <result property="maxConnections" column="max_connections"/>
+        <result property="connectionUsagePercent" column="connection_usage_percent"/>
+
+        <!-- 트랜잭션 -->
+        <result property="tpsTotal" column="tps_total"/>
+        <result property="xactCommit" column="xact_commit"/>
+        <result property="xactRollback" column="xact_rollback"/>
+
+        <!-- 대기 이벤트 -->
+        <result property="lockWaitCount" column="lock_wait_count"/>
+        <result property="ioWaitCount" column="io_wait_count"/>
+
+        <!-- Disk I/O -->
+        <result property="blksHit" column="blks_hit"/>
+        <result property="blksRead" column="blks_read"/>
+        <result property="cacheHitRatio" column="cache_hit_ratio"/>
+        <result property="avgReadLatencyMs" column="avg_read_latency_ms"/>
+        <result property="avgWriteLatencyMs" column="avg_write_latency_ms"/>
+
+        <!-- 슬로우 쿼리 -->
+        <result property="slowQueryCount" column="slow_query_count"/>
+        <result property="topSlowQuery1" column="top_slow_query_1"/>
+        <result property="topSlowQuery1Time" column="top_slow_query_1_time"/>
+        <result property="topSlowQuery2" column="top_slow_query_2"/>
+        <result property="topSlowQuery2Time" column="top_slow_query_2_time"/>
+        <result property="topSlowQuery3" column="top_slow_query_3"/>
+        <result property="topSlowQuery3Time" column="top_slow_query_3_time"/>
+
+        <!-- Dead Tuple -->
+        <result property="deadTupleTotal" column="dead_tuple_total"/>
+
+        <!-- 시스템 이벤트 -->
+        <result property="infoEventCount" column="info_event_count"/>
+        <result property="warningEventCount" column="warning_event_count"/>
+        <result property="criticalEventCount" column="critical_event_count"/>
+        <result property="recentEventType" column="recent_event_type"/>
+        <result property="recentEventLevel" column="recent_event_level"/>
+        <result property="recentEventAgeMin" column="recent_event_age_min"/>
+
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="getDatabaseSummary" resultMap="DatabaseMetricsAggResultMap" parameterType="long">
+        SELECT
+        instance_id, database_id, collected_at,
+        active_sessions, used_connections, max_connections, connection_usage_percent,
+        tps_total, xact_commit, xact_rollback,
+        lock_wait_count, io_wait_count,
+        blks_hit, blks_read, cache_hit_ratio, avg_read_latency_ms, avg_write_latency_ms,
+        slow_query_count, top_slow_query_1, top_slow_query_1_time,
+        top_slow_query_2, top_slow_query_2_time,
+        top_slow_query_3, top_slow_query_3_time,
+        dead_tuple_total,
+        info_event_count, warning_event_count, critical_event_count,
+        recent_event_type, recent_event_level, recent_event_age_min,
+        created_at
+        FROM database_metrics_agg
+        WHERE database_id = #{databaseId}
+        AND collected_at >= NOW() - INTERVAL '15 minutes'
+        ORDER BY collected_at DESC;
+    </select>
+
+</mapper>

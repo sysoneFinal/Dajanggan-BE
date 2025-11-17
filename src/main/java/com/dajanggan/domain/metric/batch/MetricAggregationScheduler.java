@@ -34,6 +34,13 @@ public class MetricAggregationScheduler {
 
     @Qualifier("queryAgg5mJob")
     private final Job queryAgg5mJob;
+
+    @Qualifier("vacuumAgg1mJob")
+    private final Job vacuumAgg1mJob;
+
+    @Qualifier("vacuumAgg5mJob")
+    private final Job vacuumAgg5mJob;
+
     /**
      * 1분마다 1분 집계 Job들 실행
      * 매분 5초에 실행 (수집이 완료된 후 실행하기 위해)
@@ -47,6 +54,10 @@ public class MetricAggregationScheduler {
         runJob(sessionAgg1mJob, "세션 1분 집계", runTime);
 
         runJob(queryAgg1mJob, "쿼리 1분 집계", runTime);
+
+        // Vacuum 1분 집계
+        runJob(vacuumAgg1mJob, "Vacuum 1분 집계", runTime);
+
 
         log.info("========== 1분 집계 배치 완료 ==========");
     }
@@ -67,6 +78,10 @@ public class MetricAggregationScheduler {
         // 향후 추가
         // runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
          runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
+
+        // Vacuum 5분 집계
+        runJob(vacuumAgg5mJob, "Vacuum 5분 집계", runTime);
+
 
         log.info("========== 5분 집계 배치 완료 ==========");
     }
