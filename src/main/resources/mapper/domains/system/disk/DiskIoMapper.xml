@@ -4,13 +4,262 @@
 
 <mapper namespace="com.dajanggan.domain.system.disk.repository.DiskIoMapper">
 
+    <!-- ========================================
+         Result Maps
+         ======================================== -->
+
+    <!-- Disk I/O Raw Result Map -->
+    <resultMap id="diskIoRawResultMap" type="com.dajanggan.domain.system.disk.domain.DiskIoRaw">
+        <id property="diskIoRawId" column="disk_io_raw_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="backendType" column="backend_type"/>
+        <result property="object" column="object"/>
+        <result property="context" column="context"/>
+        <result property="reads" column="reads"/>
+        <result property="readTime" column="read_time"/>
+        <result property="writes" column="writes"/>
+        <result property="writeTime" column="write_time"/>
+        <result property="writebacks" column="writebacks"/>
+        <result property="writebackTime" column="writeback_time"/>
+        <result property="extendCount" column="extend_count"/>
+        <result property="extendTime" column="extend_time"/>
+        <result property="opBytes" column="op_bytes"/>
+        <result property="hits" column="hits"/>
+        <result property="evictions" column="evictions"/>
+        <result property="reuses" column="reuses"/>
+        <result property="fsyncs" column="fsyncs"/>
+        <result property="fsyncTime" column="fsync_time"/>
+        <result property="databaseName" column="database_name"/>
+        <result property="blksRead" column="blks_read"/>
+        <result property="blksHit" column="blks_hit"/>
+        <result property="buffersBackendFsync" column="buffers_backend_fsync"/>
+        <result property="buffersCheckpoint" column="buffers_checkpoint"/>
+        <result property="buffersClean" column="buffers_clean"/>
+        <result property="buffersBackend" column="buffers_backend"/>
+        <result property="statsReset" column="stats_reset"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- Disk I/O Agg Result Map -->
+    <resultMap id="diskIoAggResultMap" type="com.dajanggan.domain.system.disk.domain.DiskIoAgg">
+        <id property="diskIoAggId" column="disk_io_agg_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="backendType" column="backend_type"/>
+        <result property="deltaReads" column="delta_reads"/>
+        <result property="deltaReadTime" column="delta_read_time"/>
+        <result property="deltaWrites" column="delta_writes"/>
+        <result property="deltaWriteTime" column="delta_write_time"/>
+        <result property="deltaWritebacks" column="delta_writebacks"/>
+        <result property="deltaExtendCount" column="delta_extend_count"/>
+        <result property="deltaHits" column="delta_hits"/>
+        <result property="deltaEvictions" column="delta_evictions"/>
+        <result property="deltaFsyncs" column="delta_fsyncs"/>
+        <result property="deltaFsyncTime" column="delta_fsync_time"/>
+        <result property="databaseName" column="database_name"/>
+        <result property="deltaBlksRead" column="delta_blks_read"/>
+        <result property="deltaBlksHit" column="delta_blks_hit"/>
+        <result property="bufferHitRatio" column="buffer_hit_ratio"/>
+        <result property="avgReadLatencyMs" column="avg_read_latency_ms"/>
+        <result property="avgWriteLatencyMs" column="avg_write_latency_ms"/>
+        <result property="readWriteRatio" column="read_write_ratio"/>
+        <result property="cacheHitRatio" column="cache_hit_ratio"/>
+        <result property="deltaBuffersBackendFsync" column="delta_buffers_backend_fsync"/>
+        <result property="deltaBuffersCheckpoint" column="delta_buffers_checkpoint"/>
+        <result property="deltaBuffersClean" column="delta_buffers_clean"/>
+        <result property="deltaBuffersBackend" column="delta_buffers_backend"/>
+        <result property="backendFsyncRate" column="backend_fsync_rate"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- ========================================
+         Scheduler용 쿼리
+         ======================================== -->
+
+    <!-- 활성 인스턴스 ID 목록 조회 -->
+    <select id="selectActiveInstanceIds" resultType="long">
+        SELECT instance_id
+        FROM monitor_instance
+        ORDER BY instance_id
+    </select>
+
+    <!-- 이전 Raw 데이터 조회 (backend_type + database_name별로 최신) -->
+    <select id="selectPreviousRawByBackendType" resultMap="diskIoRawResultMap">
+        SELECT DISTINCT ON (backend_type, COALESCE(database_name, '')) *
+        FROM disk_io_raw
+        WHERE instance_id = #{instanceId}
+        ORDER BY backend_type, COALESCE(database_name, ''), collected_at DESC
+    </select>
+
+    <!-- Disk I/O Raw 데이터 삽입 -->
+    <insert id="insertRaw" parameterType="com.dajanggan.domain.system.disk.domain.DiskIoRaw"
+            useGeneratedKeys="true" keyProperty="diskIoRawId">
+        INSERT INTO disk_io_raw (
+            instance_id, collected_at, backend_type, object, context,
+            reads, read_time, writes, write_time, writebacks, writeback_time,
+            extend_count, extend_time, op_bytes, hits, evictions, reuses,
+            fsyncs, fsync_time, database_name, blks_read, blks_hit,
+            buffers_backend_fsync, buffers_checkpoint, buffers_clean, buffers_backend,
+            stats_reset
+        ) VALUES (
+            #{instanceId}, #{collectedAt}, #{backendType}, #{object}, #{context},
+            #{reads}, #{readTime}, #{writes}, #{writeTime}, #{writebacks}, #{writebackTime},
+            #{extendCount}, #{extendTime}, #{opBytes}, #{hits}, #{evictions}, #{reuses},
+            #{fsyncs}, #{fsyncTime}, #{databaseName}, #{blksRead}, #{blksHit},
+            #{buffersBackendFsync}, #{buffersCheckpoint}, #{buffersClean}, #{buffersBackend},
+            #{statsReset}
+        )
+    </insert>
+
+    <!-- Disk I/O Raw 데이터 일괄 삽입 -->
+    <insert id="insertRawBatch" parameterType="java.util.List">
+        INSERT INTO disk_io_raw (
+            instance_id, collected_at, backend_type, object, context,
+            reads, read_time, writes, write_time, writebacks, writeback_time,
+            extend_count, extend_time, op_bytes, hits, evictions, reuses,
+            fsyncs, fsync_time, database_name, blks_read, blks_hit,
+            buffers_backend_fsync, buffers_checkpoint, buffers_clean, buffers_backend,
+            stats_reset
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.instanceId}, #{item.collectedAt}, #{item.backendType},
+                #{item.object}, #{item.context},
+                #{item.reads}, #{item.readTime}, #{item.writes}, #{item.writeTime},
+                #{item.writebacks}, #{item.writebackTime},
+                #{item.extendCount}, #{item.extendTime}, #{item.opBytes}, #{item.hits},
+                #{item.evictions}, #{item.reuses},
+                #{item.fsyncs}, #{item.fsyncTime},
+                #{item.databaseName}, #{item.blksRead}, #{item.blksHit},
+                #{item.buffersBackendFsync}, #{item.buffersCheckpoint}, #{item.buffersClean}, #{item.buffersBackend},
+                #{item.statsReset}
+            )
+        </foreach>
+    </insert>
+
+    <!-- Disk I/O Agg 데이터 삽입 -->
+    <insert id="insertAgg" parameterType="com.dajanggan.domain.system.disk.domain.DiskIoAgg"
+            useGeneratedKeys="true" keyProperty="diskIoAggId">
+        INSERT INTO disk_io_agg (
+            instance_id, collected_at, backend_type,
+            delta_reads, delta_read_time, delta_writes, delta_write_time,
+            delta_writebacks, delta_extend_count, delta_hits, delta_evictions,
+            delta_fsyncs, delta_fsync_time,
+            database_name, delta_blks_read, delta_blks_hit, buffer_hit_ratio,
+            delta_buffers_backend_fsync, delta_buffers_checkpoint, delta_buffers_clean, delta_buffers_backend,
+            backend_fsync_rate,
+            avg_read_latency_ms, avg_write_latency_ms,
+            read_write_ratio, cache_hit_ratio, status
+        ) VALUES (
+            #{instanceId}, #{collectedAt}, #{backendType},
+            #{deltaReads}, #{deltaReadTime}, #{deltaWrites}, #{deltaWriteTime},
+            #{deltaWritebacks}, #{deltaExtendCount}, #{deltaHits}, #{deltaEvictions},
+            #{deltaFsyncs}, #{deltaFsyncTime},
+            #{databaseName}, #{deltaBlksRead}, #{deltaBlksHit}, #{bufferHitRatio},
+            #{deltaBuffersBackendFsync}, #{deltaBuffersCheckpoint}, #{deltaBuffersClean}, #{deltaBuffersBackend},
+            #{backendFsyncRate},
+            #{avgReadLatencyMs}, #{avgWriteLatencyMs},
+            #{readWriteRatio}, #{cacheHitRatio}, #{status}
+        )
+    </insert>
+
+    <!-- Disk I/O Agg 데이터 일괄 삽입 -->
+    <insert id="insertAggBatch" parameterType="java.util.List">
+        INSERT INTO disk_io_agg (
+            instance_id, collected_at, backend_type, database_name,
+            delta_reads, delta_read_time, delta_writes, delta_write_time,
+            delta_writebacks, delta_extend_count, delta_hits, delta_evictions,
+            delta_fsyncs, delta_fsync_time,
+            delta_blks_read, delta_blks_hit, buffer_hit_ratio,
+            delta_buffers_backend_fsync, delta_buffers_checkpoint, delta_buffers_clean, delta_buffers_backend,
+            backend_fsync_rate,
+            avg_read_latency_ms, avg_write_latency_ms,
+            read_write_ratio, cache_hit_ratio, status
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.instanceId}, #{item.collectedAt}, #{item.backendType}, #{item.databaseName},
+                #{item.deltaReads}, #{item.deltaReadTime}, #{item.deltaWrites}, #{item.deltaWriteTime},
+                #{item.deltaWritebacks}, #{item.deltaExtendCount}, #{item.deltaHits}, #{item.deltaEvictions},
+                #{item.deltaFsyncs}, #{item.deltaFsyncTime},
+                #{item.deltaBlksRead}, #{item.deltaBlksHit}, #{item.bufferHitRatio},
+                #{item.deltaBuffersBackendFsync}, #{item.deltaBuffersCheckpoint}, #{item.deltaBuffersClean}, #{item.deltaBuffersBackend},
+                #{item.backendFsyncRate},
+                #{item.avgReadLatencyMs}, #{item.avgWriteLatencyMs},
+                #{item.readWriteRatio}, #{item.cacheHitRatio}, #{item.status}
+            )
+        </foreach>
+    </insert>
+
+    <!-- Disk I/O Agg 5분 데이터 삽입 -->
+    <insert id="insertAgg5m" parameterType="com.dajanggan.domain.system.disk.domain.DiskIoAgg5m"
+            useGeneratedKeys="true" keyProperty="diskIoAgg5mId">
+        INSERT INTO disk_io_agg_5m (
+            instance_id, collected_at, backend_type,
+            avg_read_latency_ms, avg_write_latency_ms,
+            avg_cache_hit_ratio, avg_buffer_hit_ratio,
+            avg_backend_fsync_rate, avg_read_write_ratio,
+            sum_delta_reads, sum_delta_writes, sum_delta_fsyncs, sum_delta_evictions,
+            sum_delta_blks_read, sum_delta_blks_hit,
+            sum_delta_buffers_checkpoint, sum_delta_buffers_clean,
+            sum_delta_buffers_backend, sum_delta_buffers_backend_fsync,
+            max_read_latency_ms, max_write_latency_ms, min_buffer_hit_ratio,
+            status
+        ) VALUES (
+            #{instanceId}, #{collectedAt}, #{backendType},
+            #{avgReadLatencyMs}, #{avgWriteLatencyMs},
+            #{avgCacheHitRatio}, #{avgBufferHitRatio},
+            #{avgBackendFsyncRate}, #{avgReadWriteRatio},
+            #{sumDeltaReads}, #{sumDeltaWrites}, #{sumDeltaFsyncs}, #{sumDeltaEvictions},
+            #{sumDeltaBlksRead}, #{sumDeltaBlksHit},
+            #{sumDeltaBuffersCheckpoint}, #{sumDeltaBuffersClean},
+            #{sumDeltaBuffersBackend}, #{sumDeltaBuffersBackendFsync},
+            #{maxReadLatencyMs}, #{maxWriteLatencyMs}, #{minBufferHitRatio},
+            #{status}
+        )
+    </insert>
+
+    <!-- Disk I/O Agg 30분 데이터 삽입 -->
+    <insert id="insertAgg30m" parameterType="com.dajanggan.domain.system.disk.domain.DiskIoAgg30m"
+            useGeneratedKeys="true" keyProperty="diskIoAgg30mId">
+        INSERT INTO disk_io_agg_30m (
+            instance_id, collected_at, backend_type,
+            avg_read_latency_ms, avg_write_latency_ms,
+            avg_cache_hit_ratio, avg_buffer_hit_ratio,
+            avg_backend_fsync_rate, avg_read_write_ratio,
+            sum_delta_reads, sum_delta_writes, sum_delta_fsyncs, sum_delta_evictions,
+            sum_delta_blks_read, sum_delta_blks_hit,
+            sum_delta_buffers_checkpoint, sum_delta_buffers_clean,
+            sum_delta_buffers_backend, sum_delta_buffers_backend_fsync,
+            max_read_latency_ms, max_write_latency_ms, min_buffer_hit_ratio,
+            status
+        ) VALUES (
+            #{instanceId}, #{collectedAt}, #{backendType},
+            #{avgReadLatencyMs}, #{avgWriteLatencyMs},
+            #{avgCacheHitRatio}, #{avgBufferHitRatio},
+            #{avgBackendFsyncRate}, #{avgReadWriteRatio},
+            #{sumDeltaReads}, #{sumDeltaWrites}, #{sumDeltaFsyncs}, #{sumDeltaEvictions},
+            #{sumDeltaBlksRead}, #{sumDeltaBlksHit},
+            #{sumDeltaBuffersCheckpoint}, #{sumDeltaBuffersClean},
+            #{sumDeltaBuffersBackend}, #{sumDeltaBuffersBackendFsync},
+            #{maxReadLatencyMs}, #{maxWriteLatencyMs}, #{minBufferHitRatio},
+            #{status}
+        )
+    </insert>
+
+    <!-- ========================================
+         조회용 쿼리 (기존)
+         ======================================== -->
+
     <!-- 디스크 사용률 조회 -->
     <select id="selectDiskUsage" resultType="map">
         SELECT
-            COALESCE(ROUND(AVG(disk_utilization)::numeric, 2), 0) as disk_usage,
-            COALESCE(SUM(reads), 0) as iops_read,
-            COALESCE(SUM(writes), 0) as iops_write
-        FROM disk_io_raw
+            COALESCE(SUM(delta_reads), 0) as total_reads,
+            COALESCE(SUM(delta_writes), 0) as total_writes,
+            COALESCE(AVG(cache_hit_ratio), 0) as avg_cache_hit_ratio
+        FROM disk_io_agg
         WHERE instance_id = #{instanceId}
           AND collected_at >= NOW() - INTERVAL '5 minutes'
     </select>
@@ -18,133 +267,241 @@
     <!-- 프로세스별 I/O 시계열 데이터 조회 -->
     <select id="selectProcessIOTimeSeries" resultType="map">
         SELECT
-            date_trunc('hour', collected_at) as time_bucket,
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
             backend_type,
-            COALESCE(SUM(reads + writes), 0) as total_io
-        FROM disk_io_raw
+            COALESCE(SUM(delta_reads + delta_writes), 0) as total_io
+        FROM disk_io_agg
         WHERE instance_id = #{instanceId}
           AND collected_at BETWEEN #{startTime} AND #{endTime}
-        GROUP BY date_trunc('hour', collected_at), backend_type
-        ORDER BY time_bucket, backend_type
-    </select>
-
-    <!-- Queue Depth 시계열 데이터 조회 -->
-    <select id="selectQueueDepthTimeSeries" resultType="map">
-        SELECT
-            date_trunc('hour', collected_at) as time_bucket,
-            COALESCE(ROUND(AVG(queue_depth)::numeric, 2), 0) as avg_queue_depth
-        FROM disk_io_raw
-        WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
-        GROUP BY date_trunc('hour', collected_at)
-        ORDER BY time_bucket
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at, backend_type
+        ORDER BY collected_at, backend_type
     </select>
 
     <!-- I/O Latency 시계열 데이터 조회 -->
     <select id="selectIoLatencyTimeSeries" resultType="map">
         SELECT
-            date_trunc('hour', collected_at) as time_bucket,
-            COALESCE(ROUND(AVG(read_latency_ms)::numeric, 2), 0) as avg_read_latency,
-            COALESCE(ROUND(AVG(write_latency_ms)::numeric, 2), 0) as avg_write_latency
-        FROM disk_io_raw
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(AVG(avg_read_latency_ms), 0) as read_latency,
+            COALESCE(AVG(avg_write_latency_ms), 0) as write_latency
+        FROM disk_io_agg
         WHERE instance_id = #{instanceId}
           AND collected_at BETWEEN #{startTime} AND #{endTime}
-        GROUP BY date_trunc('hour', collected_at)
-        ORDER BY time_bucket
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
+        ORDER BY collected_at
     </select>
 
     <!-- Throughput 시계열 데이터 조회 -->
     <select id="selectThroughputTimeSeries" resultType="map">
         SELECT
-            date_trunc('hour', collected_at) as time_bucket,
-            COALESCE(SUM(reads + writes), 0) as total_iops,
-            COALESCE(ROUND((SUM(blks_read + blks_written) * 8.0 / 1024.0)::numeric, 2), 0) as throughput_mb
-        FROM disk_io_raw
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(SUM(delta_reads), 0) as reads,
+            COALESCE(SUM(delta_writes), 0) as writes
+        FROM disk_io_agg
         WHERE instance_id = #{instanceId}
           AND collected_at BETWEEN #{startTime} AND #{endTime}
-        GROUP BY date_trunc('hour', collected_at)
-        ORDER BY time_bucket
-    </select>
-
-    <!-- Evictions 시계열 데이터 조회 -->
-    <select id="selectEvictionsTimeSeries" resultType="map">
-        SELECT
-            date_trunc('hour', collected_at) as time_bucket,
-            COALESCE(SUM(evictions), 0) as eviction_rate
-        FROM disk_io_raw
-        WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
-        GROUP BY date_trunc('hour', collected_at)
-        ORDER BY time_bucket
-    </select>
-
-    <!-- WAL Bytes 시계열 데이터 조회 -->
-    <select id="selectWalBytesTimeSeries" resultType="map">
-        SELECT
-            date_trunc('hour', collected_at) as time_bucket,
-            COALESCE(SUM(wal_bytes), 0) as wal_bytes
-        FROM disk_io_raw
-        WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
-        GROUP BY date_trunc('hour', collected_at)
-        ORDER BY time_bucket
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
+        ORDER BY collected_at
     </select>
 
     <!-- 최근 통계 조회 -->
     <select id="selectRecentStats" resultType="map">
-        WITH recent_data AS (
-            SELECT
-                queue_depth,
-                (reads + writes) as total_iops,
-                (read_latency_ms + write_latency_ms) / 2.0 as avg_latency,
-                wal_bytes,
-                evictions
-            FROM disk_io_raw
-            WHERE instance_id = #{instanceId}
-              AND collected_at >= NOW() - INTERVAL '5 minutes'
-            )
         SELECT
-            COALESCE(ROUND(AVG(queue_depth)::numeric, 2), 0) as disk_queue_length,
-            COALESCE(ROUND((AVG(total_iops) / 10000.0 * 100)::numeric, 2), 0) as iops_saturation,
-            COALESCE(ROUND(AVG(avg_latency)::numeric, 2), 0) as avg_latency,
-            COALESCE(ROUND((AVG(wal_bytes) / 1000000.0)::numeric, 2), 0) as wal_bottleneck,
-            COALESCE(ROUND(AVG(evictions)::numeric, 2), 0) as buffer_eviction_rate
-        FROM recent_data
+            COALESCE(SUM(delta_reads), 0) as total_reads,
+            COALESCE(SUM(delta_writes), 0) as total_writes,
+            COALESCE(AVG(avg_read_latency_ms), 0) as avg_read_latency,
+            COALESCE(AVG(avg_write_latency_ms), 0) as avg_write_latency,
+            COALESCE(AVG(cache_hit_ratio), 0) as cache_hit_ratio
+        FROM disk_io_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
     </select>
 
-    <!-- Disk I/O 리스트 데이터 조회 - 수정됨 -->
+    <!-- Disk I/O 리스트 데이터 조회 -->
     <select id="selectDiskIoList" resultType="map">
-        WITH aggregated_data AS (
         SELECT
-        ROW_NUMBER() OVER (ORDER BY collected_at DESC, backend_type) as id,
-        backend_type,
-        collected_at,
-        COALESCE(SUM(reads + writes), 0) as total_io,
-        COALESCE(SUM(reads), 0) as read_rate,
-        COALESCE(SUM(writes), 0) as write_rate,
-        COALESCE(ROUND((SUM(blks_read) * 8.0 / 1024.0)::numeric, 2), 0) as read_mbs,
-        COALESCE(ROUND((SUM(blks_written) * 8.0 / 1024.0)::numeric, 2), 0) as write_mbs,
-        COALESCE(ROUND((SUM(blks_read + blks_written) * 8.0 / 1024.0)::numeric, 2), 0) as throughput_mbs,
-        COALESCE(SUM(fsyncs), 0) as fsync_rate,
-        COALESCE(SUM(evictions), 0) as eviction_rate,
-        COALESCE(SUM(extend_count), 0) as extend_rate,
-        COALESCE(ROUND(((1.0 - (SUM(blks_read)::numeric / NULLIF(SUM(blks_read + blks_written), 0))) * 100)::numeric, 2), 0) as hit_ratio,
-        COALESCE(ROUND(AVG(queue_depth)::numeric, 2), 0) as avg_queue_depth,
-        COALESCE(ROUND(AVG((read_latency_ms + write_latency_ms) / 2.0)::numeric, 2), 0) as avg_latency,
-        COALESCE(ROUND(AVG(read_percent)::numeric, 2), 0) as read_percent,
-        COALESCE(ROUND(AVG(write_percent)::numeric, 2), 0) as write_percent,
-        CASE
-        WHEN AVG((read_latency_ms + write_latency_ms) / 2.0) > 50 THEN '위험'
-        WHEN AVG((read_latency_ms + write_latency_ms) / 2.0) > 20 THEN '주의'
-        ELSE '정상'
-        END as status
-        FROM disk_io_raw
+            disk_io_agg_id as id,
+            backend_type,
+            collected_at,
+            delta_reads,
+            delta_writes,
+            avg_read_latency_ms,
+            avg_write_latency_ms,
+            cache_hit_ratio,
+            status
+        FROM disk_io_agg
         WHERE instance_id = #{instanceId}
-        AND collected_at BETWEEN #{startTime} AND #{endTime}
-        GROUP BY backend_type, collected_at
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
+        </if>
+        ORDER BY collected_at DESC
+    </select>
+
+    <!-- ========================================
+         5분 집계 테이블 조회 (disk_io_agg_5m) - 6시간 차트용
+         ======================================== -->
+
+    <!-- I/O Latency 시계열 데이터 조회 (5분 집계, 6시간) -->
+    <select id="selectIoLatency5mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(ROUND(AVG(avg_read_latency_ms)::numeric, 2), 0) as avg_read_latency,
+            COALESCE(ROUND(AVG(avg_write_latency_ms)::numeric, 2), 0) as avg_write_latency,
+            COALESCE(ROUND(AVG(cache_hit_ratio)::numeric, 2), 0) as cache_hit_ratio
+        FROM disk_io_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Throughput 시계열 데이터 조회 (5분 집계, 6시간) -->
+    <select id="selectThroughput5mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(SUM(delta_reads + delta_writes), 0) as total_iops,
+            COALESCE(ROUND((SUM(delta_blks_read + delta_blks_hit) * 8.0 / 1024.0)::numeric, 2), 0) as throughput_mb
+        FROM disk_io_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Process I/O 시계열 데이터 조회 (5분 집계, 6시간) -->
+    <select id="selectProcessIO5mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            backend_type,
+            COALESCE(SUM(delta_reads + delta_writes), 0) as total_io
+        FROM disk_io_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket, backend_type
+        ORDER BY time_bucket, backend_type
+    </select>
+
+    <!-- ========================================
+         30분 집계 테이블 조회 (disk_io_agg_30m) - 24시간 차트용
+         ======================================== -->
+
+    <!-- I/O Latency 시계열 데이터 조회 (30분 집계, 24시간) -->
+    <select id="selectIoLatency30mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(ROUND(AVG(avg_read_latency_ms)::numeric, 2), 0) as avg_read_latency,
+            COALESCE(ROUND(AVG(avg_write_latency_ms)::numeric, 2), 0) as avg_write_latency,
+            COALESCE(ROUND(AVG(cache_hit_ratio)::numeric, 2), 0) as cache_hit_ratio
+        FROM disk_io_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Throughput 시계열 데이터 조회 (30분 집계, 24시간) -->
+    <select id="selectThroughput30mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(SUM(delta_reads + delta_writes), 0) as total_iops,
+            COALESCE(ROUND((SUM(delta_blks_read + delta_blks_hit) * 8.0 / 1024.0)::numeric, 2), 0) as throughput_mb
+        FROM disk_io_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Process I/O 시계열 데이터 조회 (30분 집계, 24시간) -->
+    <select id="selectProcessIO30mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            backend_type,
+            COALESCE(SUM(delta_reads + delta_writes), 0) as total_io
+        FROM disk_io_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket, backend_type
+        ORDER BY time_bucket, backend_type
+    </select>
+
+    <!-- Checkpoint vs Backend Write 시계열 데이터 조회 (30분 집계, 24시간) -->
+    <select id="selectCheckpointVsBackend30mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(SUM(delta_buffers_checkpoint), 0) as checkpoint_buffers,
+            COALESCE(SUM(delta_buffers_clean), 0) as clean_buffers,
+            COALESCE(SUM(delta_buffers_backend), 0) as backend_buffers
+        FROM disk_io_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Backend Fsync Rate 시계열 데이터 조회 (30분 집계, 24시간) -->
+    <select id="selectBackendFsync30mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(SUM(delta_fsyncs), 0) / 1800.0 as fsync_rate,
+            COALESCE(ROUND(AVG(backend_fsync_rate)::numeric, 2), 0) as avg_fsync_rate
+        FROM disk_io_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- Physical vs Cache Read 시계열 데이터 조회 (30분 집계, 24시간) -->
+    <select id="selectPhysicalVsCache30mTimeSeries" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(SUM(delta_blks_read), 0) as physical_reads,
+            COALESCE(SUM(delta_blks_hit), 0) as cache_hits,
+            COALESCE(ROUND(AVG(buffer_hit_ratio)::numeric, 2), 0) as buffer_hit_ratio
+        FROM disk_io_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- ========================================
+         Top 20 리스트 조회
+         ======================================== -->
+
+    <!-- 높은 Fsync 발생 시간대 Top 20 -->
+    <select id="selectHighFsyncTop20" resultType="map">
+        WITH fsync_aggregated AS (
+            SELECT
+                ROW_NUMBER() OVER (ORDER BY fsync_rate DESC) as rank_num,
+                collected_at,
+                backend_type,
+                COALESCE(SUM(delta_fsyncs), 0) / 60.0 as fsync_rate,
+                COALESCE(SUM(delta_buffers_backend_fsync), 0) as backend_fsync_buffers,
+                COALESCE(ROUND(AVG(avg_write_latency_ms)::numeric, 2), 0) as avg_write_latency,
+                CASE
+                    WHEN SUM(delta_fsyncs) / 60.0 > 100 THEN '위험'
+                    WHEN SUM(delta_fsyncs) / 60.0 > 50 THEN '주의'
+                    ELSE '정상'
+                END as status
+            FROM disk_io_agg
+            WHERE instance_id = #{instanceId}
+              AND collected_at BETWEEN #{startTime} AND #{endTime}
+            GROUP BY collected_at, backend_type
         )
-        SELECT *
-        FROM aggregated_data
+        SELECT
+            rank_num,
+            collected_at,
+            backend_type,
+            fsync_rate,
+            backend_fsync_buffers,
+            avg_write_latency,
+            status
+        FROM fsync_aggregated
         <where>
             <if test="statusList != null and statusList.size() > 0">
                 AND status IN
@@ -153,8 +510,57 @@
                 </foreach>
             </if>
         </where>
-        ORDER BY collected_at DESC, backend_type
-        LIMIT 1000
+        ORDER BY fsync_rate DESC
+        LIMIT 20
+    </select>
+
+    <!-- 낮은 Cache Hit Ratio 시간대 Top 20 -->
+    <select id="selectLowCacheHitTop20" resultType="map">
+        <![CDATA[
+    WITH cache_hit_aggregated AS (
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY cache_hit_ratio ASC) as rank_num,
+            collected_at,
+            backend_type,
+            database_name,
+            COALESCE(ROUND(AVG(cache_hit_ratio)::numeric, 2), 0) as cache_hit_ratio,
+            COALESCE(ROUND(AVG(buffer_hit_ratio)::numeric, 2), 0) as buffer_hit_ratio,
+            COALESCE(SUM(delta_blks_read), 0) as physical_reads,
+            COALESCE(SUM(delta_blks_hit), 0) as cache_hits,
+            CASE
+                WHEN AVG(cache_hit_ratio) < 85 THEN '위험'
+                WHEN AVG(cache_hit_ratio) < 95 THEN '주의'
+                ELSE '정상'
+            END as status
+        FROM disk_io_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY collected_at, backend_type, database_name
+    )
+    SELECT
+        rank_num,
+        collected_at,
+        backend_type,
+        database_name,
+        cache_hit_ratio,
+        buffer_hit_ratio,
+        physical_reads,
+        cache_hits,
+        status
+    FROM cache_hit_aggregated
+    ]]>
+        <where>
+            <if test="statusList != null and statusList.size() > 0">
+                AND status IN
+                <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                    #{status}
+                </foreach>
+            </if>
+        </where>
+        <![CDATA[
+    ORDER BY cache_hit_ratio ASC
+    LIMIT 20
+    ]]>
     </select>
 
 </mapper>

@@ -5,12 +5,12 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 /**
- * Disk I/O 집계 데이터 엔티티
+ * Disk I/O 집계 데이터 엔티티 (pg_stat_io 기반)
  * 테이블: disk_io_agg
+ * 이전 Raw 데이터와 비교하여 증분(delta)을 계산
  */
 @Data
 @Builder
@@ -18,23 +18,44 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class DiskIoAgg {
 
-    private Long diskIoAggId;              // PK
-    private Long instanceId;               // 인스턴스 ID
-    private LocalDateTime collectedAt;     // 수집 시각
-    private String backendType;            // Backend 타입
-    private Long totalReads;               // 총 읽기 횟수
-    private Long totalWrites;              // 총 쓰기 횟수
-    private Long totalFsyncs;              // 총 Fsync 횟수
-    private Long totalEvictions;           // 총 Eviction 횟수
-    private Long totalBlksRead;            // 총 읽은 블록 수
-    private Long totalBlksWritten;         // 총 쓴 블록 수
-    private BigDecimal totalWalBytes;      // 총 WAL 바이트
-    private Double avgReadLatency;         // 평균 읽기 지연시간
-    private Double avgWriteLatency;        // 평균 쓰기 지연시간
-    private Double readWriteRatio;         // 읽기/쓰기 비율
-    private String status;                 // 상태
-    private LocalDateTime createdAt;       // 생성 시각
-    private Double avgQueueDepth;          // 평균 큐 깊이
-    private Double maxQueueDepth;          // 최대 큐 깊이
-    private Long totalExtendCount;       // 총 Extend 횟수
+    private Long diskIoAggId;               // PK
+    private Long instanceId;                // 인스턴스 ID
+    private OffsetDateTime collectedAt;     // 수집 시각
+    private String backendType;             // Backend 타입
+    
+    // I/O 작업 증분 (delta)
+    private Long deltaReads;                // 읽기 증분
+    private Double deltaReadTime;           // 읽기 시간 증분
+    private Long deltaWrites;               // 쓰기 증분
+    private Double deltaWriteTime;          // 쓰기 시간 증분
+    private Long deltaWritebacks;           // Writeback 증분
+    private Long deltaExtendCount;          // Extend 증분
+    private Long deltaHits;                 // 캐시 히트 증분
+    private Long deltaEvictions;            // Eviction 증분
+    private Long deltaFsyncs;               // Fsync 증분
+    private Double deltaFsyncTime;          // Fsync 시간 증분
+    
+    // 계산된 메트릭
+    private Double avgReadLatencyMs;        // 평균 읽기 레이턴시
+    private Double avgWriteLatencyMs;       // 평균 쓰기 레이턴시
+    private Double readWriteRatio;          // 읽기/쓰기 비율
+    private Double cacheHitRatio;           // 캐시 히트율 (pg_stat_io 기반)
+    
+    // pg_stat_database 증분 메트릭
+    private String databaseName;            // 데이터베이스 이름
+    private Long deltaBlksRead;             // 디스크 읽기 블록 증분
+    private Long deltaBlksHit;              // 캐시 히트 블록 증분
+    private Double bufferHitRatio;          // Buffer Cache Hit Ratio = (blks_hit / (blks_hit + blks_read)) * 100
+    
+    // pg_stat_bgwriter 증분 메트릭
+    private Long deltaBuffersBackendFsync;  // Backend fsync 증분
+    private Long deltaBuffersCheckpoint;    // Checkpoint 버퍼 증분
+    private Long deltaBuffersClean;         // Background writer 버퍼 증분
+    private Long deltaBuffersBackend;       // Backend 직접 쓰기 버퍼 증분
+    private Double backendFsyncRate;        // 초당 Backend fsync 수 (병목 핵심 지표)
+    
+    // 상태 (정상/주의/위험)
+    private String status;
+    
+    private OffsetDateTime createdAt;       // 생성 시각
 }

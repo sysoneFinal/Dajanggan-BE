@@ -5,26 +5,49 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
+/**
+ * Memory Raw 데이터 엔티티 (pg_buffercache + pg_statio 기반)
+ * 테이블: memory_raw
+ * PostgreSQL의 공유 버퍼 캐시 상태 및 I/O 통계
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class MemoryRaw {
 
-    private Long memoryRawId;            // PK
-    private Long instanceId;             // 인스턴스 ID
-    private LocalDateTime collectedAt;   // 수집 시각
-    private String relname;              // 객체명 (테이블/인덱스명)
-    private String relkind;              // 객체 종류 (r=table, i=index)
-    private Long buffers;                // 버퍼 수
-    private Long dirtyBuffers;           // Dirty 버퍼 수
-    private Long heapBlksRead;           // Heap Block Read 수
-    private Long heapBlksHit;            // Heap Block Hit 수
-    private LocalDateTime createdAt;     // 생성 시각
-    private Long pinnedBuffers;          // 고정 버퍼 수
-    private Long accessCount;            // 접근 횟수
-    private Long evictionCount;          // Eviction 횟수
-    private Double avgAccessTimeMs;      // 평균 접근 시간 (ms)
+    private Long memoryRawId;               // PK
+    private Long instanceId;                // 인스턴스 ID
+    private OffsetDateTime collectedAt;     // 수집 시각
+    
+    // 대상 객체 정보
+    private String relname;                 // 테이블/인덱스명 (NULL이면 전체)
+    private String relkind;                 // 객체 종류 (r=table, i=index)
+    
+    // pg_buffercache 통계
+    private Long buffers;                   // 버퍼 수
+    private Long dirtyBuffers;              // Dirty 버퍼 수
+    private Long pinnedBuffers;             // 고정된 버퍼 수
+    
+    // pg_statio 통계 (누적값)
+    private Long heapBlksRead;              // Heap 블록 읽기 (디스크)
+    private Long heapBlksHit;               // Heap 블록 히트 (캐시)
+    private Long idxBlksRead;               // 인덱스 블록 읽기
+    private Long idxBlksHit;                // 인덱스 블록 히트
+    
+    // pg_buffercache usagecount
+    private Double avgUsagecount;           // usagecount 평균 (버퍼 재사용 빈도)
+    private Long maxUsagecount;             // usagecount 최대값
+    private Long minUsagecount;             // usagecount 최소값
+    
+    // pg_stat_database 통계
+    private String databaseName;            // 데이터베이스명
+    private Long tempFiles;                 // 임시 파일 생성 수 (누적)
+    private Long tempBytes;                 // 임시 파일 사용 바이트 (누적)
+    private Double blkReadTime;             // 블록 읽기 대기 시간 (ms, 누적)
+    private Double blkWriteTime;            // 블록 쓰기 대기 시간 (ms, 누적)
+    
+    private OffsetDateTime createdAt;       // 생성 시각
 }
