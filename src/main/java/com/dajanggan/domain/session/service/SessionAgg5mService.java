@@ -67,19 +67,9 @@ public class SessionAgg5mService {
 
     /** 데드락 상세 모달 */
     public DeadLockDetailDto findDeadLockDetail(Map<String,Object> params){
-        log.info("findDeadLockDetail 호출 - params: {}", params);
-        log.info("databaseId 타입: {}, 값: {}", 
-                params.get("databaseId") != null ? params.get("databaseId").getClass().getName() : "null",
-                params.get("databaseId"));
-        log.info("pid 타입: {}, 값: {}", 
-                params.get("pid") != null ? params.get("pid").getClass().getName() : "null",
-                params.get("pid"));
-        
         // 상세 정보
         DeadLockDetailDto result = sessionAgg5mRepository.getDeadlockDetail(params);
-        
-        log.info("쿼리 결과: {}", result);
-        
+
         if (result == null) {
             throw new IllegalArgumentException("데드락 정보를 찾을 수 없습니다.");
         }
@@ -90,8 +80,6 @@ public class SessionAgg5mService {
         int recurrenceCount = sessionAgg5mRepository.getDeadlockRecurrenceCount(countParams);
 
         result.setRecurrenceCount(recurrenceCount);
-
-        log.debug("findDeadLockDetail 정보 : {} ", result != null? result : null);
 
         return result;
     }

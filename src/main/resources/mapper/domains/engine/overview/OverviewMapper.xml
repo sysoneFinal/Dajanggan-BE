@@ -4,29 +4,80 @@
 
 <mapper namespace="com.dajanggan.domain.overview.repository.OverviewRepository">
 
-            <!-- JSON 핸들러 적용    -->
+    <!-- JSON 핸들러 적용 -->
     <resultMap id="userLayout" type="com.dajanggan.domain.overview.dto.DashboardLayoutResponse">
         <result property="instanceId" column="instance_id" />
         <result property="userLayout" column="user_layout" typeHandler="com.dajanggan.global.mybatis.JsonNodeTypeHandler" />
     </resultMap>
 
-    <!--   postgresql (upsert) 삽입과 수정을 동시에      -->
+    <!-- MetricDefinition ResultMap -->
+    <resultMap id="metricDefinition" type="com.dajanggan.domain.overview.dto.MetricDefinition">
+        <result property="metricId" column="metric_id" />
+        <result property="name" column="name" />
+        <result property="tableName" column="table_name" />
+        <result property="columnName" column="column_name" />
+        <result property="category" column="category" />
+        <result property="level" column="level" />
+        <result property="unit" column="unit" />
+        <result property="description" column="description" />
+    </resultMap>
+
+    <!-- postgresql (upsert) 삽입과 수정을 동시에 -->
     <insert id="saveDashboardLayout" parameterType="com.dajanggan.domain.overview.dto.DashboardSaveRequest">
         INSERT INTO user_dashboard (instance_id, user_layout)
         VALUES (#{instanceId}, #{userLayout, jdbcType=OTHER})
         ON CONFLICT (instance_id)
-        DO UPDATE
-        SET user_layout = #{userLayout, jdbcType=OTHER},
-        updated_at = now()
+            DO UPDATE
+            SET user_layout = #{userLayout, jdbcType=OTHER},
+                updated_at = now()
     </insert>
 
-            <!--  대시보드 조회  -->
+    <!-- 대시보드 조회 -->
     <select id="getUserLayout"
             parameterType="Long"
             resultMap="userLayout">
         SELECT instance_id, user_layout
         FROM user_dashboard
         WHERE instance_id = #{instanceId}
+    </select>
+
+    <!-- 메트릭 정의 조회 -->
+    <select id="getMetricDefinitions"
+            parameterType="list"
+            resultMap="metricDefinition">
+        SELECT
+            metric_id,
+            name,
+            table_name,
+            column_name,
+            category,
+            level,
+            unit,
+            description
+        FROM metric_definition
+        <where>
+            <if test="list != null and list.size() > 0">
+                name IN
+                <foreach item="metricName" collection="list" open="(" separator="," close=")">
+                    #{metricName}
+                </foreach>
+            </if>
+        </where>
+    </select>
+
+    <!-- 동적 메트릭 데이터 조회 (단순 조회) -->
+    <select id="queryMetrics"
+            parameterType="map"
+            resultType="map">
+        SELECT
+            collected_at as timestamp
+            <foreach item="column" collection="columns">
+                , ${column}
+            </foreach>
+        FROM ${tableName}
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '${interval}'
+        ORDER BY collected_at ASC
     </select>
 
 </mapper>

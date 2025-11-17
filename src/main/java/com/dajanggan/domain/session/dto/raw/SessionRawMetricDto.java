@@ -50,7 +50,6 @@ public class SessionRawMetricDto {
 
     private OffsetDateTime createdAt;
 
-
     @Transient  // 임시저장 - 마이바티스면 매퍼에서 제외
     private LockSessionDto lockInfo;
 }

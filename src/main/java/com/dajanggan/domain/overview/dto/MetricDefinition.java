@@ -1,25 +1,18 @@
 package com.dajanggan.domain.overview.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
-import java.util.List;
-
+@Getter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Getter
 public class MetricDefinition {
-
-    private String name;
-    private String tableName;
-    private String columnName;
-    private String category;
-    private String level;
-    private String unit;
-    private String description;
-    private List<String> availableChart;
-    private String defaultChartType;
-
-
+    private Long metricId;
+    private String name;           // 메트릭명 (avg_system_cpu)
+    private String tableName;      // 테이블명
+    private String columnName;     // 컬럼명
+    private String category;       // 카테고리
+    private String level;          // 레벨
+    private String unit;           // 단위
+    private String description;    // 설명
 }
