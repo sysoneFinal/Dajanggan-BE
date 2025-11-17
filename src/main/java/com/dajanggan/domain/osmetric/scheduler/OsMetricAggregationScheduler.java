@@ -117,6 +117,7 @@ public class OsMetricAggregationScheduler {
             
             typeMetrics.sort(Comparator.comparing(RedisOsMetricData::getCollectedAt));
             
+            // Raw 데이터 저장 (첫 번째 데이터)
             if (!typeMetrics.isEmpty()) {
                 RedisOsMetricData firstMetric = typeMetrics.get(0);
                 OsMetricRaw raw = OsMetricRaw.builder()
@@ -124,18 +125,19 @@ public class OsMetricAggregationScheduler {
                         .collectedAt(OffsetDateTime.of(firstMetric.getCollectedAt(), 
                                 OffsetDateTime.now().getOffset()))
                         .metricType(metricType)
-                        .value(firstMetric.getValue())
+                        .details(firstMetric.getDetails())  // details 전달
                         .build();
                 rawList.add(raw);
             }
             
+            // Agg 데이터 계산 및 저장
             double sum = 0.0;
             double max = Double.MIN_VALUE;
             double min = Double.MAX_VALUE;
             int count = 0;
             
             for (RedisOsMetricData metric : typeMetrics) {
-                double value = metric.getValue();
+                double value = metric.getValue();  // 대표값 추출
                 sum += value;
                 max = Math.max(max, value);
                 min = Math.min(min, value);
@@ -158,6 +160,7 @@ public class OsMetricAggregationScheduler {
             }
         }
         
+        // DB 저장
         if (!rawList.isEmpty()) {
             osMetricMapper.insertRawBatch(rawList);
             log.debug("Raw 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, rawList.size());
@@ -174,7 +177,6 @@ public class OsMetricAggregationScheduler {
     
     /**
      * 활성 인스턴스 ID 목록 조회
-     * TODO: 실제로는 InstanceService에서 is_enabled=true인 인스턴스 조회
      */
     private List<Long> getActiveInstanceIds() {
         // 임시로 하드코딩 (실제로는 DB 조회)

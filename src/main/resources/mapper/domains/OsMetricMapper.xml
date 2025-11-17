@@ -10,7 +10,8 @@
         <result property="instanceId" column="instance_id"/>
         <result property="collectedAt" column="collected_at"/>
         <result property="metricType" column="metric_type"/>
-        <result property="value" column="value"/>
+        <result property="details" column="details"
+                typeHandler="com.dajanggan.global.config.JsonbTypeHandler"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
@@ -33,13 +34,13 @@
             instance_id,
             collected_at,
             metric_type,
-            value,
+            details,
             created_at
         ) VALUES (
             #{instanceId},
             #{collectedAt},
             #{metricType},
-            #{value},
+            #{details, typeHandler=com.dajanggan.global.config.JsonbTypeHandler}::jsonb,
             NOW()
         )
     </insert>
@@ -50,7 +51,7 @@
             instance_id,
             collected_at,
             metric_type,
-            value,
+            details,
             created_at
         ) VALUES
         <foreach collection="list" item="item" separator=",">
@@ -58,7 +59,7 @@
                 #{item.instanceId},
                 #{item.collectedAt},
                 #{item.metricType},
-                #{item.value},
+                #{item.details, typeHandler=com.dajanggan.global.config.JsonbTypeHandler}::jsonb,
                 NOW()
             )
         </foreach>
@@ -66,12 +67,12 @@
 
     <!-- Find Raw Data by Instance and Period -->
     <select id="findRawByInstanceAndPeriod" resultMap="OsMetricRawResultMap">
-        SELECT 
+        SELECT
             os_metric_raw_id,
             instance_id,
             collected_at,
             metric_type,
-            value,
+            details,
             created_at
         FROM os_metric_raw
         WHERE instance_id = #{instanceId}
@@ -159,6 +160,21 @@
         SELECT instance_id
         FROM monitor_instance
         ORDER BY instance_id ASC
+    </select>
+
+    <!-- Select Aggregated Metrics for Charts -->
+    <select id="selectAggregatedMetrics" resultType="java.util.HashMap">
+        SELECT
+            collected_at,
+            avg_value,
+            max_value,
+            min_value,
+            sample_count
+        FROM os_metric_agg
+        WHERE instance_id = #{instanceId}
+          AND metric_type = #{metricType}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
     </select>
 
 </mapper>

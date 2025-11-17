@@ -3,24 +3,21 @@ package com.dajanggan.domain.osmetric.service;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.osmetric.domain.OsMetricAgg;
 import com.dajanggan.domain.osmetric.dto.OsMetricAggResponse;
-import com.dajanggan.domain.osmetric.dto.OsMetricRequest;
 import com.dajanggan.domain.osmetric.dto.OsMetricResponse;
 import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
 import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
-import com.dajanggan.global.exception.ExceptionMessage;
-import com.dajanggan.global.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 
 /**
  * OS 메트릭 서비스
+ * (Agent 데이터 수신은 AgentOsMetricController -> OsMetricRedisService가 담당)
  */
 @Slf4j
 @Service
@@ -32,51 +29,6 @@ public class OsMetricService {
     private final RedisTemplate<String, Object> redisTemplate;
     
     private static final String REDIS_KEY_PREFIX = "os:metric:live:";
-    private static final long REDIS_TTL_SECONDS = 300; // 5분
-    
-    /**
-     * Agent로부터 메트릭 수신 및 저장
-     * Redis에만 저장 (실시간 조회용)
-     */
-    @Transactional
-    public void receiveMetric(OsMetricRequest request) {
-        // 1. instance_name으로 instance_id 조회
-        Long instanceId = instanceRepository.findIdByInstanceName(request.getInstanceName())
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
-        
-        // 2. Redis에만 저장 (실시간 조회용)
-        saveToRedis(instanceId, request);
-    }
-    
-    /**
-     * Redis에 메트릭 저장
-     */
-    private void saveToRedis(Long instanceId, OsMetricRequest request) {
-        try {
-            String key = REDIS_KEY_PREFIX + instanceId + ":" + request.getMetricType();
-            
-            // RedisOsMetricData 객체 생성
-            RedisOsMetricData data = RedisOsMetricData.builder()
-                    .instanceId(instanceId)
-                    .metricType(request.getMetricType())
-                    .value(request.getValue())
-                    .collectedAt(request.getTimestamp())
-                    .build();
-            
-            // List로 저장 (최근 데이터를 앞에 추가)
-            redisTemplate.opsForList().leftPush(key, data);
-            
-            // TTL 설정
-            redisTemplate.expire(key, REDIS_TTL_SECONDS, TimeUnit.SECONDS);
-            
-            // 최대 60개만 유지 (5분 / 5초 = 60개)
-            redisTemplate.opsForList().trim(key, 0, 59);
-            
-        } catch (Exception e) {
-            log.error("Redis 저장 실패: instanceId={}, metricType={}", 
-                    instanceId, request.getMetricType(), e);
-        }
-    }
     
     /**
      * Redis에서 실시간 메트릭 조회 (Controller용)
@@ -98,6 +50,7 @@ public class OsMetricService {
     /**
      * Redis 객체를 OsMetricResponse로 변환
      */
+    @SuppressWarnings("unchecked")
     private OsMetricResponse convertToOsMetricResponse(Object obj) {
         try {
             if (obj instanceof RedisOsMetricData) {
@@ -106,18 +59,18 @@ public class OsMetricService {
                         .instanceId(data.getInstanceId())
                         .instanceName(null) // instanceName은 필요시 조회
                         .metricType(data.getMetricType())
-                        .value(data.getValue())
+                        .details(data.getDetails())
                         .timestamp(data.getCollectedAt())
                         .build();
-            } else if (obj instanceof java.util.Map) {
+            } else if (obj instanceof Map) {
                 // Jackson이 Map으로 역직렬화한 경우
-                java.util.Map<?, ?> map = (java.util.Map<?, ?>) obj;
+                Map<String, Object> map = (Map<String, Object>) obj;
                 
                 return OsMetricResponse.builder()
                         .instanceId(getLongValue(map.get("instanceId")))
                         .instanceName(null)
                         .metricType((String) map.get("metricType"))
-                        .value(getDoubleValue(map.get("value")))
+                        .details((Map<String, Object>) map.get("details"))
                         .timestamp(getLocalDateTime(map.get("collectedAt")))
                         .build();
             }
@@ -132,13 +85,6 @@ public class OsMetricService {
     private Long getLongValue(Object obj) {
         if (obj instanceof Number) {
             return ((Number) obj).longValue();
-        }
-        return null;
-    }
-    
-    private Double getDoubleValue(Object obj) {
-        if (obj instanceof Number) {
-            return ((Number) obj).doubleValue();
         }
         return null;
     }

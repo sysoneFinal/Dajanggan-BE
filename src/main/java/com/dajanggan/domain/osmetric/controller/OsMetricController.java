@@ -1,12 +1,10 @@
 package com.dajanggan.domain.osmetric.controller;
 
 import com.dajanggan.domain.osmetric.dto.OsMetricAggResponse;
-import com.dajanggan.domain.osmetric.dto.OsMetricRequest;
 import com.dajanggan.domain.osmetric.dto.OsMetricResponse;
 import com.dajanggan.domain.osmetric.service.OsMetricService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,27 +17,17 @@ import java.time.ZoneId;
 import java.util.List;
 
 /**
- * OS 메트릭 API 컨트롤러
+ * OS 메트릭 조회 API 컨트롤러
+ * (Agent 데이터 수신은 AgentOsMetricController가 담당)
  */
 @Slf4j
-@Tag(name = "OS Metrics", description = "OS 레벨 메트릭 API (OSHI Agent 연동)")
+@Tag(name = "OS Metrics", description = "OS 레벨 메트릭 조회 API")
 @RestController
 @RequestMapping("/api/os-metrics")
 @RequiredArgsConstructor
 public class OsMetricController {
     
     private final OsMetricService osMetricService;
-    
-    /**
-     * Agent로부터 메트릭 수신
-     * Agent가 5초마다 호출하는 엔드포인트
-     */
-    @Operation(summary = "메트릭 수신", description = "OSHI Agent로부터 OS 메트릭 데이터 수신")
-    @PostMapping
-    public ResponseEntity<Void> receiveMetric(@Valid @RequestBody OsMetricRequest request) {
-        osMetricService.receiveMetric(request);
-        return ResponseEntity.ok().build();
-    }
     
     /**
      * 실시간 메트릭 조회 (Redis)

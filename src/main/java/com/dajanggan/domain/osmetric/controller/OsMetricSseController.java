@@ -14,7 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/sse/os-metrics")
+@RequestMapping("/api/osmetric")
 @RequiredArgsConstructor
 public class OsMetricSseController {
     

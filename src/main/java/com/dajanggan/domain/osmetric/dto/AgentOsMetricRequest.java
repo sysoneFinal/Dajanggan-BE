@@ -7,10 +7,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.Map;
 
 /**
  * Agent로부터 받는 OS 메트릭 데이터 요청 DTO
+ * Agent 전송 형식:
+ * {
+ *   "instanceName": "gcp-wiki-dong-vm",
+ *   "metricType": "CPU",
+ *   "timestamp": "2024-11-15T10:30:45",
+ *   "details": { ... }
+ * }
  */
 @Getter
 @Builder
@@ -19,38 +26,27 @@ import java.util.List;
 public class AgentOsMetricRequest {
     
     /**
-     * 모니터링 인스턴스 ID
+     * 모니터링 인스턴스 이름 (Agent가 전송)
      */
-    private Long instanceId;
+    private String instanceName;
+    
+    /**
+     * 메트릭 타입
+     * CPU, MEMORY, DISK
+     */
+    private String metricType;
     
     /**
      * 데이터 수집 시각
      */
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime collectedAt;
+    private LocalDateTime timestamp;
     
     /**
-     * OS 메트릭 목록
+     * 메트릭 상세 정보 (JSON 형태)
+     * CPU: totalUsage, perCoreUsage, loadAverage
+     * MEMORY: total, used, available, swap
+     * DISK: readBytes, writeBytes, filesystem
      */
-    private List<OsMetricData> metrics;
-    
-    /**
-     * 개별 메트릭 데이터
-     */
-    @Getter
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class OsMetricData {
-        /**
-         * 메트릭 타입
-         * CPU, MEMORY, DISK_USAGE, DISK_READ, DISK_WRITE
-         */
-        private String metricType;
-        
-        /**
-         * 메트릭 값
-         */
-        private Double value;
-    }
+    private Map<String, Object> details;
 }

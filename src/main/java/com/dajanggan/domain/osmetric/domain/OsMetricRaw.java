@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 
 /**
  * OS 메트릭 Raw 데이터 엔티티
@@ -17,11 +18,19 @@ import java.time.OffsetDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OsMetricRaw {
-    
+
     private Long osMetricRawId;          // PK
     private Long instanceId;             // 인스턴스 ID
     private OffsetDateTime collectedAt;  // 수집 시각
-    private String metricType;           // 메트릭 타입: CPU, MEMORY, DISK_USAGE, DISK_READ, DISK_WRITE
-    private Double value;                // 값: CPU/MEMORY/DISK_USAGE는 %(0-100), DISK_READ/WRITE는 MB/s
+    private String metricType;           // 메트릭 타입: CPU, MEMORY, DISK
+
+    /**
+     * 메트릭 상세 정보 (JSONB)
+     * CPU: totalUsage, perCoreUsage, loadAverage
+     * MEMORY: total, used, available, swap
+     * DISK: readBytes, writeBytes, readCount, writeCount, filesystem
+     */
+    private Map<String, Object> details;
+
     private OffsetDateTime createdAt;    // 생성 시각
 }

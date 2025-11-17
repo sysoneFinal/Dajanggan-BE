@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * OS 메트릭 응답 DTO
@@ -15,10 +16,10 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OsMetricResponse {
-    
+
     private Long instanceId;
     private String instanceName;
     private String metricType;
-    private Double value;
+    private Map<String, Object> details;
     private LocalDateTime timestamp;
 }
