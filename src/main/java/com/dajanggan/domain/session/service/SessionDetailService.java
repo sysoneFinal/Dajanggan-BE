@@ -20,8 +20,6 @@ public class SessionDetailService {
 
     /** 세션 디테일 지표 전체 조회 (단일 DB용) */
     public SessionDetailsDto getSessionDetail(Map<String, Object> params){
-        log.info("SessionDetail 조회 시작 - instanceId: {}, databaseId: {}", 
-                params.get("instanceId"), params.get("databaseId"));
         try {
             SessionDetailsDto result = SessionDetailsDto.builder()
                     .sessionSummary(sessionAgg5mService.findLatestSummary(params))

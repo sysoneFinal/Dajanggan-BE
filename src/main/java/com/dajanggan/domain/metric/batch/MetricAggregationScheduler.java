@@ -16,24 +16,34 @@ import java.time.LocalDateTime;
  * 메트릭 집계 Batch Job 공통 스케줄러
  * 세션, 쿼리, 락 등 모든 1분/5분 집계 Job을 스케줄링
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
+@Slf4j
 public class MetricAggregationScheduler {
 
     private final JobLauncher jobLauncher;
-    
-    @Qualifier("sessionAgg1mJob")
     private final Job sessionAgg1mJob;
-
-    @Qualifier("sessionAgg5mJob")
     private final Job sessionAgg5mJob;
-
-    @Qualifier("queryAgg1mJob")
     private final Job queryAgg1mJob;
-
-    @Qualifier("queryAgg5mJob")
     private final Job queryAgg5mJob;
+    private final Job databaseMetricsAggJob;
+
+    public MetricAggregationScheduler(
+            JobLauncher jobLauncher,
+            @Qualifier("sessionAgg1mJob") Job sessionAgg1mJob,
+            @Qualifier("sessionAgg5mJob") Job sessionAgg5mJob,
+            @Qualifier("queryAgg1mJob") Job queryAgg1mJob,
+            @Qualifier("queryAgg5mJob") Job queryAgg5mJob,
+            @Qualifier("databaseMetricsAggJob") Job databaseMetricsAggJob
+    ) {
+        this.jobLauncher = jobLauncher;
+        this.sessionAgg1mJob = sessionAgg1mJob;
+        this.sessionAgg5mJob = sessionAgg5mJob;
+        this.queryAgg1mJob = queryAgg1mJob;
+        this.queryAgg5mJob = queryAgg5mJob;
+        this.databaseMetricsAggJob = databaseMetricsAggJob;
+    }
+
+
     /**
      * 1분마다 1분 집계 Job들 실행
      * 매분 5초에 실행 (수집이 완료된 후 실행하기 위해)
@@ -42,10 +52,8 @@ public class MetricAggregationScheduler {
     public void runAgg1mJobs() {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 1분 집계 배치 시작: {} ==========", runTime);
-        
-        // 세션 1분 집계
-        runJob(sessionAgg1mJob, "세션 1분 집계", runTime);
 
+        runJob(sessionAgg1mJob, "세션 1분 집계", runTime);
         runJob(queryAgg1mJob, "쿼리 1분 집계", runTime);
 
         log.info("========== 1분 집계 배치 완료 ==========");
@@ -60,15 +68,24 @@ public class MetricAggregationScheduler {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 5분 집계 배치 시작: {} ==========", runTime);
 
-         // 세션 5분 집계
-         runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
-        // runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
-
-        // 향후 추가
-        // runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
-         runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
+        runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
+        runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
 
         log.info("========== 5분 집계 배치 완료 ==========");
+    }
+
+    /**
+     * 데이터베이스 메트릭 집계 (매 1분마다, 45초에 실행)
+     * - 도메인별 1분 집계가 완료된 후 실행되도록 시간 조정
+     */
+    @Scheduled(cron = "45 * * * * *")
+    public void aggregateDatabaseMetrics() {
+        LocalDateTime runTime = LocalDateTime.now();
+        log.info("=== 데이터베이스 메트릭 집계 작업 시작: {} ===", runTime);
+
+        runJob(databaseMetricsAggJob, "데이터베이스 메트릭 집계", runTime);
+
+        log.info("=== 데이터베이스 메트릭 집계 작업 완료 ===");
     }
 
     /**
@@ -77,13 +94,13 @@ public class MetricAggregationScheduler {
     private void runJob(Job job, String jobName, LocalDateTime runTime) {
         try {
             log.info(">>>>>>>>>>>>>>>>>>>>>> {} 시작", jobName);
-            
+
             JobParameters params = new JobParametersBuilder()
                     .addLocalDateTime("runTime", runTime)
                     .toJobParameters();
-            
+
             jobLauncher.run(job, params);
-            
+
             log.info("{} 완료", jobName);
         } catch (Exception e) {
             log.error("{} 실패: {}", jobName, e.getMessage(), e);
