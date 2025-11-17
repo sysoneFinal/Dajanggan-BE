@@ -16,28 +16,32 @@ import java.time.LocalDateTime;
  * 메트릭 집계 Batch Job 공통 스케줄러
  * 세션, 쿼리, 락 등 모든 1분/5분 집계 Job을 스케줄링
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
+@Slf4j
 public class MetricAggregationScheduler {
 
     private final JobLauncher jobLauncher;
-
-    @Qualifier("sessionAgg1mJob")
     private final Job sessionAgg1mJob;
-
-    @Qualifier("sessionAgg5mJob")
     private final Job sessionAgg5mJob;
-
-    @Qualifier("queryAgg1mJob")
     private final Job queryAgg1mJob;
-
-    @Qualifier("queryAgg5mJob")
     private final Job queryAgg5mJob;
-
-    @Qualifier("databaseMetricsAggJob")
     private final Job databaseMetricsAggJob;
 
+    public MetricAggregationScheduler(
+            JobLauncher jobLauncher,
+            @Qualifier("sessionAgg1mJob") Job sessionAgg1mJob,
+            @Qualifier("sessionAgg5mJob") Job sessionAgg5mJob,
+            @Qualifier("queryAgg1mJob") Job queryAgg1mJob,
+            @Qualifier("queryAgg5mJob") Job queryAgg5mJob,
+            @Qualifier("databaseMetricsAggJob") Job databaseMetricsAggJob
+    ) {
+        this.jobLauncher = jobLauncher;
+        this.sessionAgg1mJob = sessionAgg1mJob;
+        this.sessionAgg5mJob = sessionAgg5mJob;
+        this.queryAgg1mJob = queryAgg1mJob;
+        this.queryAgg5mJob = queryAgg5mJob;
+        this.databaseMetricsAggJob = databaseMetricsAggJob;
+    }
 
 
     /**

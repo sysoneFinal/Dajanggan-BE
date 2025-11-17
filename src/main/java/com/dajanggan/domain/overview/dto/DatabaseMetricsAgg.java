@@ -3,6 +3,7 @@ package com.dajanggan.domain.overview.dto;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Getter
 @Setter
@@ -10,10 +11,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DatabaseMetricsAgg {
-    private Long databaseAggId;
     private Long instanceId;
     private Long databaseId;
-    private LocalDateTime collectedAt;
+    private OffsetDateTime collectedAt;
 
     // 세션/커넥션
     private Integer activeSessions;
@@ -23,10 +23,13 @@ public class DatabaseMetricsAgg {
 
     // 트랜잭션
     private BigDecimal tpsTotal;
+    private Long xactCommit;
+    private Long xactRollback;
+
 
     // 대기 이벤트
-    private Integer lockWaitCount;
-    private Integer ioWaitCount;
+    private Long lockWaitCount;
+    private Long ioWaitCount;
 
     // Disk I/O
     private Long blksHit;
@@ -53,7 +56,7 @@ public class DatabaseMetricsAgg {
     private Integer criticalEventCount;
     private String recentEventType;
     private String recentEventLevel;
-    private Integer recentEventAgeMin;
+    private Long recentEventAgeMin;
 
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 }
