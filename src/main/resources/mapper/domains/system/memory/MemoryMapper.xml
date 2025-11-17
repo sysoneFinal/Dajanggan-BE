@@ -5,6 +5,216 @@
 
 <mapper namespace="com.dajanggan.domain.system.memory.repository.MemoryMapper">
 
+    <!-- ========================================
+         Result Maps
+         ======================================== -->
+
+    <!-- Memory Raw Result Map -->
+    <resultMap id="memoryRawResultMap" type="com.dajanggan.domain.system.memory.domain.MemoryRaw">
+        <id property="memoryRawId" column="memory_raw_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="relname" column="relname"/>
+        <result property="relkind" column="relkind"/>
+        <result property="buffers" column="buffers"/>
+        <result property="dirtyBuffers" column="dirty_buffers"/>
+        <result property="pinnedBuffers" column="pinned_buffers"/>
+        <result property="heapBlksRead" column="heap_blks_read"/>
+        <result property="heapBlksHit" column="heap_blks_hit"/>
+        <result property="idxBlksRead" column="idx_blks_read"/>
+        <result property="idxBlksHit" column="idx_blks_hit"/>
+        <result property="avgUsagecount" column="avg_usagecount"/>
+        <result property="maxUsagecount" column="max_usagecount"/>
+        <result property="minUsagecount" column="min_usagecount"/>
+        <result property="databaseName" column="database_name"/>
+        <result property="tempFiles" column="temp_files"/>
+        <result property="tempBytes" column="temp_bytes"/>
+        <result property="blkReadTime" column="blk_read_time"/>
+        <result property="blkWriteTime" column="blk_write_time"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- Memory Agg Result Map -->
+    <resultMap id="memoryAggResultMap" type="com.dajanggan.domain.system.memory.domain.MemoryAgg">
+        <id property="memoryAggId" column="memory_agg_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="relname" column="relname"/>
+        <result property="relkind" column="relkind"/>
+        <result property="avgBuffers" column="avg_buffers"/>
+        <result property="avgBufferUsagePct" column="avg_buffer_usage_pct"/>
+        <result property="avgDirtyRatio" column="avg_dirty_ratio"/>
+        <result property="avgPinnedBuffers" column="avg_pinned_buffers"/>
+        <result property="deltaHeapBlksRead" column="delta_heap_blks_read"/>
+        <result property="deltaHeapBlksHit" column="delta_heap_blks_hit"/>
+        <result property="deltaIdxBlksRead" column="delta_idx_blks_read"/>
+        <result property="deltaIdxBlksHit" column="delta_idx_blks_hit"/>
+        <result property="cacheHitRatio" column="cache_hit_ratio"/>
+        <result property="avgUsagecount" column="avg_usagecount"/>
+        <result property="bufferReuseScore" column="buffer_reuse_score"/>
+        <result property="databaseName" column="database_name"/>
+        <result property="deltaTempFiles" column="delta_temp_files"/>
+        <result property="deltaTempBytes" column="delta_temp_bytes"/>
+        <result property="tempFileRate" column="temp_file_rate"/>
+        <result property="tempBytesPerSec" column="temp_bytes_per_sec"/>
+        <result property="deltaBlkReadTime" column="delta_blk_read_time"/>
+        <result property="deltaBlkWriteTime" column="delta_blk_write_time"/>
+        <result property="avgIoWaitTimeMs" column="avg_io_wait_time_ms"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- ========================================
+         Scheduler용 쿼리
+         ======================================== -->
+
+    <!-- 활성 인스턴스 ID 목록 조회 -->
+    <select id="selectActiveInstanceIds" resultType="long">
+        SELECT instance_id
+        FROM monitor_instance
+        ORDER BY instance_id
+    </select>
+
+    <!-- 이전 Raw 데이터 조회 (relname별로 최신) -->
+    <select id="selectPreviousRawByRelname" resultMap="memoryRawResultMap">
+        SELECT DISTINCT ON (COALESCE(relname, '')) *
+        FROM memory_raw
+        WHERE instance_id = #{instanceId}
+        ORDER BY COALESCE(relname, ''), collected_at DESC
+    </select>
+
+    <!-- Memory Raw 데이터 삽입 -->
+    <insert id="insertRaw" parameterType="com.dajanggan.domain.system.memory.domain.MemoryRaw"
+            useGeneratedKeys="true" keyProperty="memoryRawId">
+        INSERT INTO memory_raw (
+            instance_id, collected_at, relname, relkind,
+            buffers, dirty_buffers, pinned_buffers,
+            heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+            avg_usagecount, max_usagecount, min_usagecount,
+            database_name, temp_files, temp_bytes, blk_read_time, blk_write_time
+        ) VALUES (
+            #{instanceId}, #{collectedAt}, #{relname}, #{relkind},
+            #{buffers}, #{dirtyBuffers}, #{pinnedBuffers},
+            #{heapBlksRead}, #{heapBlksHit}, #{idxBlksRead}, #{idxBlksHit},
+            #{avgUsagecount}, #{maxUsagecount}, #{minUsagecount},
+            #{databaseName}, #{tempFiles}, #{tempBytes}, #{blkReadTime}, #{blkWriteTime}
+        )
+    </insert>
+
+    <!-- Memory Raw 데이터 일괄 삽입 -->
+    <insert id="insertRawBatch" parameterType="java.util.List">
+        INSERT INTO memory_raw (
+            instance_id, collected_at, relname, relkind,
+            buffers, dirty_buffers, pinned_buffers,
+            heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
+            avg_usagecount, max_usagecount, min_usagecount,
+            database_name, temp_files, temp_bytes, blk_read_time, blk_write_time
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.instanceId}, #{item.collectedAt}, #{item.relname}, #{item.relkind},
+                #{item.buffers}, #{item.dirtyBuffers}, #{item.pinnedBuffers},
+                #{item.heapBlksRead}, #{item.heapBlksHit}, #{item.idxBlksRead}, #{item.idxBlksHit},
+                #{item.avgUsagecount}, #{item.maxUsagecount}, #{item.minUsagecount},
+                #{item.databaseName}, #{item.tempFiles}, #{item.tempBytes}, #{item.blkReadTime}, #{item.blkWriteTime}
+            )
+        </foreach>
+    </insert>
+
+    <!-- Memory Agg 데이터 삽입 -->
+    <insert id="insertAgg" parameterType="com.dajanggan.domain.system.memory.domain.MemoryAgg"
+            useGeneratedKeys="true" keyProperty="memoryAggId">
+        INSERT INTO memory_agg (
+            instance_id, collected_at, relname, relkind,
+            avg_buffers, avg_buffer_usage_pct, avg_dirty_ratio, avg_pinned_buffers,
+            delta_heap_blks_read, delta_heap_blks_hit, delta_idx_blks_read, delta_idx_blks_hit,
+            cache_hit_ratio, avg_usagecount, buffer_reuse_score,
+            database_name, delta_temp_files, delta_temp_bytes, temp_file_rate, temp_bytes_per_sec,
+            delta_blk_read_time, delta_blk_write_time, avg_io_wait_time_ms, status
+        ) VALUES (
+            #{instanceId}, #{collectedAt}, #{relname}, #{relkind},
+            #{avgBuffers}, #{avgBufferUsagePct}, #{avgDirtyRatio}, #{avgPinnedBuffers},
+            #{deltaHeapBlksRead}, #{deltaHeapBlksHit}, #{deltaIdxBlksRead}, #{deltaIdxBlksHit},
+            #{cacheHitRatio}, #{avgUsagecount}, #{bufferReuseScore},
+            #{databaseName}, #{deltaTempFiles}, #{deltaTempBytes}, #{tempFileRate}, #{tempBytesPerSec},
+            #{deltaBlkReadTime}, #{deltaBlkWriteTime}, #{avgIoWaitTimeMs}, #{status}
+        )
+    </insert>
+
+    <!-- Memory Agg 데이터 일괄 삽입 -->
+    <insert id="insertAggBatch" parameterType="java.util.List">
+        INSERT INTO memory_agg (
+            instance_id, collected_at, relname, relkind,
+            avg_buffers, avg_buffer_usage_pct, avg_dirty_ratio, avg_pinned_buffers,
+            delta_heap_blks_read, delta_heap_blks_hit, delta_idx_blks_read, delta_idx_blks_hit,
+            cache_hit_ratio, avg_usagecount, buffer_reuse_score,
+            database_name, delta_temp_files, delta_temp_bytes, temp_file_rate, temp_bytes_per_sec,
+            delta_blk_read_time, delta_blk_write_time, avg_io_wait_time_ms, status
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+                #{item.instanceId}, #{item.collectedAt}, #{item.relname}, #{item.relkind},
+                #{item.avgBuffers}, #{item.avgBufferUsagePct}, #{item.avgDirtyRatio}, #{item.avgPinnedBuffers},
+                #{item.deltaHeapBlksRead}, #{item.deltaHeapBlksHit}, #{item.deltaIdxBlksRead}, #{item.deltaIdxBlksHit},
+                #{item.cacheHitRatio}, #{item.avgUsagecount}, #{item.bufferReuseScore},
+                #{item.databaseName}, #{item.deltaTempFiles}, #{item.deltaTempBytes}, #{item.tempFileRate}, #{item.tempBytesPerSec},
+                #{item.deltaBlkReadTime}, #{item.deltaBlkWriteTime}, #{item.avgIoWaitTimeMs}, #{item.status}
+            )
+        </foreach>
+    </insert>
+
+    <!-- Memory Agg 5분 데이터 삽입 -->
+    <insert id="insertAgg5m" parameterType="com.dajanggan.domain.system.memory.domain.MemoryAgg5m"
+            useGeneratedKeys="true" keyProperty="memoryAgg5mId">
+        INSERT INTO memory_agg_5m (
+            instance_id, time_bucket, relname, relkind,
+            avg_buffers, avg_buffer_usage_pct, avg_dirty_ratio, avg_pinned_buffers,
+            total_heap_blks_read, total_heap_blks_hit, total_idx_blks_read, total_idx_blks_hit,
+            avg_cache_hit_ratio, avg_usagecount, avg_buffer_reuse_score,
+            database_name, total_temp_files, total_temp_bytes,
+            avg_temp_file_rate, avg_temp_bytes_per_sec,
+            total_blk_read_time, total_blk_write_time, avg_io_wait_time_ms,
+            record_count
+        ) VALUES (
+            #{instanceId}, #{timeBucket}, #{relname}, #{relkind},
+            #{avgBuffers}, #{avgBufferUsagePct}, #{avgDirtyRatio}, #{avgPinnedBuffers},
+            #{totalHeapBlksRead}, #{totalHeapBlksHit}, #{totalIdxBlksRead}, #{totalIdxBlksHit},
+            #{avgCacheHitRatio}, #{avgUsagecount}, #{avgBufferReuseScore},
+            #{databaseName}, #{totalTempFiles}, #{totalTempBytes},
+            #{avgTempFileRate}, #{avgTempBytesPerSec},
+            #{totalBlkReadTime}, #{totalBlkWriteTime}, #{avgIoWaitTimeMs},
+            #{recordCount}
+        )
+    </insert>
+
+    <!-- Memory Agg 30분 데이터 삽입 -->
+    <insert id="insertAgg30m" parameterType="com.dajanggan.domain.system.memory.domain.MemoryAgg30m"
+            useGeneratedKeys="true" keyProperty="memoryAgg30mId">
+        INSERT INTO memory_agg_30m (
+            instance_id, time_bucket, relname, relkind,
+            avg_buffers, avg_buffer_usage_pct, avg_dirty_ratio, avg_pinned_buffers,
+            total_heap_blks_read, total_heap_blks_hit, total_idx_blks_read, total_idx_blks_hit,
+            avg_cache_hit_ratio, avg_usagecount, avg_buffer_reuse_score,
+            database_name, total_temp_files, total_temp_bytes,
+            avg_temp_file_rate, avg_temp_bytes_per_sec,
+            total_blk_read_time, total_blk_write_time, avg_io_wait_time_ms,
+            record_count
+        ) VALUES (
+            #{instanceId}, #{timeBucket}, #{relname}, #{relkind},
+            #{avgBuffers}, #{avgBufferUsagePct}, #{avgDirtyRatio}, #{avgPinnedBuffers},
+            #{totalHeapBlksRead}, #{totalHeapBlksHit}, #{totalIdxBlksRead}, #{totalIdxBlksHit},
+            #{avgCacheHitRatio}, #{avgUsagecount}, #{avgBufferReuseScore},
+            #{databaseName}, #{totalTempFiles}, #{totalTempBytes},
+            #{avgTempFileRate}, #{avgTempBytesPerSec},
+            #{totalBlkReadTime}, #{totalBlkWriteTime}, #{avgIoWaitTimeMs},
+            #{recordCount}
+        )
+    </insert>
+
+    <!-- ========================================
+         조회용 쿼리
+         ======================================== -->
+
     <!-- Memory 사용률 조회 -->
     <select id="selectMemoryUtilization" resultType="map">
         -- memory_agg 테이블에서 최근 데이터 조회
@@ -200,6 +410,237 @@
             </foreach>
         </if>
         ORDER BY avg_buffers DESC
+    </select>
+
+    <!-- ========================================
+         대시보드 위젯 조회 (3개 - PostgreSQL)
+         ======================================== -->
+
+    <!-- 위젯 3: Shared Buffer Hit Ratio Widget -->
+    <select id="selectSharedBufferHitWidget" resultType="map">
+        SELECT
+            COALESCE(ROUND(AVG(cache_hit_ratio)::numeric, 2), 0) as cache_hit_ratio,
+            COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit), 0) as total_cache_hits,
+            COALESCE(SUM(delta_heap_blks_read + delta_idx_blks_read), 0) as total_physical_reads
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '1 minute'
+    </select>
+
+    <!-- 위젯 4: Buffer Usage Widget -->
+    <select id="selectBufferUsageWidget" resultType="map">
+        SELECT
+            COALESCE(ROUND(AVG(avg_buffer_usage_pct)::numeric, 2), 0) as buffer_usage_percent,
+            COALESCE(ROUND(AVG(avg_dirty_ratio)::numeric, 2), 0) as dirty_ratio,
+            COALESCE(ROUND(AVG(avg_pinned_buffers / NULLIF(avg_buffers, 0) * 100)::numeric, 2), 0) as pinned_ratio,
+            COALESCE(SUM(avg_buffers), 0) as used_buffers,
+            8192 as total_buffers  -- shared_buffers 설정값 (추후 동적으로 조회)
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '1 minute'
+    </select>
+
+    <!-- 위젯 5: Temp File Usage Widget -->
+    <select id="selectTempFileUsageWidget" resultType="map">
+        SELECT
+            COALESCE(ROUND(AVG(temp_file_rate)::numeric, 2), 0) as temp_file_rate,
+            COALESCE(SUM(delta_temp_files), 0) as total_temp_files,
+            COALESCE(SUM(delta_temp_bytes), 0) as total_temp_bytes
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= NOW() - INTERVAL '1 minute'
+          AND database_name IS NOT NULL
+    </select>
+
+    <!-- ========================================
+         1시간 차트 조회 (memory_agg)
+         ======================================== -->
+
+    <!-- 차트 2: Buffer Cache Hit Ratio Chart 1h -->
+    <select id="selectBufferCacheHitChart1h" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(ROUND(AVG(cache_hit_ratio)::numeric, 2), 0) as cache_hit_ratio
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
+        ORDER BY collected_at
+    </select>
+
+    <!-- 차트 3: Buffer Utilization Chart 1h -->
+    <select id="selectBufferUtilizationChart1h" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(SUM(avg_buffers * avg_dirty_ratio / 100), 0) as dirty_buffers,
+            COALESCE(SUM(avg_pinned_buffers), 0) as pinned_buffers
+        FROM memory_agg
+        WHERE instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
+        ORDER BY collected_at
+    </select>
+
+    <!-- ========================================
+         6시간 차트 조회 (memory_agg_5m)
+         ======================================== -->
+
+    <!-- 차트 4: Temp File Chart 6h -->
+    <select id="selectTempFileChart6h" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(SUM(total_temp_files), 0) as total_temp_files,
+            COALESCE(SUM(total_temp_bytes), 0) as total_temp_bytes
+        FROM memory_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+          AND database_name IS NOT NULL
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- 차트 5: I/O Wait Time Chart 6h -->
+    <select id="selectIoWaitTimeChart6h" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(SUM(total_blk_read_time), 0) as total_blk_read_time,
+            COALESCE(SUM(total_blk_write_time), 0) as total_blk_write_time
+        FROM memory_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- ========================================
+         24시간 차트 조회 (memory_agg_30m)
+         ======================================== -->
+
+    <!-- 차트 8: Buffer Reuse Score Chart 24h -->
+    <select id="selectBufferReuseScoreChart24h" resultType="map">
+        SELECT
+            time_bucket,
+            COALESCE(ROUND(AVG(avg_buffer_reuse_score)::numeric, 2), 0) as avg_buffer_reuse_score,
+            COALESCE(ROUND(AVG(avg_usagecount)::numeric, 2), 0) as avg_usagecount
+        FROM memory_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+    </select>
+
+    <!-- 차트 9: Top Tables by Buffer Chart 24h -->
+    <select id="selectTopTablesByBufferChart24h" resultType="map">
+        WITH buffer_usage AS (
+            SELECT
+                relname,
+                ROUND(AVG(avg_buffers)::numeric, 0) as avg_buffers,
+                ROUND(AVG(avg_buffer_usage_pct)::numeric, 2) as buffer_usage_percent
+            FROM memory_agg_30m
+            WHERE instance_id = #{instanceId}
+              AND time_bucket BETWEEN #{startTime} AND #{endTime}
+              AND relname IS NOT NULL
+            GROUP BY relname
+        )
+        SELECT
+            relname,
+            avg_buffers,
+            buffer_usage_percent
+        FROM buffer_usage
+        ORDER BY avg_buffers DESC
+        LIMIT 10
+    </select>
+
+    <!-- ========================================
+         리스트 조회 (2개 섹션)
+         ======================================== -->
+
+    <!-- 섹션 1: 높은 버퍼 사용 테이블 Top 20 -->
+    <select id="selectHighBufferUsageTop20" resultType="map">
+        WITH buffer_aggregated AS (
+            SELECT
+                ROW_NUMBER() OVER (ORDER BY avg_buffers DESC) as rank_num,
+                relname,
+                relkind,
+                ROUND(AVG(avg_buffers)::numeric, 0) as avg_buffers,
+                ROUND(AVG(avg_buffer_usage_pct)::numeric, 2) as buffer_usage_percent,
+                ROUND(AVG(avg_dirty_ratio)::numeric, 2) as dirty_ratio,
+                ROUND(AVG(cache_hit_ratio)::numeric, 2) as cache_hit_ratio,
+                CASE
+                    WHEN AVG(avg_dirty_ratio) > 50 THEN '위험'
+                    WHEN AVG(avg_dirty_ratio) > 30 THEN '주의'
+                    ELSE '정상'
+                END as status
+            FROM memory_agg
+            WHERE instance_id = #{instanceId}
+              AND collected_at BETWEEN #{startTime} AND #{endTime}
+              AND relname IS NOT NULL
+            GROUP BY relname, relkind
+        )
+        SELECT
+            rank_num,
+            relname,
+            relkind,
+            avg_buffers,
+            buffer_usage_percent,
+            dirty_ratio,
+            cache_hit_ratio,
+            status
+        FROM buffer_aggregated
+        <where>
+            <if test="statusList != null and statusList.size() > 0">
+                AND status IN
+                <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                    #{status}
+                </foreach>
+            </if>
+        </where>
+        ORDER BY avg_buffers DESC
+        LIMIT 20
+    </select>
+
+    <!-- 섹션 2: 낮은 캐시 히트율 테이블 Top 20 -->
+    <select id="selectLowCacheHitTop20" resultType="map">
+        <![CDATA[
+        WITH cache_hit_aggregated AS (
+            SELECT
+                ROW_NUMBER() OVER (ORDER BY cache_hit_ratio ASC) as rank_num,
+                relname,
+                database_name,
+                ROUND(AVG(cache_hit_ratio)::numeric, 2) as cache_hit_ratio,
+                COALESCE(SUM(delta_heap_blks_read + delta_idx_blks_read), 0) as physical_reads,
+                COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit), 0) as cache_hits,
+                CASE
+                    WHEN AVG(cache_hit_ratio) < 85 THEN '위험'
+                    WHEN AVG(cache_hit_ratio) < 95 THEN '주의'
+                    ELSE '정상'
+                END as status
+            FROM memory_agg
+            WHERE instance_id = #{instanceId}
+              AND collected_at BETWEEN #{startTime} AND #{endTime}
+              AND relname IS NOT NULL
+            GROUP BY relname, database_name
+        )
+        SELECT
+            rank_num,
+            relname,
+            database_name,
+            cache_hit_ratio,
+            physical_reads,
+            cache_hits,
+            status
+        FROM cache_hit_aggregated
+        <where>
+            <if test="statusList != null and statusList.size() > 0">
+                AND status IN
+                <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                    #{status}
+                </foreach>
+            </if>
+        </where>
+        ORDER BY cache_hit_ratio ASC
+        LIMIT 20
+        ]]>
     </select>
 
 </mapper>

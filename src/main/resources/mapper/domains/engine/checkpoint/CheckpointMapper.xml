@@ -154,4 +154,106 @@
         ORDER BY collected_at DESC
     </select>
 
+    <!-- ========== 데이터 수집용 쿼리 ========== -->
+
+    <!-- 활성화된 인스턴스 ID 목록 조회 -->
+    <select id="selectActiveInstanceIds" resultType="long">
+        SELECT instance_id
+        FROM monitor_instance
+        ORDER BY instance_id
+    </select>
+
+    <!-- 이전 Raw 데이터 조회 (증분 계산용) -->
+    <select id="selectPreviousRaw" resultType="com.dajanggan.domain.engine.checkpoint.domain.CheckpointRaw">
+        SELECT
+            checkpoint_raw_id,
+            instance_id,
+            collected_at,
+            checkpoint_type,
+            checkpoints_timed,
+            checkpoints_req,
+            checkpoint_write_time,
+            checkpoint_sync_time,
+            buffers_checkpoint,
+            wal_bytes,
+            created_at,
+            wal_files_added,
+            wal_files_removed,
+            checkpoint_distance,
+            buffers_backend,
+            avg_buffers_per_sec
+        FROM checkpoint_raw
+        WHERE instance_id = #{instanceId}
+        ORDER BY collected_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- Raw 데이터 삽입 -->
+    <insert id="insertRaw" parameterType="com.dajanggan.domain.engine.checkpoint.domain.CheckpointRaw">
+        INSERT INTO checkpoint_raw (
+            instance_id,
+            collected_at,
+            checkpoint_type,
+            checkpoints_timed,
+            checkpoints_req,
+            checkpoint_write_time,
+            checkpoint_sync_time,
+            buffers_checkpoint,
+            wal_bytes,
+            wal_files_added,
+            wal_files_removed,
+            checkpoint_distance,
+            buffers_backend,
+            avg_buffers_per_sec,
+            created_at
+        ) VALUES (
+            #{instanceId},
+            #{collectedAt},
+            #{checkpointType},
+            #{checkpointsTimed},
+            #{checkpointsReq},
+            #{checkpointWriteTime},
+            #{checkpointSyncTime},
+            #{buffersCheckpoint},
+            #{walBytes},
+            #{walFilesAdded},
+            #{walFilesRemoved},
+            #{checkpointDistance},
+            #{buffersBackend},
+            #{avgBuffersPerSec},
+            NOW()
+        )
+    </insert>
+
+    <!-- Agg 데이터 삽입 -->
+    <insert id="insertAgg" parameterType="com.dajanggan.domain.engine.checkpoint.domain.CheckpointAgg">
+        INSERT INTO checkpoint_agg (
+            instance_id,
+            collected_at,
+            avg_checkpoint_req_ratio,
+            avg_write_time,
+            avg_sync_time,
+            avg_total_time,
+            total_checkpoints_timed,
+            total_checkpoints_req,
+            total_wal_bytes,
+            total_buffers_checkpoint,
+            status,
+            created_at
+        ) VALUES (
+            #{instanceId},
+            #{collectedAt},
+            #{avgCheckpointReqRatio},
+            #{avgWriteTime},
+            #{avgSyncTime},
+            #{avgTotalTime},
+            #{totalCheckpointsTimed},
+            #{totalCheckpointsReq},
+            #{totalWalBytes},
+            #{totalBuffersCheckpoint},
+            #{status},
+            NOW()
+        )
+    </insert>
+
 </mapper>

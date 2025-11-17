@@ -1,7 +1,7 @@
 package com.dajanggan.domain.vacuum.service;
 
 import com.dajanggan.domain.vacuum.dto.VacuumDetailDto;
-import com.dajanggan.domain.vacuum.repository.VacuumDetailRepository;
+import com.dajanggan.domain.vacuum.repository.VacuumDetailMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class VacuumDetailService {
 
-    private final VacuumDetailRepository repository;
+    private final VacuumDetailMapper vacuumDetailMapper;
 
     private static final DateTimeFormatter DATETIME_FORMATTER =
             DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm:ss a");
@@ -34,7 +34,7 @@ public class VacuumDetailService {
 
         // 1. 최신 세션 정보 조회
         VacuumDetailDto.SessionInfoRaw sessionInfo =
-                repository.findLatestSessionInfo(databaseId, tableName);
+                vacuumDetailMapper.findLatestSessionInfo(databaseId, tableName);
 
         if (sessionInfo == null) {
             log.warn("세션 정보가 없습니다 - databaseId: {}, tableName: {}",
@@ -47,7 +47,7 @@ public class VacuumDetailService {
         OffsetDateTime endTime = sessionInfo.getCollectedAt();
 
         List<VacuumDetailDto.ProgressRaw> progressList =
-                repository.findProgressData(databaseId, tableName, startTime, endTime);
+                vacuumDetailMapper.findProgressData(databaseId, tableName, startTime, endTime);
 
         log.info("Progress 데이터 조회 결과: {} 건", progressList.size());
 

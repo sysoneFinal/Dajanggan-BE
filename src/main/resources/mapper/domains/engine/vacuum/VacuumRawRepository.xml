@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumRawRepository">
+
+
+    <insert id="insertVacuumMetrics" parameterType="com.dajanggan.domain.vacuum.dto.raw.VacuumRawMetricDto">
+        INSERT INTO vacuum_raw_metrics (
+        database_id, instance_id, collected_at, table_name, schema_name,
+        session_phase, session_progress, autovacuum,
+        heap_blks_total, heap_blks_scanned, heap_blks_vacuumed, index_vacuum_count,
+        n_dead_tup, n_live_tup, n_mod_since_analyze, tuples_deleted,
+        session_started_at, elapsed_seconds, session_trigger,
+        relsize_total_bytes, created_at
+        )
+        VALUES
+        <foreach collection="metrics" item="m" separator=",">
+            (
+            #{m.databaseId}, #{m.instanceId}, #{m.collectedAt},
+            #{m.tableName}, #{m.schemaName},
+            #{m.sessionPhase}, #{m.sessionProgress}, #{m.autovacuum},
+            #{m.heapBlksTotal}, #{m.heapBlksScanned}, #{m.heapBlksVacuumed},
+            #{m.indexVacuumCount},
+            #{m.nDeadTup}, #{m.nLiveTup}, #{m.nModSinceAnalyze}, #{m.tuplesDeleted},
+            #{m.sessionStartedAt}, #{m.elapsedSeconds}, #{m.sessionTrigger},
+            #{m.relsizeTotalBytes}, NOW()
+            )
+        </foreach>
+    </insert>
+
+</mapper>

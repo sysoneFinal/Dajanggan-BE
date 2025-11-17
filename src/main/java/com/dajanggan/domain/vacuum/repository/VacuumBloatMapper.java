@@ -12,94 +12,66 @@ import java.util.Map;
 @Mapper
 public interface VacuumBloatMapper {
 
-    // ========== Raw Metrics ==========
-
-    /**
-     * Xmin Horizon 데이터 조회
-     */
+    // Raw 데이터 (변경 없음)
     List<VacuumRawMetrics> findXminHorizonData(
             @Param("databaseId") Long databaseId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
     );
 
-    /**
-     * 최근 메트릭스 조회
-     */
     List<VacuumRawMetrics> findRecentMetrics(
             @Param("databaseId") Long databaseId,
             @Param("since") OffsetDateTime since
     );
 
-    /**
-     * Blocker Xmin이 있는 최신 데이터 조회
-     */
     List<VacuumRawMetrics> findLatestWithBlockerXmin(
             @Param("databaseId") Long databaseId
     );
 
-    /**
-     * Dead Tuple이 높은 테이블 조회
-     */
     List<VacuumRawMetrics> findTablesWithHighDeadTuples(
             @Param("databaseId") Long databaseId,
             @Param("threshold") Long threshold
     );
 
-    // ========== Trend Metrics ==========
-
-    /**
-     * Bloat 트렌드 데이터 조회
-     */
+    // ✅ Trend 데이터 (aggTable 추가)
     List<VacuumTrendMetrics> findBloatTrendData(
             @Param("databaseId") Long databaseId,
-            @Param("startDate") OffsetDateTime startDate
+            @Param("startDate") OffsetDateTime startDate,
+            @Param("aggTable") String aggTable
     );
 
-    /**
-     * Bloat 분포 조회
-     */
     List<Map<String, Object>> findBloatDistribution(
             @Param("databaseId") Long databaseId,
-            @Param("since") OffsetDateTime since
+            @Param("since") OffsetDateTime since,
+            @Param("aggTable") String aggTable
     );
 
-    /**
-     * 총 Bloat 크기 계산
-     */
     Long calculateTotalBloat(
             @Param("databaseId") Long databaseId,
-            @Param("since") OffsetDateTime since
+            @Param("since") OffsetDateTime since,
+            @Param("aggTable") String aggTable
     );
 
-    /**
-     * Critical 테이블 수 조회
-     */
     Long countCriticalTables(
             @Param("databaseId") Long databaseId,
-            @Param("since") OffsetDateTime since
+            @Param("since") OffsetDateTime since,
+            @Param("aggTable") String aggTable
     );
 
-    /**
-     * 일별 메트릭스 조회
-     */
     List<VacuumTrendMetrics> findDailyMetrics(
             @Param("databaseId") Long databaseId,
-            @Param("startDate") OffsetDateTime startDate
+            @Param("startDate") OffsetDateTime startDate,
+            @Param("aggTable") String aggTable
     );
 
-    /**
-     * Wraparound 진행률이 높은 테이블 조회
-     */
     List<VacuumTrendMetrics> findTablesWithHighWraparoundProgress(
             @Param("databaseId") Long databaseId,
-            @Param("threshold") Double threshold
+            @Param("threshold") Double threshold,
+            @Param("aggTable") String aggTable
     );
 
-    /**
-     * 최신 메트릭스 조회
-     */
     List<VacuumTrendMetrics> findLatestMetrics(
-            @Param("databaseId") Long databaseId
+            @Param("databaseId") Long databaseId,
+            @Param("aggTable") String aggTable
     );
 }

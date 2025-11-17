@@ -4,28 +4,38 @@
 
 <mapper namespace="com.dajanggan.domain.system.cpu.repository.CpuMapper">
 
+    <!-- ========================================
+         Result Maps
+         ======================================== -->
+
     <!-- CPU Raw Result Map -->
     <resultMap id="cpuRawResultMap" type="com.dajanggan.domain.system.cpu.domain.CpuRaw">
         <id property="cpuRawId" column="cpu_raw_id"/>
         <result property="instanceId" column="instance_id"/>
         <result property="collectedAt" column="collected_at"/>
-        <result property="backendType" column="backend_type"/>
-        <result property="userCpu" column="user_cpu"/>
-        <result property="systemCpu" column="system_cpu"/>
-        <result property="ioWait" column="io_wait"/>
+        <result property="totalConnections" column="total_connections"/>
         <result property="activeConnections" column="active_connections"/>
-        <result property="parallelWorkers" column="parallel_workers"/>
+        <result property="idleConnections" column="idle_connections"/>
+        <result property="idleInTransaction" column="idle_in_transaction"/>
         <result property="waitingSessions" column="waiting_sessions"/>
-        <result property="workerTime" column="worker_time"/>
+        <result property="waitingForLock" column="waiting_for_lock"/>
+        <result property="waitingForIo" column="waiting_for_io"/>
+        <result property="waitEventClient" column="wait_event_client"/>
+        <result property="waitEventActivity" column="wait_event_activity"/>
+        <result property="waitEventBufferpin" column="wait_event_bufferpin"/>
+        <result property="waitEventLwlock" column="wait_event_lwlock"/>
+        <result property="waitEventTimeout" column="wait_event_timeout"/>
+        <result property="waitEventIpc" column="wait_event_ipc"/>
+        <result property="clientBackendCount" column="client_backend_count"/>
+        <result property="autovacuumWorkerCount" column="autovacuum_worker_count"/>
+        <result property="parallelWorkerCount" column="parallel_worker_count"/>
+        <result property="backgroundWorkerCount" column="background_worker_count"/>
+        <result property="longRunningQueries" column="long_running_queries"/>
+        <result property="maxQueryDurationSec" column="max_query_duration_sec"/>
+        <result property="databaseName" column="database_name"/>
+        <result property="xactCommit" column="xact_commit"/>
+        <result property="xactRollback" column="xact_rollback"/>
         <result property="createdAt" column="created_at"/>
-        <result property="totalCpuUsage" column="total_cpu_usage"/>
-        <result property="idleCpu" column="idle_cpu"/>
-        <result property="loadAvg1" column="load_avg_1"/>
-        <result property="loadAvg5" column="load_avg_5"/>
-        <result property="loadAvg15" column="load_avg_15"/>
-        <result property="contextSwitches" column="context_switches"/>
-        <result property="runningProcesses" column="running_processes"/>
-        <result property="stealCpu" column="steal_cpu"/>
     </resultMap>
 
     <!-- CPU Agg Result Map -->
@@ -33,33 +43,287 @@
         <id property="cpuAggId" column="cpu_agg_id"/>
         <result property="instanceId" column="instance_id"/>
         <result property="collectedAt" column="collected_at"/>
-        <result property="backendType" column="backend_type"/>
-        <result property="avgUserCpu" column="avg_user_cpu"/>
-        <result property="avgSystemCpu" column="avg_system_cpu"/>
-        <result property="avgIoWait" column="avg_io_wait"/>
-        <result property="maxUserCpu" column="max_user_cpu"/>
-        <result property="maxIoWait" column="max_io_wait"/>
+        <result property="avgTotalConnections" column="avg_total_connections"/>
         <result property="avgActiveConnections" column="avg_active_connections"/>
-        <result property="avgParallelWorkers" column="avg_parallel_workers"/>
+        <result property="avgIdleConnections" column="avg_idle_connections"/>
+        <result property="avgIdleInTransaction" column="avg_idle_in_transaction"/>
         <result property="avgWaitingSessions" column="avg_waiting_sessions"/>
-        <result property="avgWorkerTime" column="avg_worker_time"/>
-        <result property="contextSwitches" column="context_switches"/>
-        <result property="cpuQueueLength" column="cpu_queue_length"/>
+        <result property="avgWaitingForLock" column="avg_waiting_for_lock"/>
+        <result property="avgWaitingForIo" column="avg_waiting_for_io"/>
+        <result property="avgWaitEventClient" column="avg_wait_event_client"/>
+        <result property="avgWaitEventActivity" column="avg_wait_event_activity"/>
+        <result property="avgWaitEventBufferpin" column="avg_wait_event_bufferpin"/>
+        <result property="avgWaitEventLwlock" column="avg_wait_event_lwlock"/>
+        <result property="avgWaitEventTimeout" column="avg_wait_event_timeout"/>
+        <result property="avgWaitEventIpc" column="avg_wait_event_ipc"/>
+        <result property="avgClientBackend" column="avg_client_backend"/>
+        <result property="avgAutovacuumWorker" column="avg_autovacuum_worker"/>
+        <result property="avgParallelWorker" column="avg_parallel_worker"/>
+        <result property="avgBackgroundWorker" column="avg_background_worker"/>
+        <result property="avgLongRunningQueries" column="avg_long_running_queries"/>
+        <result property="maxQueryDurationSec" column="max_query_duration_sec"/>
+        <result property="databaseName" column="database_name"/>
+        <result property="deltaXactCommit" column="delta_xact_commit"/>
+        <result property="deltaXactRollback" column="delta_xact_rollback"/>
+        <result property="xactCommitRate" column="xact_commit_rate"/>
+        <result property="xactRollbackRate" column="xact_rollback_rate"/>
         <result property="status" column="status"/>
         <result property="createdAt" column="created_at"/>
-        <result property="avgTotalCpu" column="avg_total_cpu"/>
-        <result property="maxTotalCpu" column="max_total_cpu"/>
-        <result property="avgIdleCpu" column="avg_idle_cpu"/>
-        <result property="avgLoad1" column="avg_load_1"/>
-        <result property="avgLoad5" column="avg_load_5"/>
-        <result property="avgLoad15" column="avg_load_15"/>
-        <result property="totalContextSwitches" column="total_context_switches"/>
-        <result property="avgRunningProcesses" column="avg_running_processes"/>
-        <result property="avgStealCpu" column="avg_steal_cpu"/>
-        <result property="maxStealCpu" column="max_steal_cpu"/>
     </resultMap>
 
-    <!-- CPU Raw 데이터 조회 -->
+    <!-- CPU Agg 5분 Result Map -->
+    <resultMap id="cpuAgg5mResultMap" type="com.dajanggan.domain.system.cpu.domain.CpuAgg5m">
+        <id property="cpuAgg5mId" column="cpu_agg_5m_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="timeBucket" column="time_bucket"/>
+        <result property="avgTotalConnections" column="avg_total_connections"/>
+        <result property="avgActiveConnections" column="avg_active_connections"/>
+        <result property="avgIdleConnections" column="avg_idle_connections"/>
+        <result property="avgIdleInTransaction" column="avg_idle_in_transaction"/>
+        <result property="avgWaitingSessions" column="avg_waiting_sessions"/>
+        <result property="avgWaitingForLock" column="avg_waiting_for_lock"/>
+        <result property="avgWaitingForIo" column="avg_waiting_for_io"/>
+        <result property="avgWaitEventClient" column="avg_wait_event_client"/>
+        <result property="avgWaitEventActivity" column="avg_wait_event_activity"/>
+        <result property="avgWaitEventBufferpin" column="avg_wait_event_bufferpin"/>
+        <result property="avgWaitEventLwlock" column="avg_wait_event_lwlock"/>
+        <result property="avgWaitEventTimeout" column="avg_wait_event_timeout"/>
+        <result property="avgWaitEventIpc" column="avg_wait_event_ipc"/>
+        <result property="avgClientBackend" column="avg_client_backend"/>
+        <result property="avgAutovacuumWorker" column="avg_autovacuum_worker"/>
+        <result property="avgParallelWorker" column="avg_parallel_worker"/>
+        <result property="avgBackgroundWorker" column="avg_background_worker"/>
+        <result property="avgLongRunningQueries" column="avg_long_running_queries"/>
+        <result property="totalXactCommit" column="total_xact_commit"/>
+        <result property="totalXactRollback" column="total_xact_rollback"/>
+        <result property="recordCount" column="record_count"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- CPU Agg 30분 Result Map -->
+    <resultMap id="cpuAgg30mResultMap" type="com.dajanggan.domain.system.cpu.domain.CpuAgg30m">
+        <id property="cpuAgg30mId" column="cpu_agg_30m_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="timeBucket" column="time_bucket"/>
+        <result property="avgTotalConnections" column="avg_total_connections"/>
+        <result property="avgActiveConnections" column="avg_active_connections"/>
+        <result property="avgIdleConnections" column="avg_idle_connections"/>
+        <result property="avgIdleInTransaction" column="avg_idle_in_transaction"/>
+        <result property="avgWaitingSessions" column="avg_waiting_sessions"/>
+        <result property="avgWaitingForLock" column="avg_waiting_for_lock"/>
+        <result property="avgWaitingForIo" column="avg_waiting_for_io"/>
+        <result property="avgWaitEventClient" column="avg_wait_event_client"/>
+        <result property="avgWaitEventActivity" column="avg_wait_event_activity"/>
+        <result property="avgWaitEventBufferpin" column="avg_wait_event_bufferpin"/>
+        <result property="avgWaitEventLwlock" column="avg_wait_event_lwlock"/>
+        <result property="avgWaitEventTimeout" column="avg_wait_event_timeout"/>
+        <result property="avgWaitEventIpc" column="avg_wait_event_ipc"/>
+        <result property="avgClientBackend" column="avg_client_backend"/>
+        <result property="avgAutovacuumWorker" column="avg_autovacuum_worker"/>
+        <result property="avgParallelWorker" column="avg_parallel_worker"/>
+        <result property="avgBackgroundWorker" column="avg_background_worker"/>
+        <result property="avgLongRunningQueries" column="avg_long_running_queries"/>
+        <result property="totalXactCommit" column="total_xact_commit"/>
+        <result property="totalXactRollback" column="total_xact_rollback"/>
+        <result property="recordCount" column="record_count"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- ========================================
+         Scheduler용 쿼리
+         ======================================== -->
+
+    <!-- 활성 인스턴스 ID 목록 조회 -->
+    <select id="selectActiveInstanceIds" resultType="long">
+        SELECT instance_id
+        FROM monitor_instance
+        ORDER BY instance_id
+    </select>
+
+    <!-- 이전 Raw 데이터 조회 -->
+    <select id="selectPreviousRaw" resultMap="cpuRawResultMap">
+        SELECT *
+        FROM cpu_raw
+        WHERE instance_id = #{instanceId}
+        ORDER BY collected_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- CPU Raw 데이터 삽입 -->
+    <insert id="insertRaw" parameterType="com.dajanggan.domain.system.cpu.domain.CpuRaw"
+            useGeneratedKeys="true" keyProperty="cpuRawId">
+        INSERT INTO cpu_raw (
+            instance_id,
+            collected_at,
+            total_connections,
+            active_connections,
+            idle_connections,
+            idle_in_transaction,
+            waiting_sessions,
+            waiting_for_lock,
+            waiting_for_io,
+            wait_event_client,
+            wait_event_activity,
+            wait_event_bufferpin,
+            wait_event_lwlock,
+            wait_event_timeout,
+            wait_event_ipc,
+            client_backend_count,
+            autovacuum_worker_count,
+            parallel_worker_count,
+            background_worker_count,
+            long_running_queries,
+            max_query_duration_sec,
+            database_name,
+            xact_commit,
+            xact_rollback
+        ) VALUES (
+            #{instanceId},
+            #{collectedAt},
+            #{totalConnections},
+            #{activeConnections},
+            #{idleConnections},
+            #{idleInTransaction},
+            #{waitingSessions},
+            #{waitingForLock},
+            #{waitingForIo},
+            #{waitEventClient},
+            #{waitEventActivity},
+            #{waitEventBufferpin},
+            #{waitEventLwlock},
+            #{waitEventTimeout},
+            #{waitEventIpc},
+            #{clientBackendCount},
+            #{autovacuumWorkerCount},
+            #{parallelWorkerCount},
+            #{backgroundWorkerCount},
+            #{longRunningQueries},
+            #{maxQueryDurationSec},
+            #{databaseName},
+            #{xactCommit},
+            #{xactRollback}
+        )
+    </insert>
+
+    <!-- CPU Agg 데이터 삽입 -->
+    <insert id="insertAgg" parameterType="com.dajanggan.domain.system.cpu.domain.CpuAgg"
+            useGeneratedKeys="true" keyProperty="cpuAggId">
+        INSERT INTO cpu_agg (
+            instance_id,
+            collected_at,
+            avg_total_connections,
+            avg_active_connections,
+            avg_idle_connections,
+            avg_idle_in_transaction,
+            avg_waiting_sessions,
+            avg_waiting_for_lock,
+            avg_waiting_for_io,
+            avg_wait_event_client,
+            avg_wait_event_activity,
+            avg_wait_event_bufferpin,
+            avg_wait_event_lwlock,
+            avg_wait_event_timeout,
+            avg_wait_event_ipc,
+            avg_client_backend,
+            avg_autovacuum_worker,
+            avg_parallel_worker,
+            avg_background_worker,
+            avg_long_running_queries,
+            max_query_duration_sec,
+            database_name,
+            delta_xact_commit,
+            delta_xact_rollback,
+            xact_commit_rate,
+            xact_rollback_rate,
+            status
+        ) VALUES (
+            #{instanceId},
+            #{collectedAt},
+            #{avgTotalConnections},
+            #{avgActiveConnections},
+            #{avgIdleConnections},
+            #{avgIdleInTransaction},
+            #{avgWaitingSessions},
+            #{avgWaitingForLock},
+            #{avgWaitingForIo},
+            #{avgWaitEventClient},
+            #{avgWaitEventActivity},
+            #{avgWaitEventBufferpin},
+            #{avgWaitEventLwlock},
+            #{avgWaitEventTimeout},
+            #{avgWaitEventIpc},
+            #{avgClientBackend},
+            #{avgAutovacuumWorker},
+            #{avgParallelWorker},
+            #{avgBackgroundWorker},
+            #{avgLongRunningQueries},
+            #{maxQueryDurationSec},
+            #{databaseName},
+            #{deltaXactCommit},
+            #{deltaXactRollback},
+            #{xactCommitRate},
+            #{xactRollbackRate},
+            #{status}
+        )
+    </insert>
+
+    <!-- CPU Agg 5분 데이터 삽입 -->
+    <insert id="insertAgg5m" parameterType="com.dajanggan.domain.system.cpu.domain.CpuAgg5m"
+            useGeneratedKeys="true" keyProperty="cpuAgg5mId">
+        INSERT INTO cpu_agg_5m (
+            instance_id, time_bucket,
+            avg_total_connections, avg_active_connections, avg_idle_connections,
+            avg_idle_in_transaction, avg_waiting_sessions, avg_waiting_for_lock, avg_waiting_for_io,
+            avg_wait_event_client, avg_wait_event_activity, avg_wait_event_bufferpin,
+            avg_wait_event_lwlock, avg_wait_event_timeout, avg_wait_event_ipc,
+            avg_client_backend, avg_autovacuum_worker, avg_parallel_worker, avg_background_worker,
+            avg_long_running_queries,
+            total_xact_commit, total_xact_rollback,
+            record_count
+        ) VALUES (
+            #{instanceId}, #{timeBucket},
+            #{avgTotalConnections}, #{avgActiveConnections}, #{avgIdleConnections},
+            #{avgIdleInTransaction}, #{avgWaitingSessions}, #{avgWaitingForLock}, #{avgWaitingForIo},
+            #{avgWaitEventClient}, #{avgWaitEventActivity}, #{avgWaitEventBufferpin},
+            #{avgWaitEventLwlock}, #{avgWaitEventTimeout}, #{avgWaitEventIpc},
+            #{avgClientBackend}, #{avgAutovacuumWorker}, #{avgParallelWorker}, #{avgBackgroundWorker},
+            #{avgLongRunningQueries},
+            #{totalXactCommit}, #{totalXactRollback},
+            #{recordCount}
+        )
+    </insert>
+
+    <!-- CPU Agg 30분 데이터 삽입 -->
+    <insert id="insertAgg30m" parameterType="com.dajanggan.domain.system.cpu.domain.CpuAgg30m"
+            useGeneratedKeys="true" keyProperty="cpuAgg30mId">
+        INSERT INTO cpu_agg_30m (
+            instance_id, time_bucket,
+            avg_total_connections, avg_active_connections, avg_idle_connections,
+            avg_idle_in_transaction, avg_waiting_sessions, avg_waiting_for_lock, avg_waiting_for_io,
+            avg_wait_event_client, avg_wait_event_activity, avg_wait_event_bufferpin,
+            avg_wait_event_lwlock, avg_wait_event_timeout, avg_wait_event_ipc,
+            avg_client_backend, avg_autovacuum_worker, avg_parallel_worker, avg_background_worker,
+            avg_long_running_queries,
+            total_xact_commit, total_xact_rollback,
+            record_count
+        ) VALUES (
+            #{instanceId}, #{timeBucket},
+            #{avgTotalConnections}, #{avgActiveConnections}, #{avgIdleConnections},
+            #{avgIdleInTransaction}, #{avgWaitingSessions}, #{avgWaitingForLock}, #{avgWaitingForIo},
+            #{avgWaitEventClient}, #{avgWaitEventActivity}, #{avgWaitEventBufferpin},
+            #{avgWaitEventLwlock}, #{avgWaitEventTimeout}, #{avgWaitEventIpc},
+            #{avgClientBackend}, #{avgAutovacuumWorker}, #{avgParallelWorker}, #{avgBackgroundWorker},
+            #{avgLongRunningQueries},
+            #{totalXactCommit}, #{totalXactRollback},
+            #{recordCount}
+        )
+    </insert>
+
+    <!-- ========================================
+         조회용 쿼리
+         ======================================== -->
+
+    <!-- CPU Raw 데이터 조회 (시간 범위) -->
     <select id="selectCpuRawByTimeRange" resultMap="cpuRawResultMap">
         SELECT *
         FROM cpu_raw
@@ -68,7 +332,7 @@
         ORDER BY collected_at ASC
     </select>
 
-    <!-- CPU Agg 데이터 조회 -->
+    <!-- CPU Agg 데이터 조회 (시간 범위) -->
     <select id="selectCpuAggByTimeRange" resultMap="cpuAggResultMap">
         SELECT *
         FROM cpu_agg
@@ -82,7 +346,7 @@
         SELECT *
         FROM cpu_agg
         WHERE instance_id = #{instanceId}
-        AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
         <if test="statusList != null and statusList.size() > 0">
             AND status IN
             <foreach collection="statusList" item="status" open="(" separator="," close=")">
@@ -98,40 +362,25 @@
         FROM cpu_agg
         WHERE instance_id = #{instanceId}
         ORDER BY collected_at DESC
-            LIMIT 1
+        LIMIT 1
     </select>
 
-    <!-- CPU Raw 데이터 삽입 -->
-    <insert id="insertCpuRaw" parameterType="com.dajanggan.domain.system.cpu.domain.CpuRaw">
-        INSERT INTO cpu_raw (
-            instance_id, collected_at, backend_type, user_cpu, system_cpu, io_wait,
-            active_connections, parallel_workers, waiting_sessions, worker_time,
-            total_cpu_usage, idle_cpu, load_avg_1, load_avg_5, load_avg_15,
-            context_switches, running_processes, steal_cpu, created_at
-        ) VALUES (
-                     #{instanceId}, #{collectedAt}, #{backendType}, #{userCpu}, #{systemCpu}, #{ioWait},
-                     #{activeConnections}, #{parallelWorkers}, #{waitingSessions}, #{workerTime},
-                     #{totalCpuUsage}, #{idleCpu}, #{loadAvg1}, #{loadAvg5}, #{loadAvg15},
-                     #{contextSwitches}, #{runningProcesses}, #{stealCpu}, NOW()
-                 )
-    </insert>
+    <!-- CPU Agg 5분 데이터 조회 (시간 범위) -->
+    <select id="selectCpuAgg5mByTimeRange" resultMap="cpuAgg5mResultMap">
+        SELECT *
+        FROM cpu_agg_5m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        ORDER BY time_bucket ASC
+    </select>
 
-
-    <!-- CPU Agg 데이터 삽입 -->
-    <insert id="insertCpuAgg" parameterType="com.dajanggan.domain.system.cpu.domain.CpuAgg">
-        INSERT INTO cpu_agg (
-            instance_id, collected_at, backend_type, avg_user_cpu, avg_system_cpu, avg_io_wait,
-            max_user_cpu, max_io_wait, avg_active_connections, avg_parallel_workers,
-            avg_waiting_sessions, avg_worker_time, context_switches, cpu_queue_length, status,
-            avg_total_cpu, max_total_cpu, avg_idle_cpu, avg_load_1, avg_load_5, avg_load_15,
-            total_context_switches, avg_running_processes, avg_steal_cpu, max_steal_cpu, created_at
-        ) VALUES (
-                     #{instanceId}, #{collectedAt}, #{backendType}, #{avgUserCpu}, #{avgSystemCpu}, #{avgIoWait},
-                     #{maxUserCpu}, #{maxIoWait}, #{avgActiveConnections}, #{avgParallelWorkers},
-                     #{avgWaitingSessions}, #{avgWorkerTime}, #{contextSwitches}, #{cpuQueueLength}, #{status},
-                     #{avgTotalCpu}, #{maxTotalCpu}, #{avgIdleCpu}, #{avgLoad1}, #{avgLoad5}, #{avgLoad15},
-                     #{totalContextSwitches}, #{avgRunningProcesses}, #{avgStealCpu}, #{maxStealCpu}, NOW()
-                 )
-    </insert>
+    <!-- CPU Agg 30분 데이터 조회 (시간 범위) -->
+    <select id="selectCpuAgg30mByTimeRange" resultMap="cpuAgg30mResultMap">
+        SELECT *
+        FROM cpu_agg_30m
+        WHERE instance_id = #{instanceId}
+          AND time_bucket BETWEEN #{startTime} AND #{endTime}
+        ORDER BY time_bucket ASC
+    </select>
 
 </mapper>

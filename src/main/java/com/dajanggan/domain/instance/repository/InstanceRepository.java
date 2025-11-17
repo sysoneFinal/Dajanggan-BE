@@ -14,6 +14,11 @@ public interface InstanceRepository {
     List<Instance> findAll();
     
     /**
+     * 인스턴스 이름으로 ID 조회 (OS Metric Agent 자동 매핑용)
+     */
+    Optional<Long> findIdByInstanceName(@Param("instanceName") String instanceName);
+    
+    /**
      * 메트릭 수집을 위한 인스턴스 목록 조회 (secret_ref 포함)
      */
     List<Instance> findAllWithSecrets(@Param("instanceIds") List<Long> instanceIds);

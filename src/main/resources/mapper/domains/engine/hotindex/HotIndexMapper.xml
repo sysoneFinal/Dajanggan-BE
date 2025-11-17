@@ -4,6 +4,19 @@
 
 <mapper namespace="com.dajanggan.domain.engine.hotindex.repository.HotIndexMapper">
 
+    <!-- Database ResultMap 정의 -->
+    <resultMap id="databaseResultMap" type="com.dajanggan.domain.instance.domain.Database">
+        <id property="databaseId" column="database_id"/>
+        <result property="instanceId" column="instance_id"/>
+        <result property="databaseName" column="database_name"/>
+        <result property="isEnabled" column="is_enabled"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="connections" column="connections"/>
+        <result property="sizeBytes" column="size_bytes"/>
+        <result property="cacheHitRate" column="cache_hit_rate"/>
+    </resultMap>
+
     <!-- 인덱스 사용 분포 조회 -->
     <select id="selectUsageDistribution" resultType="map">
         SELECT
@@ -11,7 +24,7 @@
             COALESCE(COUNT(CASE WHEN hi.status = '미사용' THEN 1 END), 0) as unused_count,
             COALESCE(COUNT(CASE WHEN hi.status = '비효율' THEN 1 END), 0) as inefficient_count
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
     </select>
@@ -22,7 +35,7 @@
             hi.index_name,
             hi.total_idx_scan as idx_scan
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
         ORDER BY hi.total_idx_scan DESC
@@ -35,7 +48,7 @@
             hi.index_name,
             (100 - hi.avg_idx_efficiency) as inefficiency_score
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
           AND hi.status = '비효율'
@@ -49,7 +62,7 @@
             hi.collected_at as timestamp,
             hi.avg_idx_hit_ratio as cache_hit_ratio
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
           AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
@@ -63,7 +76,7 @@
             hi.total_idx_scan as idx_scan,
             hi.avg_idx_efficiency as efficiency
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
     </select>
@@ -75,7 +88,7 @@
             hi.total_idx_tup_read as idx_tup_read,
             hi.total_idx_tup_fetch as idx_tup_fetch
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
           AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
@@ -88,7 +101,7 @@
             hi.collected_at as timestamp,
             hi.avg_scan_time_ms
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
           AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
@@ -104,7 +117,7 @@
             COALESCE(SUM(hi.total_idx_tup_fetch), 0) as total_writes,
             COALESCE(COUNT(CASE WHEN hi.status = '비효율' THEN 1 END), 0) as inefficient_count
         FROM hot_index_agg hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
     </select>
@@ -127,28 +140,28 @@
         hi.avg_scan_time_ms,
         hi.last_idx_scan,
         CASE
-            WHEN hi.idx_scan = 0 THEN '미사용'
-            WHEN hi.bloat_percent >= 30 THEN 'bloat'
-            WHEN (CASE WHEN (hi.idx_blks_read + hi.idx_blks_hit) = 0 THEN 0
-                       ELSE (hi.idx_blks_hit * 100.0 / (hi.idx_blks_read + hi.idx_blks_hit))
-                  END) <![CDATA[<]]> 85
-                 OR hi.avg_scan_time_ms > 10 THEN '비효율'
-            ELSE '정상'
+        WHEN hi.idx_scan = 0 THEN '미사용'
+        WHEN hi.bloat_percent >= 30 THEN 'bloat'
+        WHEN (CASE WHEN (hi.idx_blks_read + hi.idx_blks_hit) = 0 THEN 0
+        ELSE (hi.idx_blks_hit * 100.0 / (hi.idx_blks_read + hi.idx_blks_hit))
+        END) <![CDATA[<]]> 85
+        OR hi.avg_scan_time_ms > 10 THEN '비효율'
+        ELSE '정상'
         END as status
         FROM hot_index_raw hi
-        INNER JOIN database d ON hi.database_id = d.database_id
+        INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
         AND hi.database_id = #{databaseId}
         AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
         <if test="statusList != null and statusList.size() > 0">
             AND CASE
-                WHEN hi.idx_scan = 0 THEN '미사용'
-                WHEN hi.bloat_percent >= 30 THEN 'bloat'
-                WHEN (CASE WHEN (hi.idx_blks_read + hi.idx_blks_hit) = 0 THEN 0
-                           ELSE (hi.idx_blks_hit * 100.0 / (hi.idx_blks_read + hi.idx_blks_hit))
-                      END) <![CDATA[<]]> 85
-                     OR hi.avg_scan_time_ms > 10 THEN '비효율'
-                ELSE '정상'
+            WHEN hi.idx_scan = 0 THEN '미사용'
+            WHEN hi.bloat_percent >= 30 THEN 'bloat'
+            WHEN (CASE WHEN (hi.idx_blks_read + hi.idx_blks_hit) = 0 THEN 0
+            ELSE (hi.idx_blks_hit * 100.0 / (hi.idx_blks_read + hi.idx_blks_hit))
+            END) <![CDATA[<]]> 85
+            OR hi.avg_scan_time_ms > 10 THEN '비효율'
+            ELSE '정상'
             END IN
             <foreach collection="statusList" item="status" open="(" separator="," close=")">
                 #{status}
@@ -156,5 +169,136 @@
         </if>
         ORDER BY hi.collected_at DESC
     </select>
+
+    <!-- 활성화된 데이터베이스 목록 조회 -->
+    <select id="selectActiveDatabases" resultMap="databaseResultMap">
+        SELECT
+            database_id,
+            instance_id,
+            database_name,
+            is_enabled,
+            created_at,
+            updated_at
+        FROM monitor_database
+        WHERE is_enabled = true
+        ORDER BY instance_id, database_id
+    </select>
+
+    <!-- 특정 인덱스의 이전 Raw 데이터 조회 -->
+    <select id="selectPreviousRawByIndex" resultType="com.dajanggan.domain.engine.hotindex.domain.HotIndexRaw">
+        SELECT
+            hot_index_raw_id,
+            database_id,
+            collected_at,
+            schema_name,
+            table_name,
+            index_name,
+            index_size,
+            idx_scan,
+            idx_tup_read,
+            idx_tup_fetch,
+            idx_blks_read,
+            idx_blks_hit,
+            last_idx_scan,
+            created_at,
+            index_type,
+            bloat_percent,
+            avg_scan_time_ms
+        FROM hot_index_raw
+        WHERE database_id = #{databaseId}
+          AND schema_name = #{schemaName}
+          AND table_name = #{tableName}
+          AND index_name = #{indexName}
+        ORDER BY collected_at DESC
+            LIMIT 1
+    </select>
+
+    <!-- Raw 데이터 일괄 삽입 -->
+    <insert id="insertRawBatch" parameterType="java.util.List">
+        INSERT INTO hot_index_raw (
+        database_id,
+        collected_at,
+        schema_name,
+        table_name,
+        index_name,
+        index_size,
+        idx_scan,
+        idx_tup_read,
+        idx_tup_fetch,
+        idx_blks_read,
+        idx_blks_hit,
+        index_type,
+        bloat_percent,
+        avg_scan_time_ms,
+        created_at
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.databaseId},
+            #{item.collectedAt},
+            #{item.schemaName},
+            #{item.tableName},
+            #{item.indexName},
+            #{item.indexSize},
+            #{item.idxScan},
+            #{item.idxTupRead},
+            #{item.idxTupFetch},
+            #{item.idxBlksRead},
+            #{item.idxBlksHit},
+            #{item.indexType},
+            #{item.bloatPercent},
+            #{item.avgScanTimeMs},
+            NOW()
+            )
+        </foreach>
+    </insert>
+
+    <!-- Agg 데이터 일괄 삽입 -->
+    <insert id="insertAggBatch" parameterType="java.util.List">
+        INSERT INTO hot_index_agg (
+        database_id,
+        collected_at,
+        schema_name,
+        table_name,
+        index_name,
+        avg_index_size,
+        total_idx_scan,
+        total_idx_tup_read,
+        total_idx_tup_fetch,
+        total_idx_blks_read,
+        total_idx_blks_hit,
+        avg_idx_efficiency,
+        avg_idx_hit_ratio,
+        idx_scan_per_day,
+        status,
+        index_type,
+        avg_bloat_percent,
+        avg_scan_time_ms,
+        created_at
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.databaseId},
+            #{item.collectedAt},
+            #{item.schemaName},
+            #{item.tableName},
+            #{item.indexName},
+            #{item.avgIndexSize},
+            #{item.totalIdxScan},
+            #{item.totalIdxTupRead},
+            #{item.totalIdxTupFetch},
+            #{item.totalIdxBlksRead},
+            #{item.totalIdxBlksHit},
+            #{item.avgIdxEfficiency},
+            #{item.avgIdxHitRatio},
+            #{item.idxScanPerDay},
+            #{item.status},
+            #{item.indexType},
+            #{item.avgBloatPercent},
+            #{item.avgScanTimeMs},
+            NOW()
+            )
+        </foreach>
+    </insert>
 
 </mapper>
