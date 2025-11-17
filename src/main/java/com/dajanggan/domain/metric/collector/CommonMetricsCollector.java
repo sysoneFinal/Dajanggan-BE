@@ -23,12 +23,13 @@ public class CommonMetricsCollector {
     private final InstanceRepository instanceRepository;
     private final SessionMetricsCollector sessionMetricsCollector;
     private final QueryMetricsCollector queryMetricsCollector;
+    private final VacuumMetricsCollector vacuumMetricsCollector;
 
     /** 1분마다 전체 활성화된 데이터베이스의 메트릭 수집 */
     @Scheduled(fixedRate = 60000)  // 60,000ms = 1분
     public void collectAllDatabases() {
         OffsetDateTime collectedAt = OffsetDateTime.now();
-        log.info("========== 원시 데이터 수집 시작  at {} ==========", collectedAt);
+        log.info("========== Metric Collection Started at {} ==========", collectedAt);
 
         // (1) 활성화된 데이터베이스 목록 조회 (is_enabled = true)
         List<Database> databases = databaseRepository.findAllEnabled();
@@ -37,6 +38,8 @@ public class CommonMetricsCollector {
             log.warn("수집 대상 데이터베이스가 없습니다. (is_enabled = true인 DB가 없음)");
             return;
         }
+
+        log.info("수집 대상 데이터베이스: {} 개", databases.size());
 
         // (2) 인스턴스 정보 한 번에 조회 (N+1 문제 방지) - secret_ref 포함!
         List<Long> instanceIds = databases.stream()
@@ -72,6 +75,14 @@ public class CommonMetricsCollector {
                 // 쿼리 메트릭 수집
                 queryMetricsCollector.collect(instance, database, collectedAt);
 
+
+                // 쿼리 메트릭 수집
+                queryMetricsCollector.collect(instance, database, collectedAt);
+
+                // Vacuum 메트릭 수집
+                vacuumMetricsCollector.collect(instance, database, collectedAt);
+
+
                 successCount++;
 
             } catch (Exception e) {
@@ -86,7 +97,7 @@ public class CommonMetricsCollector {
             }
         }
 
-        log.info("========== 원시 데이터 수집 완료 : Success={}, Failure={} ==========",
+        log.info("========== Metric Collection Completed: Success={}, Failure={} ==========", 
                 successCount, failureCount);
     }
 }

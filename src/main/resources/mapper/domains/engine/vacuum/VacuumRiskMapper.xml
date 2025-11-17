@@ -4,6 +4,11 @@
 
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumRiskMapper">
 
+    <!--
+        ✅ VacuumRisk는 vacuum_raw_metrics를 사용
+        이유: 테이블별 상세 정보, bloat, wraparound 등 고급 메트릭 필요
+    -->
+
     <!-- Blockers per Hour -->
     <select id="getBlockersPerHour" resultType="com.dajanggan.domain.vacuum.dto.VacuumRiskDto$BlockersPerHourRaw">
         WITH time_series AS (
@@ -16,11 +21,13 @@
         hourly_data AS (
         SELECT
         date_trunc('hour', collected_at) AS time_bucket,
-        COALESCE(AVG(blockers_per_hour), 0) AS avg_blockers
-        FROM vacuum_trend_metrics
+        COUNT(DISTINCT table_name) FILTER (
+        WHERE session_phase IS NOT NULL
+        AND session_phase != 'not_running'
+        ) AS avg_blockers
+        FROM vacuum_raw_metrics
         WHERE collected_at BETWEEN COALESCE(#{start}, NOW() - INTERVAL '24 hours')
         AND COALESCE(#{end}, NOW())
-        AND blockers_per_hour IS NOT NULL
         <if test="databaseId != null">
             AND database_id = #{databaseId}
         </if>
@@ -28,7 +35,7 @@
         )
         SELECT
         TO_CHAR(ts.time_bucket, 'HH24:MI') AS hourLabel,
-        COALESCE(ROUND(hd.avg_blockers)::INTEGER, 0) AS blockersCount
+        COALESCE(hd.avg_blockers, 0) AS blockersCount
         FROM time_series ts
         LEFT JOIN hourly_data hd ON ts.time_bucket = hd.time_bucket
         ORDER BY ts.time_bucket
@@ -39,15 +46,20 @@
         WITH latest_metrics AS (
         SELECT DISTINCT ON (table_name)
         database_id,
-        COALESCE(NULLIF(TRIM(table_name), ''), 'table_' || database_id::TEXT) AS table_name,
-        bloat_bytes, bloat_ratio, dead_tuple_total, collected_at
-        FROM vacuum_trend_metrics
+        table_name,
+        relsize_total_bytes AS bloat_bytes,
+        CASE
+        WHEN relsize_total_bytes > 0 AND (n_live_tup + n_dead_tup) > 0
+        THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup + 1))
+        ELSE 0
+        END AS bloat_ratio,
+        n_dead_tup AS dead_tuple_total,
+        collected_at
+        FROM vacuum_raw_metrics
         WHERE collected_at BETWEEN COALESCE(#{start}, NOW() - INTERVAL '24 hours')
         AND COALESCE(#{end}, NOW())
         AND table_name IS NOT NULL
-        AND bloat_ratio IS NOT NULL
-        AND bloat_bytes IS NOT NULL
-        AND bloat_bytes > 0
+        AND n_dead_tup > 0
         <if test="databaseId != null">
             AND database_id = #{databaseId}
         </if>
@@ -58,7 +70,7 @@
         table_name  AS tableName,
         bloat_bytes AS bloatBytes,
         bloat_ratio AS bloatRatio,
-        COALESCE(dead_tuple_total, 0) AS deadTuples
+        dead_tuple_total AS deadTuples
         FROM latest_metrics
         WHERE bloat_ratio > 0
         ORDER BY bloat_ratio DESC, bloat_bytes DESC
@@ -70,16 +82,21 @@
         WITH recent_blockers AS (
         SELECT DISTINCT ON (table_name)
         database_id,
-        COALESCE(NULLIF(TRIM(table_name), ''), 'table_' || database_id::TEXT) AS table_name,
-        blockers_per_hour,
-        blocked_seconds_per_hour,
+        table_name,
+        CASE
+        WHEN session_phase IN ('vacuuming', 'index_cleanup') THEN 2
+        WHEN session_phase IN ('scanning') THEN 1
+        ELSE 0
+        END AS blockers_per_hour,
+        COALESCE(elapsed_seconds, 0) AS blocked_seconds,
+        session_phase,
         collected_at
-        FROM vacuum_trend_metrics
+        FROM vacuum_raw_metrics
         WHERE collected_at BETWEEN COALESCE(#{start}, NOW() - INTERVAL '24 hours')
         AND COALESCE(#{end}, NOW())
         AND table_name IS NOT NULL
-        AND blockers_per_hour > 0
-        AND blocked_seconds_per_hour > 0
+        AND session_phase IS NOT NULL
+        AND session_phase != 'not_running'
         <if test="databaseId != null">
             AND database_id = #{databaseId}
         </if>
@@ -94,15 +111,15 @@
         WHEN blockers_per_hour >= 1 THEN 'ShareUpdateExclusiveLock'
         ELSE 'ShareLock'
         END AS lockType,
-        (EXTRACT(EPOCH FROM (NOW() - collected_at))::BIGINT +
-        (blockers_per_hour * 3600)::BIGINT) AS transactionAge,
-        ROUND(blocked_seconds_per_hour)::BIGINT AS blockDuration,
+        EXTRACT(EPOCH FROM (NOW() - collected_at))::BIGINT AS transactionAge,
+        blocked_seconds AS blockDuration,
         CASE
-        WHEN blockers_per_hour >= 2 THEN 'idle in transaction'
+        WHEN session_phase IN ('vacuuming', 'index_cleanup') THEN 'idle in transaction'
         ELSE 'active'
         END AS queryState
         FROM recent_blockers
-        ORDER BY blockers_per_hour DESC, blocked_seconds_per_hour DESC
+        WHERE blockers_per_hour > 0
+        ORDER BY blockers_per_hour DESC, blocked_seconds DESC
         LIMIT 10
     </select>
 
@@ -110,12 +127,17 @@
     <select id="getWraparoundProgress" resultType="com.dajanggan.domain.vacuum.dto.VacuumRiskDto$WraparoundProgressRaw">
         WITH latest_wraparound AS (
         SELECT DISTINCT ON (database_id)
-        database_id, wraparound_progress_pct, collected_at
-        FROM vacuum_trend_metrics
+        database_id,
+        -- Wraparound 근사 계산: (total_dead_tuples / max_expected) * 100
+        -- PostgreSQL의 autovacuum_freeze_max_age 기본값: 200M
+        LEAST(
+        (SUM(n_dead_tup) OVER (PARTITION BY database_id)::NUMERIC / 200000000) * 100,
+        100
+        ) AS wraparound_progress_pct,
+        collected_at
+        FROM vacuum_raw_metrics
         WHERE collected_at BETWEEN COALESCE(#{start}, NOW() - INTERVAL '24 hours')
         AND COALESCE(#{end}, NOW())
-        AND wraparound_progress_pct IS NOT NULL
-        AND wraparound_progress_pct > 0
         <if test="databaseId != null">
             AND database_id = #{databaseId}
         </if>
@@ -125,6 +147,7 @@
         database_id AS databaseId,
         wraparound_progress_pct AS wraparoundProgressPct
         FROM latest_wraparound
+        WHERE wraparound_progress_pct > 0
         ORDER BY wraparound_progress_pct DESC, database_id
         LIMIT 5
     </select>

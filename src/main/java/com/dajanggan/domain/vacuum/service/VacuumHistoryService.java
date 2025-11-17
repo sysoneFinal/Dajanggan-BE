@@ -1,7 +1,7 @@
 package com.dajanggan.domain.vacuum.service;
 
 import com.dajanggan.domain.vacuum.dto.VacuumHistoryDto;
-import com.dajanggan.domain.vacuum.repository.VacuumHistoryRepository;
+import com.dajanggan.domain.vacuum.repository.VacuumHistoryMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class VacuumHistoryService {
 
-    private final VacuumHistoryRepository repository;
+    private final VacuumHistoryMapper vacuumHistoryMapper;
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     public List<VacuumHistoryDto.Response> getVacuumHistory(VacuumHistoryDto.Request request) {
@@ -30,7 +30,7 @@ public class VacuumHistoryService {
         log.info("Vacuum History 조회: databaseId={}, {} ~ {}, status={}",
                 request.getDatabaseId(), startTime, endTime, request.getStatus());
 
-        List<VacuumHistoryDto.Raw> rawList = repository.getVacuumHistoryList(
+        List<VacuumHistoryDto.Raw> rawList = vacuumHistoryMapper.getVacuumHistoryList(
                 request.getDatabaseId(), startTime, endTime);
 
         return rawList.stream()
@@ -41,7 +41,7 @@ public class VacuumHistoryService {
 
     private VacuumHistoryDto.Response convertToHistoryDto(VacuumHistoryDto.Raw raw, int hours) {
         // 빈도 계산
-        Integer frequency = repository.getVacuumFrequency(raw.getDatabaseId(), hours);
+        Integer frequency = vacuumHistoryMapper.getVacuumFrequency(raw.getDatabaseId(), hours);
         String frequencyStr = formatFrequency(frequency, hours);
 
         // 상태 판단 (bloat 비율 > 5% 또는 dead tuples > 100K → 주의)
