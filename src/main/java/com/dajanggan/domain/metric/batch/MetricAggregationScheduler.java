@@ -18,31 +18,31 @@ import java.time.LocalDateTime;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class MetricAggregationScheduler {
 
     private final JobLauncher jobLauncher;
+    
+    @Qualifier("sessionAgg1mJob")
     private final Job sessionAgg1mJob;
+
+    @Qualifier("sessionAgg5mJob")
     private final Job sessionAgg5mJob;
+
+    @Qualifier("queryAgg1mJob")
     private final Job queryAgg1mJob;
-    private final Job queryAgg5mJob;
+
+    @Qualifier("databaseMetricsAggJob")
     private final Job databaseMetricsAggJob;
 
-    public MetricAggregationScheduler(
-            JobLauncher jobLauncher,
-            @Qualifier("sessionAgg1mJob") Job sessionAgg1mJob,
-            @Qualifier("sessionAgg5mJob") Job sessionAgg5mJob,
-            @Qualifier("queryAgg1mJob") Job queryAgg1mJob,
-            @Qualifier("queryAgg5mJob") Job queryAgg5mJob,
-            @Qualifier("databaseMetricsAggJob") Job databaseMetricsAggJob
-    ) {
-        this.jobLauncher = jobLauncher;
-        this.sessionAgg1mJob = sessionAgg1mJob;
-        this.sessionAgg5mJob = sessionAgg5mJob;
-        this.queryAgg1mJob = queryAgg1mJob;
-        this.queryAgg5mJob = queryAgg5mJob;
-        this.databaseMetricsAggJob = databaseMetricsAggJob;
-    }
+    @Qualifier("queryAgg5mJob")
+    private final Job queryAgg5mJob;
 
+    @Qualifier("vacuumAgg1mJob")
+    private final Job vacuumAgg1mJob;
+
+    @Qualifier("vacuumAgg5mJob")
+    private final Job vacuumAgg5mJob;
 
     /**
      * 1분마다 1분 집계 Job들 실행
@@ -55,6 +55,10 @@ public class MetricAggregationScheduler {
 
         runJob(sessionAgg1mJob, "세션 1분 집계", runTime);
         runJob(queryAgg1mJob, "쿼리 1분 집계", runTime);
+
+        // Vacuum 1분 집계
+        runJob(vacuumAgg1mJob, "Vacuum 1분 집계", runTime);
+
 
         log.info("========== 1분 집계 배치 완료 ==========");
     }
@@ -70,6 +74,10 @@ public class MetricAggregationScheduler {
 
         runJob(sessionAgg5mJob, "세션 5분 집계", runTime);
         runJob(queryAgg5mJob, "쿼리 5분 집계", runTime);
+
+        // Vacuum 5분 집계
+        runJob(vacuumAgg5mJob, "Vacuum 5분 집계", runTime);
+
 
         log.info("========== 5분 집계 배치 완료 ==========");
     }

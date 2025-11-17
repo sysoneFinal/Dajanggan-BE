@@ -22,33 +22,47 @@ public class VacuumMaintenanceService {
 
     private final VacuumMaintenanceRepository repository;
 
-    // Maintenance 대시보드 전체 데이터 조회
     public VacuumMaintenanceDto.Response getDashboardData(
-            int hours,  Long databaseId, String tableName) {
+            int hours, Long databaseId, String tableName) {
 
         OffsetDateTime endTime = OffsetDateTime.now();
         OffsetDateTime startTime = endTime.minusHours(hours);
 
-        log.info("Vacuum Maintenance 대시보드 조회:  databaseId={}, {} ~ {}",
-                databaseId, startTime, endTime);
+        // ✅ 시간 범위에 따라 집계 테이블 선택
+        String aggTable = selectAggregationTable(hours);
+
+        log.info("🔍 Vacuum Dashboard: databaseId={}, hours={}, table={}",
+                databaseId, hours, aggTable);
 
         return VacuumMaintenanceDto.Response.builder()
-                .kpi(buildKpiMetrics(startTime, endTime, databaseId))
-                .deadtuple(buildDeadTupleChart(startTime, endTime, databaseId))
-                .autovacuum(buildAutovacuumChart(startTime, endTime, databaseId))
-                .latency(buildLatencyChart(startTime, endTime, databaseId))
+                .kpi(buildKpiMetrics(startTime, endTime, databaseId, aggTable))
+                .deadtuple(buildDeadTupleChart(startTime, endTime, databaseId, aggTable))
+                .autovacuum(buildAutovacuumChart(startTime, endTime, databaseId, aggTable))
+                .latency(buildLatencyChart(startTime, endTime, databaseId, aggTable))
                 .sessions(getCurrentSessions(databaseId, tableName))
                 .build();
     }
 
-    // KPI 지표 계산
+    /**
+     * ✅ 시간 범위에 따라 적절한 집계 테이블 선택
+     */
+    private String selectAggregationTable(int hours) {
+        if (hours <= 1) {
+            return "vacuum_metrics_agg_1m";
+        } else if (hours <= 6) {
+            return "vacuum_metrics_agg_5m";
+        } else {
+            return "vacuum_metrics_agg_5m";
+        }
+    }
+
     private VacuumMaintenanceDto.Kpi buildKpiMetrics(
             OffsetDateTime start, OffsetDateTime end,
-            Long databaseId) {
+            Long databaseId, String aggTable) {
 
-        Double avgDelay = repository.getAvgDelaySeconds(start, end, databaseId);
-        Double avgDuration = repository.getAvgVacuumDuration(start, end, databaseId);
-        Long totalDeadTuple = repository.getTotalDeadTuples(start, end, databaseId);
+        Double avgDelay = repository.getAvgDelaySeconds(start, end, databaseId, aggTable);
+        Double avgDuration = repository.getAvgVacuumDuration(start, end, databaseId, aggTable);
+        Long totalDeadTuple = repository.getTotalDeadTuples(start, end, databaseId, aggTable);
 
         Integer maxWorkers = repository.getMaxWorkers(databaseId);
         Integer activeWorkers = repository.getActiveWorkers(databaseId);
@@ -68,13 +82,12 @@ public class VacuumMaintenanceService {
                 .build();
     }
 
-    // Dead Tuple 증가 vs 처리 속도 차트
     private VacuumMaintenanceDto.Chart buildDeadTupleChart(
             OffsetDateTime start, OffsetDateTime end,
-            Long databaseId) {
+            Long databaseId, String aggTable) {
 
         List<VacuumMaintenanceDto.VacuumTrendRaw> trends =
-                repository.getDeadTupleTrend(start, end, 24, databaseId);
+                repository.getDeadTupleTrend(start, end, 24, databaseId, aggTable);
 
         List<String> labels = new ArrayList<>();
         List<Double> increaseRate = new ArrayList<>();
@@ -92,13 +105,12 @@ public class VacuumMaintenanceService {
                 .build();
     }
 
-    // Autovacuum Cost Delay & Workers 차트
     private VacuumMaintenanceDto.Chart buildAutovacuumChart(
             OffsetDateTime start, OffsetDateTime end,
-            Long databaseId) {
+            Long databaseId, String aggTable) {
 
         List<VacuumMaintenanceDto.VacuumTrendRaw> trends =
-                repository.getAutovacuumTrend(start, end, 24, databaseId);
+                repository.getAutovacuumTrend(start, end, 24, databaseId, aggTable);
 
         List<String> labels = new ArrayList<>();
         List<Double> costDelay = new ArrayList<>();
@@ -119,13 +131,12 @@ public class VacuumMaintenanceService {
                 .build();
     }
 
-    // Latency Trend 차트
     private VacuumMaintenanceDto.Chart buildLatencyChart(
             OffsetDateTime start, OffsetDateTime end,
-            Long databaseId) {
+            Long databaseId, String aggTable) {
 
         List<VacuumMaintenanceDto.VacuumTrendRaw> trends =
-                repository.getLatencyTrend(start, end, 24,databaseId);
+                repository.getLatencyTrend(start, end, 24, databaseId, aggTable);
 
         List<String> labels = new ArrayList<>();
         List<Double> latency = new ArrayList<>();
@@ -141,7 +152,6 @@ public class VacuumMaintenanceService {
                 .build();
     }
 
-    // 현재 실행 중인 세션 목록
     public List<VacuumMaintenanceDto.Session> getCurrentSessions(
             Long databaseId, String tableName) {
 
@@ -153,7 +163,6 @@ public class VacuumMaintenanceService {
                 .collect(Collectors.toList());
     }
 
-    // Raw DTO → Session DTO 변환
     private VacuumMaintenanceDto.Session convertToSessionDto(
             VacuumMaintenanceDto.VacuumSessionRaw raw) {
 

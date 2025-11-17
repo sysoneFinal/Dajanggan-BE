@@ -23,6 +23,7 @@ public class CommonMetricsCollector {
     private final InstanceRepository instanceRepository;
     private final SessionMetricsCollector sessionMetricsCollector;
     private final QueryMetricsCollector queryMetricsCollector;
+    private final VacuumMetricsCollector vacuumMetricsCollector;
 
     /** 1분마다 전체 활성화된 데이터베이스의 메트릭 수집 */
     @Scheduled(fixedRate = 60000)  // 60,000ms = 1분
@@ -70,6 +71,10 @@ public class CommonMetricsCollector {
                 sessionMetricsCollector.collect(instance, database, collectedAt);
                 // 쿼리 메트릭 수집
                 queryMetricsCollector.collect(instance, database, collectedAt);
+
+                // Vacuum 메트릭 수집
+                vacuumMetricsCollector.collect(instance, database, collectedAt);
+
 
                 successCount++;
 

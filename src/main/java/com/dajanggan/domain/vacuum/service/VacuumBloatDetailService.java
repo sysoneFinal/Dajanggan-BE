@@ -1,13 +1,14 @@
 package com.dajanggan.domain.vacuum.service;
 
-import com.dajanggan.domain.vacuum.domain.VacuumTrendMetrics;
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDetailDto;
 import com.dajanggan.domain.vacuum.repository.VacuumBloatDetailMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +28,8 @@ public class VacuumBloatDetailService {
      * 전체 대시보드 데이터 조회 (한번에 모두)
      */
     public VacuumBloatDetailDto.Response getBloatDetail(Long databaseId, String tableName) {
+        log.info("🔍 Fetching bloat detail: databaseId={}, tableName={}", databaseId, tableName);
+
         return VacuumBloatDetailDto.Response.builder()
                 .kpi(getKpi(databaseId, tableName))
                 .bloatTrend(getBloatTrend(databaseId, tableName, 30))
@@ -39,7 +42,7 @@ public class VacuumBloatDetailService {
      * KPI 데이터만 조회
      */
     public VacuumBloatDetailDto.Kpi getKpi(Long databaseId, String tableName) {
-        VacuumTrendMetrics latest = bloatDetailMapper.findLatestMetricsByTable(databaseId, tableName);
+        Map<String, Object> latest = bloatDetailMapper.findLatestMetricsByTable(databaseId, tableName);
         return buildKpi(latest);
     }
 
@@ -47,10 +50,10 @@ public class VacuumBloatDetailService {
      * Bloat % Trend 조회
      */
     public VacuumBloatDetailDto.BloatTrend getBloatTrend(Long databaseId, String tableName, int days) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime startDate = now.minusDays(days);
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime startDate = now.minusDays(days);
 
-        List<VacuumTrendMetrics> data = bloatDetailMapper.findBloatTrendByTable(
+        List<Map<String, Object>> data = bloatDetailMapper.findBloatTrendByTable(
                 databaseId, tableName, startDate, now
         );
         return buildBloatTrend(data);
@@ -60,10 +63,10 @@ public class VacuumBloatDetailService {
      * Dead Tuples Trend 조회
      */
     public VacuumBloatDetailDto.DeadTuplesTrend getDeadTuplesTrend(Long databaseId, String tableName, int days) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime startDate = now.minusDays(days);
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime startDate = now.minusDays(days);
 
-        List<VacuumTrendMetrics> data = bloatDetailMapper.findDeadTuplesTrendByTable(
+        List<Map<String, Object>> data = bloatDetailMapper.findDeadTuplesTrendByTable(
                 databaseId, tableName, startDate, now
         );
         return buildDeadTuplesTrend(data);
@@ -73,8 +76,8 @@ public class VacuumBloatDetailService {
      * Index Bloat Trend 조회
      */
     public VacuumBloatDetailDto.IndexBloatTrend getIndexBloatTrend(Long databaseId, String tableName, int days) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime startDate = now.minusDays(days);
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime startDate = now.minusDays(days);
 
         List<Map<String, Object>> data = bloatDetailMapper.findIndexBloatTrendByTable(
                 databaseId, tableName, startDate, now
@@ -86,13 +89,17 @@ public class VacuumBloatDetailService {
      * 데이터베이스 내 테이블 목록 조회
      */
     public List<String> getTableList(Long databaseId) {
-        return bloatDetailMapper.findTableList(databaseId);
+        log.info("🔍 Fetching table list for databaseId={}", databaseId);
+        List<String> tables = bloatDetailMapper.findTableList(databaseId);
+        log.info("✅ Found {} tables", tables.size());
+        return tables;
     }
 
     // ========== Private Helper Methods ==========
 
-    private VacuumBloatDetailDto.Kpi buildKpi(VacuumTrendMetrics latest) {
-        if (latest == null) {
+    private VacuumBloatDetailDto.Kpi buildKpi(Map<String, Object> latest) {
+        if (latest == null || latest.isEmpty()) {
+            log.warn("⚠️ No latest metrics found, returning default KPI");
             return VacuumBloatDetailDto.Kpi.builder()
                     .bloatPct("0%")
                     .tableSize("0 B")
@@ -100,19 +107,31 @@ public class VacuumBloatDetailService {
                     .build();
         }
 
+        // Bloat Percentage
         String bloatPct = "0%";
-        if (latest.getBloatRatio() != null) {
-            bloatPct = String.format("%.1f%%", latest.getBloatRatio().doubleValue() * 100);
+        Object bloatRatioObj = latest.get("bloat_ratio");
+        if (bloatRatioObj != null) {
+            double ratio = convertToDouble(bloatRatioObj);
+            bloatPct = String.format("%.1f%%", ratio * 100);
         }
 
+        // Table Size
+        String tableSize = "0 B";
+        Object tableSizeObj = latest.get("table_size");
+        if (tableSizeObj != null) {
+            long sizeBytes = convertToLong(tableSizeObj);
+            tableSize = formatBytes(sizeBytes);
+        }
+
+        // Wasted Space (Bloat Bytes)
         String wastedSpace = "0 B";
-        if (latest.getBloatBytes() != null) {
-            wastedSpace = formatBytes(latest.getBloatBytes());
+        Object bloatBytesObj = latest.get("bloat_bytes");
+        if (bloatBytesObj != null) {
+            long bloatBytes = convertToLong(bloatBytesObj);
+            wastedSpace = formatBytes(bloatBytes);
         }
 
-        // Table Size는 vacuum_raw_metrics의 relsize_total_bytes에서 가져와야 함
-        // 여기서는 임시로 계산
-        String tableSize = "N/A";
+        log.info("📊 KPI: bloatPct={}, tableSize={}, wastedSpace={}", bloatPct, tableSize, wastedSpace);
 
         return VacuumBloatDetailDto.Kpi.builder()
                 .bloatPct(bloatPct)
@@ -121,17 +140,28 @@ public class VacuumBloatDetailService {
                 .build();
     }
 
-    private VacuumBloatDetailDto.BloatTrend buildBloatTrend(List<VacuumTrendMetrics> data) {
+    private VacuumBloatDetailDto.BloatTrend buildBloatTrend(List<Map<String, Object>> data) {
         List<Double> values = new ArrayList<>();
         List<String> labels = new ArrayList<>();
 
-        for (VacuumTrendMetrics metric : data) {
-            if (metric.getBloatRatio() != null) {
-                Double bloatRatio = metric.getBloatRatio().doubleValue(); // BigDecimal -> Double
-                values.add(bloatRatio * 100); // 퍼센트로 변환
-                labels.add(metric.getCollectedAt().format(LABEL_FORMATTER));
+        for (Map<String, Object> row : data) {
+            Object bloatRatioObj = row.get("bloat_ratio");
+            Object collectedAtObj = row.get("collected_at");
+
+            if (bloatRatioObj != null && collectedAtObj != null) {
+                double ratio = convertToDouble(bloatRatioObj);
+                values.add(ratio * 100); // 퍼센트로 변환
+
+                OffsetDateTime collectedAt = convertToOffsetDateTime(collectedAtObj);
+                if (collectedAt != null) {
+                    labels.add(collectedAt.format(LABEL_FORMATTER));
+                } else {
+                    labels.add("");
+                }
             }
         }
+
+        log.info("📈 Bloat Trend: {} data points", values.size());
 
         return VacuumBloatDetailDto.BloatTrend.builder()
                 .data(values)
@@ -139,17 +169,28 @@ public class VacuumBloatDetailService {
                 .build();
     }
 
-    private VacuumBloatDetailDto.DeadTuplesTrend buildDeadTuplesTrend(List<VacuumTrendMetrics> data) {
+    private VacuumBloatDetailDto.DeadTuplesTrend buildDeadTuplesTrend(List<Map<String, Object>> data) {
         List<Long> values = new ArrayList<>();
         List<String> labels = new ArrayList<>();
 
-        for (VacuumTrendMetrics metric : data) {
-            Long deadTuples = metric.getDeadTupleTotal();
-            if (deadTuples != null) {
+        for (Map<String, Object> row : data) {
+            Object deadTuplesObj = row.get("dead_tuple_total");
+            Object collectedAtObj = row.get("collected_at");
+
+            if (deadTuplesObj != null && collectedAtObj != null) {
+                long deadTuples = convertToLong(deadTuplesObj);
                 values.add(deadTuples);
-                labels.add(metric.getCollectedAt().format(LABEL_FORMATTER));
+
+                OffsetDateTime collectedAt = convertToOffsetDateTime(collectedAtObj);
+                if (collectedAt != null) {
+                    labels.add(collectedAt.format(LABEL_FORMATTER));
+                } else {
+                    labels.add("");
+                }
             }
         }
+
+        log.info("📈 Dead Tuples Trend: {} data points", values.size());
 
         return VacuumBloatDetailDto.DeadTuplesTrend.builder()
                 .data(values)
@@ -158,6 +199,15 @@ public class VacuumBloatDetailService {
     }
 
     private VacuumBloatDetailDto.IndexBloatTrend buildIndexBloatTrend(List<Map<String, Object>> data) {
+        if (data == null || data.isEmpty()) {
+            log.info("📈 Index Bloat Trend: No data (feature not implemented yet)");
+            return VacuumBloatDetailDto.IndexBloatTrend.builder()
+                    .data(new ArrayList<>())
+                    .labels(new ArrayList<>())
+                    .names(new ArrayList<>())
+                    .build();
+        }
+
         // 인덱스별로 그룹화
         Map<String, List<Map<String, Object>>> groupedByIndex = data.stream()
                 .collect(Collectors.groupingBy(m -> (String) m.get("index_name")));
@@ -170,7 +220,10 @@ public class VacuumBloatDetailService {
         if (!indexNames.isEmpty()) {
             List<Map<String, Object>> firstIndexData = groupedByIndex.get(indexNames.get(0));
             labels = firstIndexData.stream()
-                    .map(m -> ((LocalDateTime) m.get("collected_at")).format(LABEL_FORMATTER))
+                    .map(m -> {
+                        OffsetDateTime dt = convertToOffsetDateTime(m.get("collected_at"));
+                        return dt != null ? dt.format(LABEL_FORMATTER) : "";
+                    })
                     .collect(Collectors.toList());
         }
 
@@ -180,16 +233,13 @@ public class VacuumBloatDetailService {
                     .map(m -> {
                         Object ratioObj = m.get("bloat_ratio");
                         if (ratioObj == null) return 0.0;
-
-                        // BigDecimal -> Double 변환
-                        if (ratioObj instanceof java.math.BigDecimal) {
-                            return ((java.math.BigDecimal) ratioObj).doubleValue() * 100;
-                        }
-                        return ((Double) ratioObj) * 100;
+                        return convertToDouble(ratioObj) * 100;
                     })
                     .collect(Collectors.toList());
             seriesData.add(indexValues);
         }
+
+        log.info("📈 Index Bloat Trend: {} indexes, {} data points", indexNames.size(), labels.size());
 
         return VacuumBloatDetailDto.IndexBloatTrend.builder()
                 .data(seriesData)
@@ -198,10 +248,72 @@ public class VacuumBloatDetailService {
                 .build();
     }
 
+    // ========== Type Conversion Helpers ==========
+
+    private double convertToDouble(Object obj) {
+        if (obj instanceof BigDecimal) {
+            return ((BigDecimal) obj).doubleValue();
+        } else if (obj instanceof Double) {
+            return (Double) obj;
+        } else if (obj instanceof Float) {
+            return ((Float) obj).doubleValue();
+        } else if (obj instanceof Number) {
+            return ((Number) obj).doubleValue();
+        }
+        return 0.0;
+    }
+
+    private long convertToLong(Object obj) {
+        if (obj instanceof BigDecimal) {
+            return ((BigDecimal) obj).longValue();
+        } else if (obj instanceof Long) {
+            return (Long) obj;
+        } else if (obj instanceof Integer) {
+            return ((Integer) obj).longValue();
+        } else if (obj instanceof Number) {
+            return ((Number) obj).longValue();
+        }
+        return 0L;
+    }
+
     private String formatBytes(long bytes) {
+        if (bytes < 0) return "0 B";
         if (bytes < 1024) return bytes + " B";
+
         int exp = (int) (Math.log(bytes) / Math.log(1024));
         String pre = "KMGTPE".charAt(exp - 1) + "";
         return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
+    }
+
+    /**
+     * DB에서 온 객체를 OffsetDateTime으로 안전하게 변환합니다.
+     * - java.sql.Timestamp -> OffsetDateTime (시스템 기본 시간대)
+     * - java.time.OffsetDateTime -> 그대로 반환
+     * - java.time.LocalDateTime -> 시스템 기본 오프셋으로 변환
+     * - java.time.Instant -> 시스템 기본 오프셋으로 변환
+     */
+    private OffsetDateTime convertToOffsetDateTime(Object obj) {
+        if (obj == null) return null;
+
+        ZoneId zone = ZoneId.systemDefault();
+
+        if (obj instanceof OffsetDateTime) {
+            return (OffsetDateTime) obj;
+        } else if (obj instanceof Timestamp) {
+            Instant instant = ((Timestamp) obj).toInstant();
+            return OffsetDateTime.ofInstant(instant, zone);
+        } else if (obj instanceof Instant) {
+            return OffsetDateTime.ofInstant((Instant) obj, zone);
+        } else if (obj instanceof LocalDateTime) {
+            LocalDateTime ldt = (LocalDateTime) obj;
+            return ldt.atZone(zone).toOffsetDateTime();
+        } else if (obj instanceof java.util.Date) {
+            Instant instant = ((java.util.Date) obj).toInstant();
+            return OffsetDateTime.ofInstant(instant, zone);
+        }
+
+        // 지원하지 않는 타입일 경우 null 반환
+        log.warn("Unsupported collected_at type: {}", obj.getClass().getName());
+        return null;
     }
 }

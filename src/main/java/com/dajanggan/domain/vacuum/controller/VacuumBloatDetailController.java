@@ -15,7 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VacuumBloatDetailController {
 
-    private final VacuumBloatDetailService bloatDetailService;
+    private final VacuumBloatDetailService vacuumBloatDetailService;
 
     /**
      * 전체 대시보드 데이터 조회 (한번에 모두)
@@ -28,7 +28,7 @@ public class VacuumBloatDetailController {
         log.info("GET /api/vacuum/bloat/detail/dashboard - database: {}, table: {}",
                 databaseId, tableName);
 
-        VacuumBloatDetailDto.Response response = bloatDetailService.getBloatDetail(databaseId, tableName);
+        VacuumBloatDetailDto.Response response = vacuumBloatDetailService.getBloatDetail(databaseId, tableName);
         return ResponseEntity.ok(response);
     }
 
@@ -43,7 +43,7 @@ public class VacuumBloatDetailController {
         log.info("GET /api/vacuum/bloat/detail/kpi - database: {}, table: {}",
                 databaseId, tableName);
 
-        VacuumBloatDetailDto.Kpi kpi = bloatDetailService.getKpi(databaseId, tableName);
+        VacuumBloatDetailDto.Kpi kpi = vacuumBloatDetailService.getKpi(databaseId, tableName);
         return ResponseEntity.ok(kpi);
     }
 
@@ -59,7 +59,7 @@ public class VacuumBloatDetailController {
         log.info("GET /api/vacuum/bloat/detail/bloat-trend - database: {}, table: {}, days: {}",
                 databaseId, tableName, days);
 
-        VacuumBloatDetailDto.BloatTrend trend = bloatDetailService.getBloatTrend(databaseId, tableName, days);
+        VacuumBloatDetailDto.BloatTrend trend = vacuumBloatDetailService.getBloatTrend(databaseId, tableName, days);
         return ResponseEntity.ok(trend);
     }
 
@@ -75,7 +75,7 @@ public class VacuumBloatDetailController {
         log.info("GET /api/vacuum/bloat/detail/dead-tuples-trend - database: {}, table: {}, days: {}",
                 databaseId, tableName, days);
 
-        VacuumBloatDetailDto.DeadTuplesTrend trend = bloatDetailService.getDeadTuplesTrend(databaseId, tableName, days);
+        VacuumBloatDetailDto.DeadTuplesTrend trend = vacuumBloatDetailService.getDeadTuplesTrend(databaseId, tableName, days);
         return ResponseEntity.ok(trend);
     }
 
@@ -91,7 +91,7 @@ public class VacuumBloatDetailController {
         log.info("GET /api/vacuum/bloat/detail/index-bloat-trend - database: {}, table: {}, days: {}",
                 databaseId, tableName, days);
 
-        VacuumBloatDetailDto.IndexBloatTrend trend = bloatDetailService.getIndexBloatTrend(databaseId, tableName, days);
+        VacuumBloatDetailDto.IndexBloatTrend trend = vacuumBloatDetailService.getIndexBloatTrend(databaseId, tableName, days);
         return ResponseEntity.ok(trend);
     }
 
@@ -102,7 +102,7 @@ public class VacuumBloatDetailController {
     public ResponseEntity<List<String>> getTableList(@RequestParam Long databaseId) {
         log.info("GET /api/vacuum/bloat/detail/tables - database: {}", databaseId);
 
-        List<String> tables = bloatDetailService.getTableList(databaseId);
+        List<String> tables = vacuumBloatDetailService.getTableList(databaseId);
         return ResponseEntity.ok(tables);
     }
 }
