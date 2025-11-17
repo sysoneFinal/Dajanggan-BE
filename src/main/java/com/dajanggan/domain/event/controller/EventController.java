@@ -70,4 +70,5 @@ public class EventController {
 
         return ResponseEntity.ok(eventService.getEventList(filters));
     }
+
 }

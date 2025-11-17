@@ -104,7 +104,10 @@ public enum ExceptionMessage {
     INVALID_DASHBOARD_JSON("대시보드 JSON 형식이 유효하지 않습니다."),
     INVALID_WIDGET_STRUCTURE("위젯 구조가 올바르지 않습니다."),
     WIDGET_COUNT_EXCEEDED("허용된 위젯 개수를 초과했습니다."),
-    ;
+
+    // 지표 정의 예외
+    METRIC_NOT_FOUND("해당 지표정보를 찾을 수 없습니다.");
+
 
     private final String message;
 }

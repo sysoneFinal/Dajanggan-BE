@@ -1,10 +1,14 @@
 package com.dajanggan.domain.overview.service;
 
 import com.dajanggan.domain.overview.dto.*;
+import com.dajanggan.domain.overview.repository.MetricRepository;
 import com.dajanggan.domain.overview.repository.OverviewRepository;
 import com.dajanggan.global.exception.DajangganException;
 import com.dajanggan.global.exception.ExceptionMessage;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,14 +24,14 @@ import java.util.Map;
 public class OverviewService {
 
     private final OverviewRepository overviewRepository;
+    private final MetricRepository metricRepository;
     private final MetricsQueryService metricsQueryService;
 
-    public OverviewService(
-            OverviewRepository overviewRepository,
-            MetricsQueryService metricsQueryService
-    ){
+    public OverviewService(OverviewRepository overviewRepository, MetricsQueryService metricsQueryService,
+                           MetricRepository metricRepository){
         this.overviewRepository = overviewRepository;
         this.metricsQueryService = metricsQueryService;
+        this.metricRepository =metricRepository;
     }
 
 
@@ -82,49 +86,113 @@ public class OverviewService {
         String widgetId = widgetNode.get("id").asText();
         String chartType = widgetNode.get("chartType").asText();
         String title = widgetNode.get("title").asText();
-        
+
         // databases 배열에서 첫 번째 DB 정보 추출
         JsonNode databasesNode = widgetNode.get("databases");
         if (databasesNode == null || !databasesNode.isArray() || databasesNode.size() == 0) {
             throw new IllegalArgumentException("데이터베이스 정보가 없습니다");
         }
-        
+
         String dbName = databasesNode.get(0).get("name").asText();
-        
-        // metrics 배열 추출
+
+        // metrics 배열 추출 (column_name 들어있음)
         JsonNode metricsNode = widgetNode.get("metrics");
         if (metricsNode == null || !metricsNode.isArray()) {
             throw new IllegalArgumentException("메트릭 정보가 없습니다");
         }
-        
-        List<String> metrics = new ArrayList<>();
+
+        List<String> metricColumns = new ArrayList<>();
         for (JsonNode metric : metricsNode) {
-            metrics.add(metric.asText());
+            metricColumns.add(metric.asText());
         }
 
-        // 고정값: 15분
         String timeRange = "15m";
 
         // 실제 메트릭 데이터 조회
         List<Map<String, Object>> data = metricsQueryService.queryMetrics(
-            dbName, 
-            instanceId, 
-            metrics, 
-            timeRange
+                dbName,
+                instanceId,
+                metricColumns,
+                timeRange
         );
 
-        return WidgetWithData.builder()
-            .id(widgetId)
-            .chartType(chartType)
-            .title(title)
-            .layout(widgetNode.get("layout"))
-            .options(widgetNode.get("options"))
-            .metrics(metrics)
-            .data(data)
-            .error(null)
-            .build();
-    }
+        // 🔥 각 메트릭의 definition 정보 조회
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode enhancedOptions = mapper.createObjectNode();
 
+        // 기존 options 복사 (category, description, unit 제외)
+        JsonNode originalOptions = widgetNode.get("options");
+        if (originalOptions != null && originalOptions.isObject()) {
+            originalOptions.fields().forEachRemaining(entry -> {
+                String key = entry.getKey();
+                // 🔥 빈 값들은 복사하지 않음
+                if (!"category".equals(key) && !"description".equals(key) && !"unit".equals(key)) {
+                    enhancedOptions.set(key, entry.getValue().deepCopy());
+                }
+            });
+        }
+
+        // databases 정보 추가
+        enhancedOptions.set("databases", databasesNode);
+
+        // metrics 정보 배열 추가
+        ArrayNode metricsInfo = mapper.createArrayNode();
+
+        // 🔥 첫 번째 메트릭의 정보를 최상위 레벨에도 추가 (단일 메트릭인 경우)
+        String firstCategory = "";
+        String firstDescription = "";
+        String firstUnit = "";
+
+        for (String fullColumnName : metricColumns) {
+            String[] parts = fullColumnName.split("\\.", 2);
+            if (parts.length != 2) {
+                throw new DajangganException(ExceptionMessage.INVALID_WIDGET_STRUCTURE);
+            }
+
+            String category = parts[0];
+            String columnName = parts[1];
+
+            MetricDefinition def = metricRepository.findByCategoryAndColumnName(category, columnName)
+                    .orElseThrow(() -> new DajangganException(ExceptionMessage.METRIC_NOT_FOUND));
+
+            log.debug("MetricDefinition: {}", def);
+
+            ObjectNode metricInfo = mapper.createObjectNode();
+            metricInfo.put("metric_id", def.getMetricId());
+            metricInfo.put("column_name", fullColumnName);
+            metricInfo.put("name", def.getName());
+            metricInfo.put("category", def.getCategory());
+            metricInfo.put("unit", def.getUnit());
+            metricInfo.put("description", def.getDescription());
+
+            metricsInfo.add(metricInfo);
+
+            // 🔥 첫 번째 메트릭 정보 저장
+            if (firstCategory.isEmpty()) {
+                firstCategory = def.getCategory();
+                firstDescription = def.getDescription();
+                firstUnit = def.getUnit();
+            }
+        }
+
+        enhancedOptions.set("metrics", metricsInfo);
+
+        // 🔥 최상위 레벨에 첫 번째 메트릭의 정보 추가
+        enhancedOptions.put("category", firstCategory);
+        enhancedOptions.put("description", firstDescription);
+        enhancedOptions.put("unit", firstUnit);
+
+        return WidgetWithData.builder()
+                .id(widgetId)
+                .chartType(chartType)
+                .title(title)
+                .layout(widgetNode.get("layout"))
+                .options(enhancedOptions)
+                .metrics(metricColumns)
+                .data(data)
+                .error(null)
+                .build();
+    }
     /**
      * 에러 위젯 생성
      */
