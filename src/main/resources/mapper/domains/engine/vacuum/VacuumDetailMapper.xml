@@ -44,7 +44,7 @@
     <!-- 데이터베이스 내 테이블 목록 조회 -->
     <select id="findTableList" resultType="string">
         SELECT DISTINCT table_name
-        FROM vacuum_trend_metrics
+        FROM vacuum_raw_metrics
         WHERE database_id = #{databaseId}
           AND table_name IS NOT NULL
         ORDER BY table_name ASC

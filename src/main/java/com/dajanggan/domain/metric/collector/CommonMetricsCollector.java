@@ -69,54 +69,18 @@ public class CommonMetricsCollector {
                 continue;
             }
 
-            try {
-                log.info("▶▶▶ [{}] Collecting metrics from {}:{} / {}",
-                        collectedAt,
-                        instance.getHost(),
-                        instance.getPort(),
-                        database.getDatabaseName());
+            // 세션 메트릭 수집
+            sessionMetricsCollector.collect(instance, database, collectedAt);
 
-                // 세션 메트릭 수집
-                try {
-                    log.info("📊 1️⃣ 세션 메트릭 수집 시작");
-                    sessionMetricsCollector.collect(instance, database, collectedAt);
-                    log.info("📊 1️⃣ 세션 메트릭 수집 완료 ✅");
-                } catch (Exception e) {
-                    log.error("📊 1️⃣ 세션 메트릭 수집 실패 ❌", e);
-                }
 
-                // 쿼리 메트릭 수집
-                try {
-                    log.info("📊 2️⃣ 쿼리 메트릭 수집 시작");
-                    queryMetricsCollector.collect(instance, database, collectedAt);
-                    log.info("📊 2️⃣ 쿼리 메트릭 수집 완료 ✅");
-                } catch (Exception e) {
-                    log.error("📊 2️⃣ 쿼리 메트릭 수집 실패 ❌", e);
-                }
+            // 쿼리 메트릭 수집
+            queryMetricsCollector.collect(instance, database, collectedAt);
 
-                // Vacuum 메트릭 수집
-                try {
-                    log.info("📊 3️⃣ Vacuum 메트릭 수집 시작");
-                    vacuumMetricsCollector.collect(instance, database, collectedAt);
-                    log.info("📊 3️⃣ Vacuum 메트릭 수집 완료 ✅");
-                } catch (Exception e) {
-                    log.error("📊 3️⃣ Vacuum 메트릭 수집 실패 ❌", e);
-                }
+            // Vacuum 메트릭 수집
+            vacuumMetricsCollector.collect(instance, database, collectedAt);
 
-                successCount++;
-                log.info("✅ {} 수집 완료", database.getDatabaseName());
-
-            } catch (Exception e) {
-                failureCount++;
-                log.error("❌ [{}] {}:{}/{} 전체 수집 실패",
-                        collectedAt,
-                        instance.getHost(),
-                        instance.getPort(),
-                        database.getDatabaseName(),
-                        e);
-            }
+            log.info("========== Metric Collection Completed: Success={}, Failure={} ==========",
+                    successCount, failureCount);
         }
-        log.info("========== Metric Collection Completed: Success={}, Failure={} ==========", 
-                successCount, failureCount);
     }
 }
