@@ -48,6 +48,16 @@ public class MetricConfig {
             case "replication_lag" ->
                     "SELECT EXTRACT(EPOCH FROM (NOW() - pg_last_xact_replay_timestamp()))::NUMERIC";
 
+            case "long_idle_sessions" ->
+                    "SELECT COUNT(*)::NUMERIC FROM pg_stat_activity " +
+                            "WHERE state = 'idle in transaction' " +
+                            "AND state_change < NOW() - INTERVAL '10 minutes'";
+
+            case "blocking_sessions" ->
+                    "SELECT COUNT(DISTINCT blocking.pid)::NUMERIC FROM pg_stat_activity blocked " +
+                            "JOIN pg_stat_activity blocking ON blocking.pid = ANY(pg_blocking_pids(blocked.pid)) " +
+                            "WHERE blocked.wait_event_type IS NOT NULL";
+
             default -> null;
         };
     }
