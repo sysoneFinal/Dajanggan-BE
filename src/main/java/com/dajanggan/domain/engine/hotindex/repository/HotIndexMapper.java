@@ -1,5 +1,8 @@
 package com.dajanggan.domain.engine.hotindex.repository;
 
+import com.dajanggan.domain.engine.hotindex.domain.HotIndexAgg;
+import com.dajanggan.domain.engine.hotindex.domain.HotIndexRaw;
+import com.dajanggan.domain.instance.domain.Database;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -126,4 +129,39 @@ public interface HotIndexMapper {
             @Param("endTime") LocalDateTime endTime,
             @Param("statusList") List<String> statusList
     );
+
+    // ========== 데이터 수집용 메서드 ==========
+
+    /**
+     * 활성화된 데이터베이스 목록 조회
+     * @return 데이터베이스 리스트
+     */
+    List<Database> selectActiveDatabases();
+
+    /**
+     * 특정 인덱스의 이전 Raw 데이터 조회 (증분 계산용)
+     * @param databaseId 데이터베이스 ID
+     * @param schemaName 스키마명
+     * @param tableName 테이블명
+     * @param indexName 인덱스명
+     * @return 이전 Raw 데이터
+     */
+    HotIndexRaw selectPreviousRawByIndex(
+            @Param("databaseId") Long databaseId,
+            @Param("schemaName") String schemaName,
+            @Param("tableName") String tableName,
+            @Param("indexName") String indexName
+    );
+
+    /**
+     * Raw 데이터 일괄 삽입
+     * @param rawList Raw 데이터 리스트
+     */
+    void insertRawBatch(List<HotIndexRaw> rawList);
+
+    /**
+     * Agg 데이터 일괄 삽입
+     * @param aggList Agg 데이터 리스트
+     */
+    void insertAggBatch(List<HotIndexAgg> aggList);
 }

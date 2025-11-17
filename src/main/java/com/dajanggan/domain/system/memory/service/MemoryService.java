@@ -1,5 +1,8 @@
 package com.dajanggan.domain.system.memory.service;
 
+import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
+import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
+import com.dajanggan.domain.osmetric.service.OsMetricRedisService;
 import com.dajanggan.domain.system.memory.dto.MemoryDto;
 import com.dajanggan.domain.system.memory.repository.MemoryMapper;
 import lombok.RequiredArgsConstructor;
@@ -7,427 +10,779 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Memory 모니터링 서비스
+ *
+ * 데이터 소스:
+ * 1. Redis (실시간 위젯) - OS 메트릭
+ * 2. memory_agg (1분) - PostgreSQL 메트릭, 위젯, 1시간 차트
+ * 3. memory_agg_5m (5분) - 6시간 차트
+ * 4. memory_agg_30m (30분) - 24시간 차트
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class MemoryService {
 
     private final MemoryMapper memoryMapper;
+    private final OsMetricMapper osMetricMapper;
+    private final OsMetricRedisService osMetricRedisService;
+
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm");
+
+    // ========================================
+    // 대시보드 전체 데이터 조회
+    // ========================================
 
     /**
-     * Memory 대시보드 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID
-     * @return Memory 대시보드 데이터
+     * Memory 대시보드 전체 데이터 조회
      */
     public MemoryDto.DashboardResponse getMemoryDashboard(Long instanceId) {
-        log.debug("Memory 대시보드 데이터 조회 시작 - instanceId: {}", instanceId);
-
-        // instanceId가 null이면 예외 발생
         if (instanceId == null) {
-            log.error("instanceId가 필수입니다");
             throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
         }
 
-        // 조회 시간 범위 설정 (최근 24시간)
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusHours(24);
-
-        log.info("데이터 조회 범위: {} ~ {}", startTime, endTime);
+        log.info("========== Memory 대시보드 데이터 조회 시작: instanceId={} ==========", instanceId);
 
         try {
-            // 1. Memory 사용률 조회
-            MemoryDto.MemoryUtilization memoryUtilization = getMemoryUtilization(instanceId);
+            // 실시간 위젯 (5개)
+            MemoryDto.OsMemoryUsageWidget osMemoryUsage = getOsMemoryUsageWidget(instanceId);
+            MemoryDto.SwapUsageWidget swapUsage = getSwapUsageWidget(instanceId);
+            MemoryDto.SharedBufferHitWidget sharedBufferHit = getSharedBufferHitWidget(instanceId);
+            MemoryDto.BufferUsageWidget bufferUsage = getBufferUsageWidget(instanceId);
+            MemoryDto.TempFileUsageWidget tempFileUsage = getTempFileUsageWidget(instanceId);
 
-            // 2. Buffer Hit 비율 조회
-            MemoryDto.BufferHitRatio bufferHitRatio = getBufferHitRatio(instanceId);
+            // 1시간 차트 (3개)
+            MemoryDto.OsMemoryUsageChart1h osMemoryChart1h = getOsMemoryUsageChart1h(instanceId);
+            MemoryDto.BufferCacheHitChart1h bufferCacheChart1h = getBufferCacheHitChart1h(instanceId);
+            MemoryDto.BufferUtilizationChart1h bufferUtilChart1h = getBufferUtilizationChart1h(instanceId);
 
-            // 3. Shared Buffer 사용량 조회
-            MemoryDto.SharedBufferUsage sharedBufferUsage = getSharedBufferUsage(instanceId);
+            // 6시간 차트 (2개)
+            MemoryDto.TempFileChart6h tempFileChart6h = getTempFileChart6h(instanceId);
+            MemoryDto.IoWaitTimeChart6h ioWaitTimeChart6h = getIoWaitTimeChart6h(instanceId);
 
-            // 4. Eviction Rate 시계열 데이터 조회
-            MemoryDto.EvictionRate evictionRate = getEvictionRate(instanceId, startTime, endTime);
-
-            // 5. Fsync Rate 시계열 데이터 조회
-            MemoryDto.FsyncRate fsyncRate = getFsyncRate(instanceId, startTime, endTime);
-
-            // 6. Dirty Buffer 추세 조회
-            MemoryDto.DirtyBufferTrend dirtyBufferTrend = getDirtyBufferTrend(instanceId, startTime, endTime);
-
-            // 7. Eviction vs Flush 비교 데이터 조회
-            MemoryDto.EvictionFlushRatio evictionFlushRatio = getEvictionFlushRatio(instanceId, startTime, endTime);
-
-            // 8. 상위 버퍼 사용 객체 조회
-            MemoryDto.TopBufferObjects topBufferObjects = getTopBufferObjects(instanceId, 10);
-
-            // 9. 요약 통계 조회
-            MemoryDto.SummaryStats summaryStats = getSummaryStats(instanceId);
+            // 24시간 차트 (4개)
+            MemoryDto.OsMemoryTrendChart24h osMemoryTrend24h = getOsMemoryTrendChart24h(instanceId);
+            MemoryDto.SwapUsageTrendChart24h swapTrend24h = getSwapUsageTrendChart24h(instanceId);
+            MemoryDto.BufferReuseScoreChart24h bufferReuseChart24h = getBufferReuseScoreChart24h(instanceId);
+            MemoryDto.TopTablesByBufferChart24h topTablesChart24h = getTopTablesByBufferChart24h(instanceId);
 
             return MemoryDto.DashboardResponse.builder()
-                    .memoryUtilization(memoryUtilization)
-                    .bufferHitRatio(bufferHitRatio)
-                    .sharedBufferUsage(sharedBufferUsage)
-                    .evictionRate(evictionRate)
-                    .fsyncRate(fsyncRate)
-                    .dirtyBufferTrend(dirtyBufferTrend)
-                    .evictionFlushRatio(evictionFlushRatio)
-                    .topBufferObjects(topBufferObjects)
-                    .summaryStats(summaryStats)
+                    .osMemoryUsage(osMemoryUsage)
+                    .swapUsage(swapUsage)
+                    .sharedBufferHit(sharedBufferHit)
+                    .bufferUsage(bufferUsage)
+                    .tempFileUsage(tempFileUsage)
+                    .osMemoryChart1h(osMemoryChart1h)
+                    .bufferCacheChart1h(bufferCacheChart1h)
+                    .bufferUtilChart1h(bufferUtilChart1h)
+                    .tempFileChart6h(tempFileChart6h)
+                    .ioWaitTimeChart6h(ioWaitTimeChart6h)
+                    .osMemoryTrend24h(osMemoryTrend24h)
+                    .swapTrend24h(swapTrend24h)
+                    .bufferReuseChart24h(bufferReuseChart24h)
+                    .topTablesChart24h(topTablesChart24h)
                     .build();
 
         } catch (Exception e) {
-            log.error("Memory 대시보드 데이터 조회 중 오류 발생", e);
-            throw new RuntimeException("Memory 데이터 조회 실패: " + e.getMessage(), e);
+            log.error("Memory 대시보드 데이터 조회 실패: instanceId={}", instanceId, e);
+            throw new RuntimeException("대시보드 데이터 조회 중 오류 발생", e);
         }
     }
 
-    /**
-     * Memory 사용률 조회
-     */
-    private MemoryDto.MemoryUtilization getMemoryUtilization(Long instanceId) {
-        Map<String, Object> data = memoryMapper.selectMemoryUtilization(instanceId);
+    // ========================================
+    // 실시간 위젯 (5개)
+    // ========================================
 
-        if (data == null || data.isEmpty()) {
-            log.warn("Memory 사용률 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.MemoryUtilization.builder()
-                    .value(0.0)
-                    .usedBuffers(0L)
-                    .totalBuffers(0L)
+    /**
+     * 위젯 1: OS Memory Usage (Redis)
+     */
+    private MemoryDto.OsMemoryUsageWidget getOsMemoryUsageWidget(Long instanceId) {
+        try {
+            LocalDateTime endTime = LocalDateTime.now();
+            LocalDateTime startTime = endTime.minusMinutes(1);
+
+            List<RedisOsMetricData> metrics = osMetricRedisService.getRecentMetricsByType(
+                    instanceId, "MEMORY", startTime, endTime);
+
+            if (metrics.isEmpty()) {
+                return buildEmptyOsMemoryUsageWidget();
+            }
+
+            RedisOsMetricData latest = metrics.get(metrics.size() - 1);
+            Map<String, Object> details = latest.getDetails();
+
+            double usagePercent = getDouble(details, "usagePercent");
+            long totalGB = getLong(details, "total") / (1024 * 1024 * 1024);
+            long usedGB = getLong(details, "used") / (1024 * 1024 * 1024);
+            long availableGB = getLong(details, "available") / (1024 * 1024 * 1024);
+            long cacheGB = getLong(details, "cache") / (1024 * 1024 * 1024);
+
+            // 추세 계산
+            String trend = "stable";
+            if (metrics.size() > 1) {
+                RedisOsMetricData prev = metrics.get(0);
+                double prevUsage = getDouble(prev.getDetails(), "usagePercent");
+                if (usagePercent > prevUsage + 1.0) trend = "up";
+                else if (usagePercent < prevUsage - 1.0) trend = "down";
+            }
+
+            // 상태 판정
+            String status = usagePercent > 90 ? "danger" : usagePercent > 80 ? "warning" : "normal";
+
+            return MemoryDto.OsMemoryUsageWidget.builder()
+                    .usagePercent(usagePercent)
+                    .trend(trend)
+                    .status(status)
+                    .totalGB(totalGB)
+                    .usedGB(usedGB)
+                    .availableGB(availableGB)
+                    .cacheGB(cacheGB)
                     .build();
-        }
 
-        return MemoryDto.MemoryUtilization.builder()
-                .value(getDoubleValue(data, "value"))
-                .usedBuffers(getLongValue(data, "usedbuffers"))
-                .totalBuffers(getLongValue(data, "totalbuffers"))
-                .build();
+        } catch (Exception e) {
+            log.error("OS Memory Usage 위젯 조회 실패", e);
+            return buildEmptyOsMemoryUsageWidget();
+        }
     }
 
     /**
-     * Buffer Hit 비율 조회
+     * 위젯 2: Swap Usage (Redis)
      */
-    private MemoryDto.BufferHitRatio getBufferHitRatio(Long instanceId) {
-        Map<String, Object> data = memoryMapper.selectBufferHitRatio(instanceId);
+    private MemoryDto.SwapUsageWidget getSwapUsageWidget(Long instanceId) {
+        try {
+            LocalDateTime endTime = LocalDateTime.now();
+            LocalDateTime startTime = endTime.minusMinutes(1);
 
-        if (data == null || data.isEmpty()) {
-            log.warn("Buffer Hit 비율 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.BufferHitRatio.builder()
-                    .value(0.0)
-                    .hitCount(0L)
-                    .totalCount(0L)
+            List<RedisOsMetricData> metrics = osMetricRedisService.getRecentMetricsByType(
+                    instanceId, "SWAP", startTime, endTime);
+
+            if (metrics.isEmpty()) {
+                return buildEmptySwapUsageWidget();
+            }
+
+            RedisOsMetricData latest = metrics.get(metrics.size() - 1);
+            Map<String, Object> details = latest.getDetails();
+
+            double swapUsagePercent = getDouble(details, "swapUsagePercent");
+            long totalSwapGB = getLong(details, "total") / (1024 * 1024 * 1024);
+            long usedSwapGB = getLong(details, "used") / (1024 * 1024 * 1024);
+            long swapInPerSec = getLong(details, "swapIn");
+            long swapOutPerSec = getLong(details, "swapOut");
+
+            // 상태 판정: Swap 사용 시 warning, Swap I/O 발생 시 danger
+            String status = "normal";
+            if (swapInPerSec > 0 || swapOutPerSec > 0) {
+                status = "danger";
+            } else if (swapUsagePercent > 10) {
+                status = "warning";
+            }
+
+            return MemoryDto.SwapUsageWidget.builder()
+                    .swapUsagePercent(swapUsagePercent)
+                    .status(status)
+                    .totalSwapGB(totalSwapGB)
+                    .usedSwapGB(usedSwapGB)
+                    .swapInPerSec(swapInPerSec)
+                    .swapOutPerSec(swapOutPerSec)
                     .build();
-        }
 
-        return MemoryDto.BufferHitRatio.builder()
-                .value(getDoubleValue(data, "value"))
-                .hitCount(getLongValue(data, "hitcount"))
-                .totalCount(getLongValue(data, "totalcount"))
-                .build();
+        } catch (Exception e) {
+            log.error("Swap Usage 위젯 조회 실패", e);
+            return buildEmptySwapUsageWidget();
+        }
     }
 
     /**
-     * Shared Buffer 사용량 조회
+     * 위젯 3: Shared Buffer Hit Ratio (PostgreSQL)
      */
-    private MemoryDto.SharedBufferUsage getSharedBufferUsage(Long instanceId) {
-        Map<String, Object> data = memoryMapper.selectSharedBufferUsage(instanceId);
+    private MemoryDto.SharedBufferHitWidget getSharedBufferHitWidget(Long instanceId) {
+        try {
+            Map<String, Object> result = memoryMapper.selectSharedBufferHitWidget(instanceId);
 
-        if (data == null || data.isEmpty()) {
-            log.warn("Shared Buffer 사용량 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.SharedBufferUsage.builder()
-                    .value(0.0)
-                    .activeBuffers(0L)
-                    .totalBuffers(0L)
+            if (result == null || result.isEmpty()) {
+                return buildEmptySharedBufferHitWidget();
+            }
+
+            double hitRatio = getDoubleValue(result, "cache_hit_ratio");
+            long cacheHits = getLongValue(result, "total_cache_hits");
+            long physicalReads = getLongValue(result, "total_physical_reads");
+
+            // 상태 판정: >95% 정상, 85-95% 주의, <85% 위험
+            String status = hitRatio > 95 ? "normal" : hitRatio > 85 ? "warning" : "danger";
+
+            return MemoryDto.SharedBufferHitWidget.builder()
+                    .hitRatio(hitRatio)
+                    .status(status)
+                    .cacheHits(cacheHits)
+                    .physicalReads(physicalReads)
                     .build();
-        }
 
-        return MemoryDto.SharedBufferUsage.builder()
-                .value(getDoubleValue(data, "value"))
-                .activeBuffers(getLongValue(data, "activebuffers"))
-                .totalBuffers(getLongValue(data, "totalbuffers"))
-                .build();
+        } catch (Exception e) {
+            log.error("Shared Buffer Hit 위젯 조회 실패", e);
+            return buildEmptySharedBufferHitWidget();
+        }
     }
 
     /**
-     * Eviction Rate 시계열 데이터 조회
+     * 위젯 4: Buffer Usage (PostgreSQL)
      */
-    private MemoryDto.EvictionRate getEvictionRate(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = memoryMapper.selectEvictionRateTimeSeries(instanceId, startTime, endTime);
+    private MemoryDto.BufferUsageWidget getBufferUsageWidget(Long instanceId) {
+        try {
+            Map<String, Object> result = memoryMapper.selectBufferUsageWidget(instanceId);
 
-        if (dataList == null || dataList.isEmpty()) {
-            log.warn("Eviction Rate 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.EvictionRate.builder()
-                    .categories(new ArrayList<>())
-                    .data(new ArrayList<>())
-                    .average(0.0)
-                    .max(0L)
-                    .min(0L)
+            if (result == null || result.isEmpty()) {
+                return buildEmptyBufferUsageWidget();
+            }
+
+            double bufferUsagePercent = getDoubleValue(result, "buffer_usage_percent");
+            double dirtyRatio = getDoubleValue(result, "dirty_ratio");
+            double pinnedRatio = getDoubleValue(result, "pinned_ratio");
+            long usedBuffers = getLongValue(result, "used_buffers");
+            long totalBuffers = getLongValue(result, "total_buffers");
+
+            // 상태 판정: Dirty > 30% 주의, Dirty > 50% 위험
+            String status = dirtyRatio > 50 ? "danger" : dirtyRatio > 30 ? "warning" : "normal";
+
+            return MemoryDto.BufferUsageWidget.builder()
+                    .bufferUsagePercent(bufferUsagePercent)
+                    .dirtyRatio(dirtyRatio)
+                    .pinnedRatio(pinnedRatio)
+                    .status(status)
+                    .usedBuffers(usedBuffers)
+                    .totalBuffers(totalBuffers)
                     .build();
+
+        } catch (Exception e) {
+            log.error("Buffer Usage 위젯 조회 실패", e);
+            return buildEmptyBufferUsageWidget();
         }
-
-        List<String> categories = dataList.stream()
-                .map(item -> (String) item.get("time_label"))
-                .collect(Collectors.toList());
-
-        List<Long> data = dataList.stream()
-                .map(item -> getLongValue(item, "eviction_count"))
-                .collect(Collectors.toList());
-
-        double average = data.stream().mapToLong(Long::longValue).average().orElse(0.0);
-        long max = data.stream().mapToLong(Long::longValue).max().orElse(0L);
-        long min = data.stream().mapToLong(Long::longValue).min().orElse(0L);
-
-        return MemoryDto.EvictionRate.builder()
-                .categories(categories)
-                .data(data)
-                .average(average)
-                .max(max)
-                .min(min)
-                .build();
     }
 
     /**
-     * Fsync Rate 시계열 데이터 조회
+     * 위젯 5: Temp File Usage (PostgreSQL)
      */
-    private MemoryDto.FsyncRate getFsyncRate(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = memoryMapper.selectFsyncRateTimeSeries(instanceId, startTime, endTime);
+    private MemoryDto.TempFileUsageWidget getTempFileUsageWidget(Long instanceId) {
+        try {
+            Map<String, Object> result = memoryMapper.selectTempFileUsageWidget(instanceId);
 
-        if (dataList == null || dataList.isEmpty()) {
-            log.warn("Fsync Rate 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.FsyncRate.builder()
-                    .categories(new ArrayList<>())
-                    .data(new ArrayList<>())
-                    .average(0.0)
-                    .max(0L)
-                    .backendFsync(0L)
+            if (result == null || result.isEmpty()) {
+                return buildEmptyTempFileUsageWidget();
+            }
+
+            double tempFileRate = getDoubleValue(result, "temp_file_rate");
+            long totalTempFiles = getLongValue(result, "total_temp_files");
+            long totalTempMB = getLongValue(result, "total_temp_bytes") / (1024 * 1024);
+
+            // 상태 판정: work_mem 부족 징후
+            String status = tempFileRate > 10 ? "danger" : tempFileRate > 1 ? "warning" : "normal";
+            String message = tempFileRate > 10 ? "work_mem 증가 필요" : tempFileRate > 1 ? "work_mem 모니터링" : "정상";
+
+            return MemoryDto.TempFileUsageWidget.builder()
+                    .tempFileRate(tempFileRate)
+                    .status(status)
+                    .totalTempFiles(totalTempFiles)
+                    .totalTempMB(totalTempMB)
+                    .message(message)
                     .build();
+
+        } catch (Exception e) {
+            log.error("Temp File Usage 위젯 조회 실패", e);
+            return buildEmptyTempFileUsageWidget();
         }
-
-        List<String> categories = dataList.stream()
-                .map(item -> (String) item.get("time_label"))
-                .collect(Collectors.toList());
-
-        List<Long> data = dataList.stream()
-                .map(item -> getLongValue(item, "fsync_count"))
-                .collect(Collectors.toList());
-
-        double average = data.stream().mapToLong(Long::longValue).average().orElse(0.0);
-        long max = data.stream().mapToLong(Long::longValue).max().orElse(0L);
-        long backendFsync = data.stream().mapToLong(Long::longValue).sum();
-
-        return MemoryDto.FsyncRate.builder()
-                .categories(categories)
-                .data(data)
-                .average(average)
-                .max(max)
-                .backendFsync(backendFsync)
-                .build();
     }
 
-    /**
-     * Dirty Buffer 추세 조회
-     */
-    private MemoryDto.DirtyBufferTrend getDirtyBufferTrend(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = memoryMapper.selectDirtyBufferTrendTimeSeries(instanceId, startTime, endTime);
+    // ========================================
+    // 1시간 차트 (3개)
+    // ========================================
 
-        if (dataList == null || dataList.isEmpty()) {
-            log.warn("Dirty Buffer 추세 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.DirtyBufferTrend.builder()
-                    .categories(new ArrayList<>())
-                    .data(new ArrayList<>())
-                    .average(0.0)
-                    .max(0L)
-                    .min(0L)
+    /**
+     * 차트 1: OS Memory Usage (1시간)
+     */
+    private MemoryDto.OsMemoryUsageChart1h getOsMemoryUsageChart1h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(1);
+
+            List<Map<String, Object>> metrics = osMetricMapper.selectAggregatedMetrics(
+                    instanceId, "MEMORY_USAGE", startTime, endTime);
+
+            if (metrics.isEmpty()) {
+                return buildEmptyOsMemoryUsageChart1h();
+            }
+
+            List<String> categories = metrics.stream()
+                    .map(m -> formatTime(m.get("collected_at")))
+                    .collect(Collectors.toList());
+
+            List<Double> usedGB = metrics.stream()
+                    .map(m -> getDoubleValue(m, "used") / (1024.0 * 1024.0 * 1024.0))
+                    .collect(Collectors.toList());
+
+            List<Double> cacheGB = metrics.stream()
+                    .map(m -> getDoubleValue(m, "cache") / (1024.0 * 1024.0 * 1024.0))
+                    .collect(Collectors.toList());
+
+            List<Double> bufferGB = metrics.stream()
+                    .map(m -> getDoubleValue(m, "buffer") / (1024.0 * 1024.0 * 1024.0))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.OsMemoryUsageChart1h.builder()
+                    .categories(categories)
+                    .usedGB(usedGB)
+                    .cacheGB(cacheGB)
+                    .bufferGB(bufferGB)
                     .build();
+
+        } catch (Exception e) {
+            log.error("OS Memory Usage Chart 1h 조회 실패", e);
+            return buildEmptyOsMemoryUsageChart1h();
         }
-
-        List<String> categories = dataList.stream()
-                .map(item -> (String) item.get("time_label"))
-                .collect(Collectors.toList());
-
-        List<Long> data = dataList.stream()
-                .map(item -> ((Number) item.get("dirty_ratio")).longValue())
-                .collect(Collectors.toList());
-
-        double average = data.stream().mapToLong(Long::longValue).average().orElse(0.0);
-        long max = data.stream().mapToLong(Long::longValue).max().orElse(0L);
-        long min = data.stream().mapToLong(Long::longValue).min().orElse(0L);
-
-        return MemoryDto.DirtyBufferTrend.builder()
-                .categories(categories)
-                .data(data)
-                .average(average)
-                .max(max)
-                .min(min)
-                .build();
     }
 
     /**
-     * Eviction vs Flush 비교 데이터 조회
+     * 차트 2: Buffer Cache Hit Ratio (1시간)
      */
-    private MemoryDto.EvictionFlushRatio getEvictionFlushRatio(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = memoryMapper.selectEvictionFlushRatioTimeSeries(instanceId, startTime, endTime);
+    private MemoryDto.BufferCacheHitChart1h getBufferCacheHitChart1h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(1);
 
-        if (dataList == null || dataList.isEmpty()) {
-            log.warn("Eviction vs Flush 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.EvictionFlushRatio.builder()
-                    .categories(new ArrayList<>())
-                    .evictions(new ArrayList<>())
-                    .fsyncs(new ArrayList<>())
+            List<Map<String, Object>> results = memoryMapper.selectBufferCacheHitChart1h(
+                    instanceId, startTime, endTime);
+
+            if (results.isEmpty()) {
+                return buildEmptyBufferCacheHitChart1h();
+            }
+
+            List<String> categories = results.stream()
+                    .map(r -> formatTime(r.get("time_label")))
+                    .collect(Collectors.toList());
+
+            List<Double> hitRatio = results.stream()
+                    .map(r -> getDoubleValue(r, "cache_hit_ratio"))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.BufferCacheHitChart1h.builder()
+                    .categories(categories)
+                    .hitRatio(hitRatio)
+                    .warningThreshold(85.0)
+                    .normalThreshold(95.0)
                     .build();
+
+        } catch (Exception e) {
+            log.error("Buffer Cache Hit Chart 1h 조회 실패", e);
+            return buildEmptyBufferCacheHitChart1h();
         }
-
-        List<String> categories = dataList.stream()
-                .map(item -> (String) item.get("time_label"))
-                .collect(Collectors.toList());
-
-        List<Long> evictions = dataList.stream()
-                .map(item -> getLongValue(item, "evictions"))
-                .collect(Collectors.toList());
-
-        List<Long> fsyncs = dataList.stream()
-                .map(item -> getLongValue(item, "fsyncs"))
-                .collect(Collectors.toList());
-
-        return MemoryDto.EvictionFlushRatio.builder()
-                .categories(categories)
-                .evictions(evictions)
-                .fsyncs(fsyncs)
-                .build();
     }
 
     /**
-     * 상위 버퍼 사용 객체 조회
+     * 차트 3: Buffer Utilization (1시간)
      */
-    private MemoryDto.TopBufferObjects getTopBufferObjects(Long instanceId, int limit) {
-        List<Map<String, Object>> dataList = memoryMapper.selectTopBufferObjects(instanceId, limit);
+    private MemoryDto.BufferUtilizationChart1h getBufferUtilizationChart1h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(1);
 
-        if (dataList == null || dataList.isEmpty()) {
-            log.warn("상위 버퍼 사용 객체 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.TopBufferObjects.builder()
-                    .labels(new ArrayList<>())
-                    .data(new ArrayList<>())
-                    .types(new ArrayList<>())
+            List<Map<String, Object>> results = memoryMapper.selectBufferUtilizationChart1h(
+                    instanceId, startTime, endTime);
+
+            if (results.isEmpty()) {
+                return buildEmptyBufferUtilizationChart1h();
+            }
+
+            List<String> categories = results.stream()
+                    .map(r -> formatTime(r.get("time_label")))
+                    .collect(Collectors.toList());
+
+            List<Long> dirtyBuffers = results.stream()
+                    .map(r -> getLongValue(r, "dirty_buffers"))
+                    .collect(Collectors.toList());
+
+            List<Long> pinnedBuffers = results.stream()
+                    .map(r -> getLongValue(r, "pinned_buffers"))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.BufferUtilizationChart1h.builder()
+                    .categories(categories)
+                    .dirtyBuffers(dirtyBuffers)
+                    .pinnedBuffers(pinnedBuffers)
                     .build();
+
+        } catch (Exception e) {
+            log.error("Buffer Utilization Chart 1h 조회 실패", e);
+            return buildEmptyBufferUtilizationChart1h();
         }
-
-        List<String> labels = dataList.stream()
-                .map(item -> (String) item.get("object_name"))
-                .collect(Collectors.toList());
-
-        List<Double> data = dataList.stream()
-                .map(item -> getDoubleValue(item, "buffer_count"))  // Long → Double
-                .collect(Collectors.toList());
-
-        List<String> types = dataList.stream()
-                .map(item -> (String) item.get("object_type"))
-                .collect(Collectors.toList());
-
-        return MemoryDto.TopBufferObjects.builder()
-                .labels(labels)
-                .data(data)
-                .types(types)
-                .build();
     }
 
-    /**
-     * 요약 통계 조회
-     */
-    private MemoryDto.SummaryStats getSummaryStats(Long instanceId) {
-        Map<String, Object> data = memoryMapper.selectSummaryStats(instanceId);
+    // ========================================
+    // 6시간 차트 (2개) - memory_agg_5m
+    // ========================================
 
-        if (data == null || data.isEmpty()) {
-            log.warn("요약 통계 데이터 없음 - instanceId: {}", instanceId);
-            return MemoryDto.SummaryStats.builder()
-                    .dirtyBufferRatio(0.0)
-                    .backendWaitTime(0.0)
-                    .workMemUsage(0.0)
-                    .tempFileUsage(0.0)
-                    .checkpointInterval(0.0)
+    /**
+     * 차트 4: Temp File Generation (6시간)
+     */
+    private MemoryDto.TempFileChart6h getTempFileChart6h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(6);
+
+            List<Map<String, Object>> results = memoryMapper.selectTempFileChart6h(
+                    instanceId, startTime, endTime);
+
+            if (results.isEmpty()) {
+                return buildEmptyTempFileChart6h();
+            }
+
+            List<String> categories = results.stream()
+                    .map(r -> formatTime(r.get("time_bucket")))
+                    .collect(Collectors.toList());
+
+            List<Long> tempFileCount = results.stream()
+                    .map(r -> getLongValue(r, "total_temp_files"))
+                    .collect(Collectors.toList());
+
+            List<Double> tempFileSizeMB = results.stream()
+                    .map(r -> getDoubleValue(r, "total_temp_bytes") / (1024.0 * 1024.0))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.TempFileChart6h.builder()
+                    .categories(categories)
+                    .tempFileCount(tempFileCount)
+                    .tempFileSizeMB(tempFileSizeMB)
                     .build();
-        }
 
-        return MemoryDto.SummaryStats.builder()
-                .dirtyBufferRatio(getDoubleValue(data, "dirtybufferratio"))
-                .backendWaitTime(getDoubleValue(data, "backendwaittime"))
-                .workMemUsage(getDoubleValue(data, "workmemusage"))
-                .tempFileUsage(getDoubleValue(data, "tempfileusage"))
-                .checkpointInterval(getDoubleValue(data, "checkpointinterval"))
-                .build();
+        } catch (Exception e) {
+            log.error("Temp File Chart 6h 조회 실패", e);
+            return buildEmptyTempFileChart6h();
+        }
     }
 
     /**
-     * Memory 리스트 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID
-     * @param typeList 타입 필터 리스트
-     * @param statusList 상태 필터 리스트
-     * @return Memory 리스트 데이터
+     * 차트 5: I/O Wait Time (6시간)
      */
-    public MemoryDto.ListResponse getMemoryList(Long instanceId, List<String> typeList, List<String> statusList) {
-        log.debug("Memory 리스트 조회 시작 - instanceId: {}, typeList: {}, statusList: {}",
-                instanceId, typeList, statusList);
+    private MemoryDto.IoWaitTimeChart6h getIoWaitTimeChart6h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(6);
 
-        // instanceId가 null이면 예외 발생
+            List<Map<String, Object>> results = memoryMapper.selectIoWaitTimeChart6h(
+                    instanceId, startTime, endTime);
+
+            if (results.isEmpty()) {
+                return buildEmptyIoWaitTimeChart6h();
+            }
+
+            List<String> categories = results.stream()
+                    .map(r -> formatTime(r.get("time_bucket")))
+                    .collect(Collectors.toList());
+
+            List<Double> readWaitMs = results.stream()
+                    .map(r -> getDoubleValue(r, "total_blk_read_time"))
+                    .collect(Collectors.toList());
+
+            List<Double> writeWaitMs = results.stream()
+                    .map(r -> getDoubleValue(r, "total_blk_write_time"))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.IoWaitTimeChart6h.builder()
+                    .categories(categories)
+                    .readWaitMs(readWaitMs)
+                    .writeWaitMs(writeWaitMs)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("I/O Wait Time Chart 6h 조회 실패", e);
+            return buildEmptyIoWaitTimeChart6h();
+        }
+    }
+
+    // ========================================
+    // 24시간 차트 (4개) - memory_agg_30m
+    // ========================================
+
+    /**
+     * 차트 6: OS Memory Trend (24시간)
+     */
+    private MemoryDto.OsMemoryTrendChart24h getOsMemoryTrendChart24h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(24);
+
+            List<Map<String, Object>> metrics = osMetricMapper.selectAggregatedMetrics(
+                    instanceId, "MEMORY_USAGE", startTime, endTime);
+
+            if (metrics.isEmpty()) {
+                return buildEmptyOsMemoryTrendChart24h();
+            }
+
+            List<String> categories = metrics.stream()
+                    .map(m -> formatDateTime(m.get("collected_at")))
+                    .collect(Collectors.toList());
+
+            List<Double> usagePercent = metrics.stream()
+                    .map(m -> getDoubleValue(m, "usage_percent"))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.OsMemoryTrendChart24h.builder()
+                    .categories(categories)
+                    .usagePercent(usagePercent)
+                    .warningThreshold(80.0)
+                    .dangerThreshold(90.0)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("OS Memory Trend Chart 24h 조회 실패", e);
+            return buildEmptyOsMemoryTrendChart24h();
+        }
+    }
+
+    /**
+     * 차트 7: Swap Usage Trend (24시간)
+     */
+    private MemoryDto.SwapUsageTrendChart24h getSwapUsageTrendChart24h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(24);
+
+            List<Map<String, Object>> metrics = osMetricMapper.selectAggregatedMetrics(
+                    instanceId, "SWAP_USAGE", startTime, endTime);
+
+            if (metrics.isEmpty()) {
+                return buildEmptySwapUsageTrendChart24h();
+            }
+
+            List<String> categories = metrics.stream()
+                    .map(m -> formatDateTime(m.get("collected_at")))
+                    .collect(Collectors.toList());
+
+            List<Double> swapUsagePercent = metrics.stream()
+                    .map(m -> getDoubleValue(m, "swap_usage_percent"))
+                    .collect(Collectors.toList());
+
+            List<Long> swapInRate = metrics.stream()
+                    .map(m -> getLongValue(m, "swap_in_rate"))
+                    .collect(Collectors.toList());
+
+            List<Long> swapOutRate = metrics.stream()
+                    .map(m -> getLongValue(m, "swap_out_rate"))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.SwapUsageTrendChart24h.builder()
+                    .categories(categories)
+                    .swapUsagePercent(swapUsagePercent)
+                    .swapInRate(swapInRate)
+                    .swapOutRate(swapOutRate)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Swap Usage Trend Chart 24h 조회 실패", e);
+            return buildEmptySwapUsageTrendChart24h();
+        }
+    }
+
+    /**
+     * 차트 8: Buffer Reuse Score (24시간)
+     */
+    private MemoryDto.BufferReuseScoreChart24h getBufferReuseScoreChart24h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(24);
+
+            List<Map<String, Object>> results = memoryMapper.selectBufferReuseScoreChart24h(
+                    instanceId, startTime, endTime);
+
+            if (results.isEmpty()) {
+                return buildEmptyBufferReuseScoreChart24h();
+            }
+
+            List<String> categories = results.stream()
+                    .map(r -> formatDateTime(r.get("time_bucket")))
+                    .collect(Collectors.toList());
+
+            List<Double> reuseScore = results.stream()
+                    .map(r -> getDoubleValue(r, "avg_buffer_reuse_score"))
+                    .collect(Collectors.toList());
+
+            List<Double> avgUsagecount = results.stream()
+                    .map(r -> getDoubleValue(r, "avg_usagecount"))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.BufferReuseScoreChart24h.builder()
+                    .categories(categories)
+                    .reuseScore(reuseScore)
+                    .avgUsagecount(avgUsagecount)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Buffer Reuse Score Chart 24h 조회 실패", e);
+            return buildEmptyBufferReuseScoreChart24h();
+        }
+    }
+
+    /**
+     * 차트 9: Top Tables by Buffer Usage (24시간)
+     */
+    private MemoryDto.TopTablesByBufferChart24h getTopTablesByBufferChart24h(Long instanceId) {
+        try {
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+            OffsetDateTime startTime = endTime.minusHours(24);
+
+            List<Map<String, Object>> results = memoryMapper.selectTopTablesByBufferChart24h(
+                    instanceId, startTime, endTime);
+
+            if (results.isEmpty()) {
+                return buildEmptyTopTablesByBufferChart24h();
+            }
+
+            List<String> tableNames = results.stream()
+                    .map(r -> (String) r.get("relname"))
+                    .collect(Collectors.toList());
+
+            List<Long> bufferCounts = results.stream()
+                    .map(r -> getLongValue(r, "avg_buffers"))
+                    .collect(Collectors.toList());
+
+            List<Double> usagePercent = results.stream()
+                    .map(r -> getDoubleValue(r, "buffer_usage_percent"))
+                    .collect(Collectors.toList());
+
+            return MemoryDto.TopTablesByBufferChart24h.builder()
+                    .tableNames(tableNames)
+                    .bufferCounts(bufferCounts)
+                    .usagePercent(usagePercent)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Top Tables by Buffer Chart 24h 조회 실패", e);
+            return buildEmptyTopTablesByBufferChart24h();
+        }
+    }
+
+    // ========================================
+    // 리스트 (2개 섹션)
+    // ========================================
+
+    /**
+     * Memory 리스트 조회
+     */
+    public MemoryDto.ListResponse getMemoryList(Long instanceId, String timeRange, List<String> statusList) {
         if (instanceId == null) {
-            log.error("instanceId가 필수입니다");
             throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
         }
 
+        OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
+
         try {
-            List<Map<String, Object>> dataList = memoryMapper.selectMemoryList(
-                    instanceId, typeList, statusList);
+            // 섹션 1: 높은 버퍼 사용 테이블 Top 20
+            List<MemoryDto.HighBufferUsageItem> highBufferUsageList =
+                    getHighBufferUsageList(instanceId, startTime, endTime, statusList);
 
-            if (dataList == null || dataList.isEmpty()) {
-                log.warn("Memory 리스트 데이터 없음 - instanceId: {}", instanceId);
-                return MemoryDto.ListResponse.builder()
-                        .data(new ArrayList<>())
-                        .total(0L)
-                        .build();
-            }
+            // 섹션 2: 낮은 캐시 히트율 테이블 Top 20
+            List<MemoryDto.LowCacheHitItem> lowCacheHitList =
+                    getLowCacheHitList(instanceId, startTime, endTime, statusList);
 
-            List<MemoryDto.ListItem> listItems = dataList.stream()
-                    .map(this::mapToListItem)
-                    .collect(Collectors.toList());
+            long totalCount = (long) highBufferUsageList.size() + lowCacheHitList.size();
 
             return MemoryDto.ListResponse.builder()
-                    .data(listItems)
-                    .total((long) listItems.size())
+                    .highBufferUsageList(highBufferUsageList)
+                    .lowCacheHitList(lowCacheHitList)
+                    .totalCount(totalCount)
                     .build();
 
         } catch (Exception e) {
-            log.error("Memory 리스트 조회 중 오류 발생", e);
-            throw new RuntimeException("Memory 리스트 조회 실패: " + e.getMessage(), e);
+            log.error("Memory 리스트 조회 실패", e);
+            throw new RuntimeException("리스트 데이터 조회 중 오류 발생", e);
         }
     }
 
     /**
-     * Map 데이터를 ListItem으로 변환
+     * 섹션 1: 높은 버퍼 사용 테이블 Top 20
      */
-    private MemoryDto.ListItem mapToListItem(Map<String, Object> data) {
-        return MemoryDto.ListItem.builder()
-                .id(String.valueOf(data.get("id")))
-                .objectName((String) data.get("objectname"))
-                .type((String) data.get("type"))
-                .sizeMb(getDoubleValue(data, "sizemb"))
-                .bufferCount(getLongValue(data, "buffercount"))
-                .usagePercent(getDoubleValue(data, "usagepercent"))
-                .dirtyCount(getLongValue(data, "dirtycount"))
-                .dirtyPercent(getDoubleValue(data, "dirtypercent"))
-                .pinnedBuffers(getLongValue(data, "pinnedbuffers"))
-                .hitPercent(getDoubleValue(data, "hitpercent"))
-                .accessCount(getLongValue(data, "accesscount"))
-                .evictionCount(getLongValue(data, "evictioncount"))
-                .avgAccessTime(getDoubleValue(data, "avgaccesstime"))
-                .status((String) data.get("status"))
-                .build();
+    private List<MemoryDto.HighBufferUsageItem> getHighBufferUsageList(
+            Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList) {
+
+        List<Map<String, Object>> results = memoryMapper.selectHighBufferUsageTop20(
+                instanceId, startTime, endTime, statusList);
+
+        return results.stream()
+                .map(r -> MemoryDto.HighBufferUsageItem.builder()
+                        .rankNum(getLongValue(r, "rank_num"))
+                        .tableName((String) r.get("relname"))
+                        .relkind((String) r.get("relkind"))
+                        .bufferCount(getLongValue(r, "avg_buffers"))
+                        .bufferUsagePercent(getDoubleValue(r, "buffer_usage_percent"))
+                        .dirtyRatio(getDoubleValue(r, "dirty_ratio"))
+                        .cacheHitRatio(getDoubleValue(r, "cache_hit_ratio"))
+                        .status((String) r.get("status"))
+                        .build())
+                .collect(Collectors.toList());
     }
 
     /**
-     * Map에서 Double 값 추출 (null-safe)
+     * 섹션 2: 낮은 캐시 히트율 테이블 Top 20
      */
+    private List<MemoryDto.LowCacheHitItem> getLowCacheHitList(
+            Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList) {
+
+        List<Map<String, Object>> results = memoryMapper.selectLowCacheHitTop20(
+                instanceId, startTime, endTime, statusList);
+
+        return results.stream()
+                .map(r -> MemoryDto.LowCacheHitItem.builder()
+                        .rankNum(getLongValue(r, "rank_num"))
+                        .tableName((String) r.get("relname"))
+                        .databaseName((String) r.get("database_name"))
+                        .cacheHitRatio(getDoubleValue(r, "cache_hit_ratio"))
+                        .physicalReads(getLongValue(r, "physical_reads"))
+                        .cacheHits(getLongValue(r, "cache_hits"))
+                        .status((String) r.get("status"))
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    // ========================================
+    // Helper Methods
+    // ========================================
+
+    private OffsetDateTime calculateStartTime(OffsetDateTime endTime, String timeRange) {
+        return switch (timeRange) {
+            case "1h" -> endTime.minusHours(1);
+            case "6h" -> endTime.minusHours(6);
+            case "24h" -> endTime.minusHours(24);
+            case "7d" -> endTime.minusDays(7);
+            default -> endTime.minusDays(7);
+        };
+    }
+
+    private String formatTime(Object timeObj) {
+        if (timeObj instanceof OffsetDateTime) {
+            return ((OffsetDateTime) timeObj).format(TIME_FORMATTER);
+        }
+        if (timeObj instanceof LocalDateTime) {
+            return ((LocalDateTime) timeObj).format(TIME_FORMATTER);
+        }
+        return timeObj != null ? timeObj.toString() : "";
+    }
+
+    private String formatDateTime(Object timeObj) {
+        if (timeObj instanceof OffsetDateTime) {
+            return ((OffsetDateTime) timeObj).format(DATE_TIME_FORMATTER);
+        }
+        if (timeObj instanceof LocalDateTime) {
+            return ((LocalDateTime) timeObj).format(DATE_TIME_FORMATTER);
+        }
+        return timeObj != null ? timeObj.toString() : "";
+    }
+
     private Double getDoubleValue(Map<String, Object> map, String key) {
         Object value = map.get(key);
         if (value == null) return 0.0;
@@ -437,9 +792,6 @@ public class MemoryService {
         return 0.0;
     }
 
-    /**
-     * Map에서 Long 값 추출 (null-safe)
-     */
     private Long getLongValue(Map<String, Object> map, String key) {
         Object value = map.get(key);
         if (value == null) return 0L;
@@ -447,5 +799,115 @@ public class MemoryService {
             return ((Number) value).longValue();
         }
         return 0L;
+    }
+
+    private Double getDouble(Map<String, Object> map, String key) {
+        return getDoubleValue(map, key);
+    }
+
+    private Long getLong(Map<String, Object> map, String key) {
+        return getLongValue(map, key);
+    }
+
+    // ========================================
+    // Empty Data Builders
+    // ========================================
+
+    private MemoryDto.OsMemoryUsageWidget buildEmptyOsMemoryUsageWidget() {
+        return MemoryDto.OsMemoryUsageWidget.builder()
+                .usagePercent(0.0).trend("stable").status("normal")
+                .totalGB(0L).usedGB(0L).availableGB(0L).cacheGB(0L).build();
+    }
+
+    private MemoryDto.SwapUsageWidget buildEmptySwapUsageWidget() {
+        return MemoryDto.SwapUsageWidget.builder()
+                .swapUsagePercent(0.0).status("normal")
+                .totalSwapGB(0L).usedSwapGB(0L)
+                .swapInPerSec(0L).swapOutPerSec(0L).build();
+    }
+
+    private MemoryDto.SharedBufferHitWidget buildEmptySharedBufferHitWidget() {
+        return MemoryDto.SharedBufferHitWidget.builder()
+                .hitRatio(0.0).status("normal")
+                .cacheHits(0L).physicalReads(0L).build();
+    }
+
+    private MemoryDto.BufferUsageWidget buildEmptyBufferUsageWidget() {
+        return MemoryDto.BufferUsageWidget.builder()
+                .bufferUsagePercent(0.0).dirtyRatio(0.0).pinnedRatio(0.0)
+                .status("normal").usedBuffers(0L).totalBuffers(0L).build();
+    }
+
+    private MemoryDto.TempFileUsageWidget buildEmptyTempFileUsageWidget() {
+        return MemoryDto.TempFileUsageWidget.builder()
+                .tempFileRate(0.0).status("normal")
+                .totalTempFiles(0L).totalTempMB(0L).message("정상").build();
+    }
+
+    private MemoryDto.OsMemoryUsageChart1h buildEmptyOsMemoryUsageChart1h() {
+        return MemoryDto.OsMemoryUsageChart1h.builder()
+                .categories(new ArrayList<>())
+                .usedGB(new ArrayList<>())
+                .cacheGB(new ArrayList<>())
+                .bufferGB(new ArrayList<>()).build();
+    }
+
+    private MemoryDto.BufferCacheHitChart1h buildEmptyBufferCacheHitChart1h() {
+        return MemoryDto.BufferCacheHitChart1h.builder()
+                .categories(new ArrayList<>())
+                .hitRatio(new ArrayList<>())
+                .warningThreshold(85.0)
+                .normalThreshold(95.0).build();
+    }
+
+    private MemoryDto.BufferUtilizationChart1h buildEmptyBufferUtilizationChart1h() {
+        return MemoryDto.BufferUtilizationChart1h.builder()
+                .categories(new ArrayList<>())
+                .dirtyBuffers(new ArrayList<>())
+                .pinnedBuffers(new ArrayList<>()).build();
+    }
+
+    private MemoryDto.TempFileChart6h buildEmptyTempFileChart6h() {
+        return MemoryDto.TempFileChart6h.builder()
+                .categories(new ArrayList<>())
+                .tempFileCount(new ArrayList<>())
+                .tempFileSizeMB(new ArrayList<>()).build();
+    }
+
+    private MemoryDto.IoWaitTimeChart6h buildEmptyIoWaitTimeChart6h() {
+        return MemoryDto.IoWaitTimeChart6h.builder()
+                .categories(new ArrayList<>())
+                .readWaitMs(new ArrayList<>())
+                .writeWaitMs(new ArrayList<>()).build();
+    }
+
+    private MemoryDto.OsMemoryTrendChart24h buildEmptyOsMemoryTrendChart24h() {
+        return MemoryDto.OsMemoryTrendChart24h.builder()
+                .categories(new ArrayList<>())
+                .usagePercent(new ArrayList<>())
+                .warningThreshold(80.0)
+                .dangerThreshold(90.0).build();
+    }
+
+    private MemoryDto.SwapUsageTrendChart24h buildEmptySwapUsageTrendChart24h() {
+        return MemoryDto.SwapUsageTrendChart24h.builder()
+                .categories(new ArrayList<>())
+                .swapUsagePercent(new ArrayList<>())
+                .swapInRate(new ArrayList<>())
+                .swapOutRate(new ArrayList<>()).build();
+    }
+
+    private MemoryDto.BufferReuseScoreChart24h buildEmptyBufferReuseScoreChart24h() {
+        return MemoryDto.BufferReuseScoreChart24h.builder()
+                .categories(new ArrayList<>())
+                .reuseScore(new ArrayList<>())
+                .avgUsagecount(new ArrayList<>()).build();
+    }
+
+    private MemoryDto.TopTablesByBufferChart24h buildEmptyTopTablesByBufferChart24h() {
+        return MemoryDto.TopTablesByBufferChart24h.builder()
+                .tableNames(new ArrayList<>())
+                .bufferCounts(new ArrayList<>())
+                .usagePercent(new ArrayList<>()).build();
     }
 }
