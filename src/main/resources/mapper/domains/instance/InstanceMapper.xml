@@ -108,4 +108,11 @@
         )
     </select>
 
+    <!-- 인스턴스 이름으로 ID 조회 (OS Metric Agent 자동 매핑용) -->
+    <select id="findIdByInstanceName" resultType="java.lang.Long">
+        SELECT instance_id
+        FROM monitor_instance
+        WHERE instance_name = #{instanceName}
+    </select>
+
 </mapper>

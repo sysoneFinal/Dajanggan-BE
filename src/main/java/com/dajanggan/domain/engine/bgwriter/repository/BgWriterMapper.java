@@ -1,5 +1,7 @@
 package com.dajanggan.domain.engine.bgwriter.repository;
 
+import com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg;
+import com.dajanggan.domain.engine.bgwriter.domain.BgWriterRaw;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -103,4 +105,31 @@ public interface BgWriterMapper {
             @Param("endTime") LocalDateTime endTime,
             @Param("statusList") List<String> statusList
     );
+
+    // ========== 데이터 수집용 메서드 ==========
+
+    /**
+     * 활성화된 인스턴스 ID 목록 조회
+     * @return 인스턴스 ID 리스트
+     */
+    List<Long> selectActiveInstanceIds();
+
+    /**
+     * 이전 Raw 데이터 조회 (증분 계산용)
+     * @param instanceId 인스턴스 ID
+     * @return 이전 Raw 데이터
+     */
+    BgWriterRaw selectPreviousRaw(@Param("instanceId") Long instanceId);
+
+    /**
+     * Raw 데이터 삽입
+     * @param raw Raw 데이터
+     */
+    void insertRaw(BgWriterRaw raw);
+
+    /**
+     * Agg 데이터 삽입
+     * @param agg Agg 데이터
+     */
+    void insertAgg(BgWriterAgg agg);
 }
