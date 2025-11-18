@@ -46,7 +46,7 @@ public class VacuumHistoryDto {
         private String lastAutovacuum;
         private String deadTuples;
         private String modSinceAnalyze;
-        private String bloatPct;
+        private String bloatRatio;
         private String tableSize;
         private String frequency;
         private String status;  // "주의" or "정상"
