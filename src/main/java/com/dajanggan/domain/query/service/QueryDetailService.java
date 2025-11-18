@@ -25,7 +25,7 @@ public class QueryDetailService {
 
         try {
             QueryDetailsDto result = QueryDetailsDto.builder()
-                    .querySummary(queryAgg5mService.findLatestSummary(params))
+                    .querySummary(queryAgg1mService.findLatestSummary(params))  // 
                     .topSlowQueries(queryAgg5mService.findTopSlowQueries(params))
                     .queryTypeTrend(queryAgg1mService.findQueryTypeTrend(params))
                     .avgExecutionTimeTrend(queryAgg1mService.findAvgExecutionTimeTrend(params))

@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.hottable.controller;
 
-import com.dajanggan.domain.engine.hottable.dto.HotTableDto;
+import com.dajanggan.domain.engine.hottable.dto.*;
 import com.dajanggan.domain.engine.hottable.service.HotTableService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,12 +24,12 @@ public class HotTableController {
      * @return HotTable 대시보드 데이터
      */
     @GetMapping
-    public ResponseEntity<HotTableDto.DashboardResponse> getHotTableDashboard(
+    public ResponseEntity<HotTableDashboardResponse> getHotTableDashboard(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(required = false) Long databaseId) {
         log.debug("HotTable 대시보드 조회 요청 - instanceId: {}, databaseId: {}", instanceId, databaseId);
 
-        HotTableDto.DashboardResponse response = hotTableService.getHotTableDashboard(instanceId, databaseId);
+        HotTableDashboardResponse response = hotTableService.getHotTableDashboard(instanceId, databaseId);
 
         return ResponseEntity.ok(response);
     }
@@ -43,7 +43,7 @@ public class HotTableController {
      * @return HotTable 리스트 데이터
      */
     @GetMapping("/list")
-    public ResponseEntity<HotTableDto.ListResponse> getHotTableList(
+    public ResponseEntity<HotTableListResponse> getHotTableList(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(required = false) Long databaseId,
             @RequestParam(defaultValue = "7d") String timeRange,
@@ -57,7 +57,7 @@ public class HotTableController {
             statusList = List.of(status.split(","));
         }
 
-        HotTableDto.ListResponse response = hotTableService.getHotTableList(instanceId, databaseId, timeRange, statusList);
+        HotTableListResponse response = hotTableService.getHotTableList(instanceId, databaseId, timeRange, statusList);
 
         return ResponseEntity.ok(response);
     }

@@ -113,7 +113,7 @@ public class DiskIoAgg30mScheduler {
                     WHEN AVG(avg_read_latency_ms) > 20 OR AVG(avg_write_latency_ms) > 20 THEN '주의'
                     ELSE '정상'
                 END as status
-            FROM disk_io_agg
+            FROM disk_io_agg_1m
             WHERE instance_id = ?
               AND collected_at >= ?
               AND collected_at < ?

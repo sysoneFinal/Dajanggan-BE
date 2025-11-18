@@ -24,13 +24,13 @@
             ht.table_name,
             ht.avg_table_size as value,
             ht.status
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
             SELECT MAX(collected_at)
-            FROM hot_table_agg
+            FROM hot_table_agg_1m_1m
             WHERE database_id = #{databaseId}
             )
         ORDER BY ht.avg_table_size DESC
@@ -44,13 +44,13 @@
             ht.table_name,
             (ht.total_seq_scan + ht.total_idx_scan) as value,
             ht.status
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
             SELECT MAX(collected_at)
-            FROM hot_table_agg
+            FROM hot_table_agg_1m_1m
             WHERE database_id = #{databaseId}
             )
         ORDER BY (ht.total_seq_scan + ht.total_idx_scan) DESC
@@ -64,13 +64,13 @@
             ht.table_name,
             ht.avg_bloat_percent as value,
             ht.status
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
             SELECT MAX(collected_at)
-            FROM hot_table_agg
+            FROM hot_table_agg_1m_1m
             WHERE database_id = #{databaseId}
             )
         ORDER BY ht.avg_bloat_percent DESC
@@ -80,33 +80,33 @@
     <!-- 테이블 활동 시계열 데이터 조회 -->
     <select id="selectTableActivityTimeSeries" resultType="map">
         SELECT
-            DATE_TRUNC('hour', ht.collected_at) as timestamp,
+            TO_CHAR(DATE_TRUNC('hour', ht.collected_at), 'HH24:MI') as timestamp,
             SUM(ht.total_seq_scan) as seq_scan,
             SUM(ht.total_idx_scan) as idx_scan,
             SUM(ht.total_tup_ins) as n_tup_ins,
             SUM(ht.total_tup_upd) as n_tup_upd,
             SUM(ht.total_tup_del) as n_tup_del
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
-          AND ht.collected_at BETWEEN #{startTime} AND #{endTime}
+          AND ht.collected_at >= #{startTime} AND ht.collected_at <![CDATA[ <= ]]> #{endTime}
         GROUP BY DATE_TRUNC('hour', ht.collected_at)
-        ORDER BY timestamp
+        ORDER BY DATE_TRUNC('hour', ht.collected_at)
     </select>
 
     <!-- 캐시 히트율 시계열 데이터 조회 -->
     <select id="selectCacheHitRatioTimeSeries" resultType="map">
         SELECT
-            DATE_TRUNC('hour', ht.collected_at) as timestamp,
+            TO_CHAR(DATE_TRUNC('hour', ht.collected_at), 'HH24:MI') as timestamp,
             AVG(ht.avg_cache_hit_ratio) as cache_hit_ratio
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
-          AND ht.collected_at BETWEEN #{startTime} AND #{endTime}
+          AND ht.collected_at >= #{startTime} AND ht.collected_at <![CDATA[ <= ]]> #{endTime}
         GROUP BY DATE_TRUNC('hour', ht.collected_at)
-        ORDER BY timestamp
+        ORDER BY DATE_TRUNC('hour', ht.collected_at)
     </select>
 
     <!-- Bloat 상태 조회 -->
@@ -114,13 +114,13 @@
         SELECT
             ht.table_name,
             ht.avg_bloat_percent as bloat_percent
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
             SELECT MAX(collected_at)
-            FROM hot_table_agg
+            FROM hot_table_agg_1m_1m
             WHERE database_id = #{databaseId}
         )
         ORDER BY ht.avg_bloat_percent DESC
@@ -132,13 +132,13 @@
         SELECT
             ht.table_name,
             ht.vacuum_delay_seconds
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
             SELECT MAX(collected_at)
-            FROM hot_table_agg
+            FROM hot_table_agg_1m_1m
             WHERE database_id = #{databaseId}
         )
         ORDER BY ht.vacuum_delay_seconds DESC
@@ -154,13 +154,13 @@
             COALESCE(SUM(ht.total_seq_scan), 0) as total_seq_scans,
             COALESCE(SUM(ht.total_idx_scan), 0) as total_idx_scans,
             COALESCE(COUNT(CASE WHEN ht.avg_bloat_percent >= 15 THEN 1 END), 0) as high_bloat_tables
-        FROM hot_table_agg ht
+        FROM hot_table_agg_1m ht
                  INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND ht.database_id = #{databaseId}
           AND ht.collected_at = (
             SELECT MAX(collected_at)
-            FROM hot_table_agg
+            FROM hot_table_agg_1m_1m
             WHERE database_id = #{databaseId}
         )
     </select>
@@ -196,7 +196,7 @@
         INNER JOIN monitor_database d ON ht.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
         AND ht.database_id = #{databaseId}
-        AND ht.collected_at BETWEEN #{startTime} AND #{endTime}
+        AND ht.collected_at >= #{startTime} AND ht.collected_at <![CDATA[ <= ]]> #{endTime}
         <if test="statusList != null and statusList.size() > 0">
             AND CASE
             WHEN ht.bloat_percent >= 30 THEN '위험'
@@ -311,7 +311,7 @@
 
     <!-- Agg 데이터 일괄 삽입 -->
     <insert id="insertAggBatch" parameterType="java.util.List">
-        INSERT INTO hot_table_agg (
+        INSERT INTO hot_table_agg_1m (
         database_id,
         collected_at,
         schema_name,

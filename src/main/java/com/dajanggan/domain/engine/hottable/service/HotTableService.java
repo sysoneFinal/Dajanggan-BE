@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.hottable.service;
 
-import com.dajanggan.domain.engine.hottable.dto.HotTableDto;
+import com.dajanggan.domain.engine.hottable.dto.*;
 import com.dajanggan.domain.engine.hottable.repository.HotTableMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class HotTableService {
 
     private final HotTableMapper hotTableMapper;
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     /**
      * HotTable 대시보드 데이터 조회
@@ -27,7 +27,7 @@ public class HotTableService {
      * @param databaseId 데이터베이스 ID
      * @return HotTable 대시보드 데이터
      */
-    public HotTableDto.DashboardResponse getHotTableDashboard(Long instanceId, Long databaseId) {
+    public HotTableDashboardResponse getHotTableDashboard(Long instanceId, Long databaseId) {
         log.info("HotTable 대시보드 조회 시작 - instanceId: {}, databaseId: {}", instanceId, databaseId);
 
         // instanceId와 databaseId가 null이면 예외 발생
@@ -40,13 +40,15 @@ public class HotTableService {
             throw new IllegalArgumentException("databaseId는 필수 파라미터입니다");
         }
 
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusHours(24); // 최근 24시간
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
 
-        return HotTableDto.DashboardResponse.builder()
+        return HotTableDashboardResponse.builder()
                 .topTables(getTopTables(instanceId, databaseId))
-                .tableActivity(getTableActivity(instanceId, databaseId, startTime, endTime))
-                .cacheHitRatio(getCacheHitRatio(instanceId, databaseId, startTime, endTime))
+                // 테이블 활동 (최근 10분)
+                .tableActivity(getTableActivity(instanceId, databaseId, endTime.minusMinutes(10), endTime))
+                // 캐시 히트율 (최근 15분)
+                .cacheHitRatio(getCacheHitRatio(instanceId, databaseId, endTime.minusMinutes(15), endTime))
                 .bloatStatus(getBloatStatus(instanceId, databaseId))
                 .vacuumStatus(getVacuumStatus(instanceId, databaseId))
                 .recentStats(getRecentStats(instanceId, databaseId))
@@ -56,12 +58,12 @@ public class HotTableService {
     /**
      * Top 테이블 정보 조회
      */
-    private HotTableDto.TopTables getTopTables(Long instanceId, Long databaseId) {
+    private HotTableDashboardResponse.TopTables getTopTables(Long instanceId, Long databaseId) {
         List<Map<String, Object>> topBySize = hotTableMapper.selectTopTablesBySize(instanceId, databaseId);
         List<Map<String, Object>> topByScan = hotTableMapper.selectTopTablesByScan(instanceId, databaseId);
         List<Map<String, Object>> topByBloat = hotTableMapper.selectTopTablesByBloat(instanceId, databaseId);
 
-        return HotTableDto.TopTables.builder()
+        return HotTableDashboardResponse.TopTables.builder()
                 .topBySize(convertToTableSummary(topBySize))
                 .topByScan(convertToTableSummary(topByScan))
                 .topByBloat(convertToTableSummary(topByBloat))
@@ -71,7 +73,7 @@ public class HotTableService {
     /**
      * 테이블 활동 시계열 데이터 조회
      */
-    private HotTableDto.TableActivity getTableActivity(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotTableDashboardResponse.TableActivity getTableActivity(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> data = hotTableMapper.selectTableActivityTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -90,7 +92,7 @@ public class HotTableService {
             deletes.add(getLongValue(row.get("n_tup_del")));
         }
 
-        return HotTableDto.TableActivity.builder()
+        return HotTableDashboardResponse.TableActivity.builder()
                 .categories(categories)
                 .seqScans(seqScans)
                 .idxScans(idxScans)
@@ -103,7 +105,7 @@ public class HotTableService {
     /**
      * 캐시 히트율 시계열 데이터 조회
      */
-    private HotTableDto.CacheHitRatio getCacheHitRatio(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotTableDashboardResponse.CacheHitRatio getCacheHitRatio(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> data = hotTableMapper.selectCacheHitRatioTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -118,7 +120,7 @@ public class HotTableService {
         Double max = ratios.isEmpty() ? 0.0 : ratios.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         Double min = ratios.isEmpty() ? 0.0 : ratios.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
 
-        return HotTableDto.CacheHitRatio.builder()
+        return HotTableDashboardResponse.CacheHitRatio.builder()
                 .categories(categories)
                 .data(ratios)
                 .average(average)
@@ -130,7 +132,7 @@ public class HotTableService {
     /**
      * Bloat 상태 조회
      */
-    private HotTableDto.BloatStatus getBloatStatus(Long instanceId, Long databaseId) {
+    private HotTableDashboardResponse.BloatStatus getBloatStatus(Long instanceId, Long databaseId) {
         List<Map<String, Object>> data = hotTableMapper.selectBloatStatus(instanceId, databaseId);
 
         List<String> categories = new ArrayList<>();
@@ -155,7 +157,7 @@ public class HotTableService {
             }
         }
 
-        return HotTableDto.BloatStatus.builder()
+        return HotTableDashboardResponse.BloatStatus.builder()
                 .categories(categories)
                 .data(bloatData)
                 .normalCount(normalCount)
@@ -167,7 +169,7 @@ public class HotTableService {
     /**
      * Vacuum 상태 조회
      */
-    private HotTableDto.VacuumStatus getVacuumStatus(Long instanceId, Long databaseId) {
+    private HotTableDashboardResponse.VacuumStatus getVacuumStatus(Long instanceId, Long databaseId) {
         List<Map<String, Object>> data = hotTableMapper.selectVacuumStatus(instanceId, databaseId);
 
         List<String> categories = new ArrayList<>();
@@ -183,7 +185,7 @@ public class HotTableService {
         Long maxDelaySeconds = delaySeconds.isEmpty() ? 0L :
                 delaySeconds.stream().mapToLong(Long::longValue).max().orElse(0L);
 
-        return HotTableDto.VacuumStatus.builder()
+        return HotTableDashboardResponse.VacuumStatus.builder()
                 .categories(categories)
                 .delaySeconds(delaySeconds)
                 .avgDelaySeconds(avgDelaySeconds)
@@ -194,10 +196,10 @@ public class HotTableService {
     /**
      * 최근 통계 조회
      */
-    private HotTableDto.RecentStats getRecentStats(Long instanceId, Long databaseId) {
+    private HotTableDashboardResponse.RecentStats getRecentStats(Long instanceId, Long databaseId) {
         Map<String, Object> data = hotTableMapper.selectRecentStats(instanceId, databaseId);
 
-        return HotTableDto.RecentStats.builder()
+        return HotTableDashboardResponse.RecentStats.builder()
                 .totalTables(getLongValue(data.get("total_tables")))
                 .activeTables(getLongValue(data.get("active_tables")))
                 .avgCacheHitRatio(getDoubleValue(data.get("avg_cache_hit_ratio")))
@@ -215,7 +217,7 @@ public class HotTableService {
      * @param statusList 상태 필터 리스트
      * @return HotTable 리스트 데이터
      */
-    public HotTableDto.ListResponse getHotTableList(Long instanceId, Long databaseId, String timeRange, List<String> statusList) {
+    public HotTableListResponse getHotTableList(Long instanceId, Long databaseId, String timeRange, List<String> statusList) {
         log.info("HotTable 리스트 조회 시작 - instanceId: {}, databaseId: {}, timeRange: {}, statusList: {}",
                 instanceId, databaseId, timeRange, statusList);
 
@@ -230,7 +232,8 @@ public class HotTableService {
         }
 
         // 시간 범위 계산
-        LocalDateTime endTime = LocalDateTime.now();
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
         LocalDateTime startTime = calculateStartTime(endTime, timeRange);
 
         // 데이터 조회
@@ -238,11 +241,11 @@ public class HotTableService {
                 instanceId, databaseId, startTime, endTime, statusList);
 
         // DTO 변환
-        List<HotTableDto.ListItem> items = dataList.stream()
+        List<HotTableListItem> items = dataList.stream()
                 .map(this::convertToListItem)
                 .collect(Collectors.toList());
 
-        return HotTableDto.ListResponse.builder()
+        return HotTableListResponse.builder()
                 .data(items)
                 .total((long) items.size())
                 .build();
@@ -251,9 +254,9 @@ public class HotTableService {
     /**
      * Map을 TableSummary로 변환
      */
-    private List<HotTableDto.TableSummary> convertToTableSummary(List<Map<String, Object>> dataList) {
+    private List<HotTableDashboardResponse.TableSummary> convertToTableSummary(List<Map<String, Object>> dataList) {
         return dataList.stream()
-                .map(row -> HotTableDto.TableSummary.builder()
+                .map(row -> HotTableDashboardResponse.TableSummary.builder()
                         .schemaName((String) row.get("schema_name"))
                         .tableName((String) row.get("table_name"))
                         .value(getLongValue(row.get("value")))
@@ -266,8 +269,8 @@ public class HotTableService {
     /**
      * Map을 ListItem으로 변환
      */
-    private HotTableDto.ListItem convertToListItem(Map<String, Object> row) {
-        return HotTableDto.ListItem.builder()
+    private HotTableListItem convertToListItem(Map<String, Object> row) {
+        return HotTableListItem.builder()
                 .id(String.valueOf(row.get("hot_table_raw_id")))
                 .tableName((String) row.get("table_name"))
                 .schemaName((String) row.get("schema_name"))
@@ -342,11 +345,15 @@ public class HotTableService {
      * 타임스탬프 포맷팅
      */
     private String formatTimestamp(Object timestamp) {
+        // HH:mm 형식으로 통일 (Mapper에서 이미 포맷팅된 문자열을 반환할 수 있음)
         if (timestamp == null) {
             return null;
         }
+        if (timestamp instanceof String) {
+            return (String) timestamp; // 이미 포맷팅된 문자열
+        }
         if (timestamp instanceof LocalDateTime) {
-            return ((LocalDateTime) timestamp).format(FORMATTER);
+            return ((LocalDateTime) timestamp).format(TIME_FORMATTER);
         }
         return timestamp.toString();
     }

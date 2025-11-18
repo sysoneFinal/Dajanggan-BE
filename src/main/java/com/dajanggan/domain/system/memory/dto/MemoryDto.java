@@ -256,6 +256,25 @@ public class MemoryDto {
     }
 
     // ========================================
+    // SSE 실시간 데이터
+    // ========================================
+
+    /**
+     * SSE 실시간 위젯 데이터
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RealtimeMetrics {
+        private OsMemoryUsageWidget osMemoryUsage;
+        private SwapUsageWidget swapUsage;
+        private SharedBufferHitWidget sharedBufferHit;
+        private BufferUsageWidget bufferUsage;
+        private TempFileUsageWidget tempFileUsage;
+    }
+
+    // ========================================
     // 리스트 (2개 섹션)
     // ========================================
 

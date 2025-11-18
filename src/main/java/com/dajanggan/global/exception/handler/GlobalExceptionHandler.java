@@ -88,6 +88,17 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * IOException 처리 (SSE 연결 끊김 등)
+     * SSE 연결이 끊어질 때 발생하는 정상적인 IOException은 무시
+     */
+    @ExceptionHandler(java.io.IOException.class)
+    void handleIOException(final java.io.IOException e) {
+        // 클라이언트 연결 끊김은 정상적인 상황이므로 DEBUG 레벨로 로깅
+        log.debug("IOException occurred (클라이언트 연결 끊김): {}", e.getMessage());
+        // 응답하지 않음 (이미 연결이 끊어진 상태)
+    }
+
+    /**
      * Internal Server Error 5xx :
      * 예외처리가 제대로 되지 않았거나 코드 자체의 문제인 경우일 확률 높음
      * 코드를 고치거나 해당 예외처리 핸들러를 추가해줘야 함

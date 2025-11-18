@@ -23,7 +23,7 @@
             COALESCE(COUNT(CASE WHEN hi.status = '정상' THEN 1 END), 0) as used_count,
             COALESCE(COUNT(CASE WHEN hi.status = '미사용' THEN 1 END), 0) as unused_count,
             COALESCE(COUNT(CASE WHEN hi.status = '비효율' THEN 1 END), 0) as inefficient_count
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
@@ -34,7 +34,7 @@
         SELECT
             hi.index_name,
             hi.total_idx_scan as idx_scan
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
@@ -47,7 +47,7 @@
         SELECT
             hi.index_name,
             (100 - hi.avg_idx_efficiency) as inefficiency_score
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
@@ -59,13 +59,13 @@
     <!-- 캐시 히트율 시계열 -->
     <select id="selectCacheHitRatioTimeSeries" resultType="map">
         SELECT
-            hi.collected_at as timestamp,
+            TO_CHAR(hi.collected_at, 'HH24:MI') as timestamp,
             hi.avg_idx_hit_ratio as cache_hit_ratio
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
-          AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
+          AND hi.collected_at >= #{startTime} AND hi.collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY hi.collected_at
     </select>
 
@@ -75,7 +75,7 @@
             hi.index_name,
             hi.total_idx_scan as idx_scan,
             hi.avg_idx_efficiency as efficiency
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
@@ -84,27 +84,27 @@
     <!-- 접근 추이 시계열 -->
     <select id="selectAccessTrendTimeSeries" resultType="map">
         SELECT
-            hi.collected_at as timestamp,
+            TO_CHAR(hi.collected_at, 'HH24:MI') as timestamp,
             hi.total_idx_tup_read as idx_tup_read,
             hi.total_idx_tup_fetch as idx_tup_fetch
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
-          AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
+          AND hi.collected_at >= #{startTime} AND hi.collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY hi.collected_at
     </select>
 
     <!-- 스캔 속도 시계열 -->
     <select id="selectScanSpeedTimeSeries" resultType="map">
         SELECT
-            hi.collected_at as timestamp,
+            TO_CHAR(hi.collected_at, 'HH24:MI') as timestamp,
             hi.avg_scan_time_ms
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
-          AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
+          AND hi.collected_at >= #{startTime} AND hi.collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY hi.collected_at
     </select>
 
@@ -116,7 +116,7 @@
             COALESCE(SUM(hi.total_idx_tup_read), 0) as total_reads,
             COALESCE(SUM(hi.total_idx_tup_fetch), 0) as total_writes,
             COALESCE(COUNT(CASE WHEN hi.status = '비효율' THEN 1 END), 0) as inefficient_count
-        FROM hot_index_agg hi
+        FROM hot_index_agg_1m hi
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
           AND hi.database_id = #{databaseId}
@@ -152,7 +152,7 @@
         INNER JOIN monitor_database d ON hi.database_id = d.database_id
         WHERE d.instance_id = #{instanceId}
         AND hi.database_id = #{databaseId}
-        AND hi.collected_at BETWEEN #{startTime} AND #{endTime}
+        AND hi.collected_at >= #{startTime} AND hi.collected_at <![CDATA[ <= ]]> #{endTime}
         <if test="statusList != null and statusList.size() > 0">
             AND CASE
             WHEN hi.idx_scan = 0 THEN '미사용'
@@ -255,7 +255,7 @@
 
     <!-- Agg 데이터 일괄 삽입 -->
     <insert id="insertAggBatch" parameterType="java.util.List">
-        INSERT INTO hot_index_agg (
+        INSERT INTO hot_index_agg_1m (
         database_id,
         collected_at,
         schema_name,

@@ -18,6 +18,9 @@ import java.util.Map;
  * 쿼리 메트릭스 원시 데이터 Controller
  * - QueryOverview.tsx, QueryTuner.tsx, ExecutionStatus.tsx 데이터 제공
  *
+ * ✅ 수정사항:
+ * - getQueryMetricsByDatabaseId에 days 파라미터 추가 (기본값: 1일)
+ *
  * @author 이해든
  */
 @Slf4j
@@ -97,28 +100,41 @@ public class QueryMetricsRawController {
     }
 
     /**
-     * 데이터베이스 ID로 쿼리 메트릭스 목록 조회
-     * GET /api/query-metrics/database/{databaseId}
+     * ✅ 수정: 데이터베이스 ID로 쿼리 메트릭스 목록 조회 (기간 제한 추가)
+     * GET /api/query-metrics/database/{databaseId}?days=1
      */
     @GetMapping("/database/{databaseId}")
     @Operation(summary = "데이터베이스별 쿼리 메트릭스 조회",
-            description = "특정 데이터베이스의 쿼리 메트릭스를 조회합니다")
+            description = "특정 데이터베이스의 쿼리 메트릭스를 조회합니다 (기본: 최근 1일)")
     public ResponseEntity<Map<String, Object>> getQueryMetricsByDatabaseId(
             @Parameter(description = "데이터베이스 ID")
-            @PathVariable Long databaseId) {
+            @PathVariable Long databaseId,
+            @Parameter(description = "조회 기간 (일 단위, 기본값: 1일, 0 = 전체)")
+            @RequestParam(defaultValue = "1") Integer days) {
 
-        log.info("GET /api/query-metrics/database/{} - databaseId: {}", databaseId, databaseId);
+        log.info("GET /api/query-metrics/database/{} - databaseId: {}, days: {}", databaseId, databaseId, days);
 
-        List<QueryMetricsRawDto> data = queryMetricsRawService.getQueryMetricsByDatabaseId(databaseId);
-        int count = queryMetricsRawService.getCountByDatabaseId(databaseId);
+        List<QueryMetricsRawDto> data;
+
+        // days가 0이면 전체 데이터, 그 외에는 해당 일수만큼의 데이터
+        if (days == 0) {
+            data = queryMetricsRawService.getQueryMetricsByDatabaseId(databaseId);
+            log.info("📊 전체 데이터 조회");
+        } else {
+            data = queryMetricsRawService.getQueryMetricsByDatabaseIdAndDays(databaseId, days);
+            log.info("📊 최근 {}일 데이터 조회", days);
+        }
+
+        int count = data.size();
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("data", data);
         response.put("count", count);
+        response.put("days", days);
         response.put("message", "조회 성공");
 
-        log.info("데이터베이스별 조회 완료: databaseId={}, count={}", databaseId, count);
+        log.info("✅ 데이터베이스별 조회 완료: databaseId={}, days={}, count={}", databaseId, days, count);
         return ResponseEntity.ok(response);
     }
 
