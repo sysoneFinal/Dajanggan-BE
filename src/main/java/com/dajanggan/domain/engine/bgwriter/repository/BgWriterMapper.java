@@ -24,12 +24,14 @@ public interface BgWriterMapper {
      * @param instanceId 인스턴스 ID
      * @param startTime 시작 시간
      * @param endTime 종료 시간
+     * @param intervalMinutes 집계 간격 (1, 5, 30)
      * @return Clean Rate 시계열 데이터
      */
     List<Map<String, Object>> selectCleanRateTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("intervalMinutes") Integer intervalMinutes
     );
 
     /**
@@ -37,12 +39,14 @@ public interface BgWriterMapper {
      * @param instanceId 인스턴스 ID
      * @param startTime 시작 시간
      * @param endTime 종료 시간
+     * @param intervalMinutes 집계 간격 (1, 5, 30)
      * @return Buffer Flush 비율 시계열 데이터
      */
     List<Map<String, Object>> selectBufferFlushRatioTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("intervalMinutes") Integer intervalMinutes
     );
 
     /**
@@ -50,12 +54,14 @@ public interface BgWriterMapper {
      * @param instanceId 인스턴스 ID
      * @param startTime 시작 시간
      * @param endTime 종료 시간
+     * @param intervalMinutes 집계 간격 (1, 5, 30)
      * @return Maxwritten Clean 시계열 데이터
      */
     List<Map<String, Object>> selectMaxwrittenCleanTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("intervalMinutes") Integer intervalMinutes
     );
 
     /**
@@ -63,12 +69,14 @@ public interface BgWriterMapper {
      * @param instanceId 인스턴스 ID
      * @param startTime 시작 시간
      * @param endTime 종료 시간
+     * @param intervalMinutes 집계 간격 (1, 5, 30)
      * @return BGWriter vs Checkpoint 시계열 데이터
      */
     List<Map<String, Object>> selectBgwriterVsCheckpointTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("intervalMinutes") Integer intervalMinutes
     );
 
     /**
@@ -76,12 +84,14 @@ public interface BgWriterMapper {
      * @param instanceId 인스턴스 ID
      * @param startTime 시작 시간
      * @param endTime 종료 시간
+     * @param intervalMinutes 집계 간격 (1, 5, 30)
      * @return Buffer 재사용률 시계열 데이터
      */
     List<Map<String, Object>> selectBufferReuseRateTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("endTime") LocalDateTime endTime,
+            @Param("intervalMinutes") Integer intervalMinutes
     );
 
     /**
@@ -122,14 +132,33 @@ public interface BgWriterMapper {
     BgWriterRaw selectPreviousRaw(@Param("instanceId") Long instanceId);
 
     /**
+     * 이전 1분 집계 데이터 조회 (5분 집계 계산용)
+     * @param instanceId 인스턴스 ID
+     * @param startTime 시작 시간
+     * @param endTime 종료 시간
+     * @return 1분 집계 데이터 리스트
+     */
+    List<com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m> selectPreviousAgg1m(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime
+    );
+
+    /**
      * Raw 데이터 삽입
      * @param raw Raw 데이터
      */
     void insertRaw(BgWriterRaw raw);
 
     /**
-     * Agg 데이터 삽입
-     * @param agg Agg 데이터
+     * 1분 집계 데이터 삽입
+     * @param agg1m 1분 집계 데이터
      */
-    void insertAgg(BgWriterAgg agg);
+    void insertAgg1m(com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m agg1m);
+
+    /**
+     * 5분 집계 데이터 삽입
+     * @param agg5m 5분 집계 데이터
+     */
+    void insertAgg5m(com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg5m agg5m);
 }

@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.checkpoint.controller;
 
-import com.dajanggan.domain.engine.checkpoint.dto.CheckpointDto;
+import com.dajanggan.domain.engine.checkpoint.dto.*;
 import com.dajanggan.domain.engine.checkpoint.service.CheckpointService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,11 +23,11 @@ public class CheckpointController {
      * @return Checkpoint 대시보드 데이터
      */
     @GetMapping
-    public ResponseEntity<CheckpointDto.DashboardResponse> getCheckpointDashboard(
+    public ResponseEntity<CheckpointDashboardResponse> getCheckpointDashboard(
             @RequestParam(required = false) Long instanceId) {
         log.debug("Checkpoint 대시보드 조회 요청 - instanceId: {}", instanceId);
         
-        CheckpointDto.DashboardResponse response = checkpointService.getCheckpointDashboard(instanceId);
+        CheckpointDashboardResponse response = checkpointService.getCheckpointDashboard(instanceId);
         
         return ResponseEntity.ok(response);
     }
@@ -40,7 +40,7 @@ public class CheckpointController {
      * @return Checkpoint 리스트 데이터
      */
     @GetMapping("/list")
-    public ResponseEntity<CheckpointDto.ListResponse> getCheckpointList(
+    public ResponseEntity<CheckpointListResponse> getCheckpointList(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(defaultValue = "7d") String timeRange,
             @RequestParam(required = false) String status) {
@@ -53,7 +53,7 @@ public class CheckpointController {
             statusList = List.of(status.split(","));
         }
         
-        CheckpointDto.ListResponse response = checkpointService.getCheckpointList(instanceId, timeRange, statusList);
+        CheckpointListResponse response = checkpointService.getCheckpointList(instanceId, timeRange, statusList);
         
         return ResponseEntity.ok(response);
     }

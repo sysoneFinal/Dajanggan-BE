@@ -101,12 +101,32 @@ public interface MemoryMapper {
     );
 
     /**
+     * Buffer Cache Hit Ratio Chart 1h (LIMIT)
+     */
+    List<Map<String, Object>> selectBufferCacheHitChart1hWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
+    );
+
+    /**
      * Buffer Utilization Chart 1h
      */
     List<Map<String, Object>> selectBufferUtilizationChart1h(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * Buffer Utilization Chart 1h (LIMIT)
+     */
+    List<Map<String, Object>> selectBufferUtilizationChart1hWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
     );
 
     // ========================================
@@ -123,12 +143,32 @@ public interface MemoryMapper {
     );
 
     /**
+     * Temp File Chart 6h (LIMIT)
+     */
+    List<Map<String, Object>> selectTempFileChart6hWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
+    );
+
+    /**
      * I/O Wait Time Chart 6h
      */
     List<Map<String, Object>> selectIoWaitTimeChart6h(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * I/O Wait Time Chart 6h (LIMIT)
+     */
+    List<Map<String, Object>> selectIoWaitTimeChart6hWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
     );
 
     // ========================================
@@ -150,6 +190,16 @@ public interface MemoryMapper {
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * Buffer Reuse Score Chart 24h (LIMIT)
+     */
+    List<Map<String, Object>> selectBufferReuseScoreChart24hWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
     );
 
     /**

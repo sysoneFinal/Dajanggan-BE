@@ -83,7 +83,7 @@ public class CpuAgg30mScheduler {
         
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
-        // cpu_agg 테이블에서 30분간 데이터 집계
+        // cpu_agg_1m 테이블에서 30분간 데이터 집계
         String sql = """
             SELECT
                 ? as time_bucket,
@@ -112,7 +112,7 @@ public class CpuAgg30mScheduler {
                 ROUND(AVG(xact_commit_rate)::numeric, 2) as avg_xact_commit_rate,
                 ROUND(AVG(xact_rollback_rate)::numeric, 2) as avg_xact_rollback_rate,
                 COUNT(*) as record_count
-            FROM cpu_agg
+            FROM cpu_agg_1m
             WHERE instance_id = ?
               AND collected_at >= ?
               AND collected_at < ?

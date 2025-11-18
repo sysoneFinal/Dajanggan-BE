@@ -12,7 +12,7 @@ import java.util.List;
  * CPU 페이지 DTO (2025-11-16 개편)
  * 
  * 데이터 소스:
- * - PostgreSQL Metrics: cpu_agg (1분 집계), cpu_agg_5m (5분 집계)
+ * - PostgreSQL Metrics: cpu_agg_1m (1분 집계), cpu_agg_5m (5분 집계)
  * - OS Metrics: Redis 실시간 (5초마다), os_metric_agg (1분 집계)
  * 
  * 프론트엔드 구조:
@@ -58,15 +58,15 @@ public class CpuDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Charts {
-        private OsCpuUsageTrend1h osCpuUsageTrend1h;                     // 차트1
-        private PostgresqlTpsTrend1h postgresqlTpsTrend1h;               // 차트2
-        private OsCpuVsActiveConnections24h osCpuVsActiveConnections24h; // 차트3
-        private LoadAverageTrend24h loadAverageTrend24h;                 // 차트4
-        private ConnectionStatus24h connectionStatus24h;                 // 차트5
+        private OsCpuUsageTrend10m osCpuUsageTrend10m;                     // 차트1
+        private PostgresqlTpsTrend10m postgresqlTpsTrend10m;               // 차트2
+        private PostgresqlActiveConnections10m postgresqlActiveConnections10m; // 차트3
+        private LoadAverageTrend15m loadAverageTrend15m;                 // 차트4
+        private ConnectionStatus1h connectionStatus1h;                 // 차트5
         private TpsDailyTrend24h tpsDailyTrend24h;                       // 차트6
-        private WaitEventDistribution24h waitEventDistribution24h;       // 차트7
+        private WaitEventDistribution15m waitEventDistribution15m;       // 차트7
         private BackendTypeTrend24h backendTypeTrend24h;                 // 차트8
-        private ErrorRateTrend24h errorRateTrend24h;                     // 차트9
+        private ErrorRateTrend15m errorRateTrend15m;                     // 차트9
     }
 
     // ========================================
@@ -326,51 +326,51 @@ public class CpuDto {
     // ========================================
 
     /**
-     * 차트1: OS CPU 사용률 추이 (1시간)
+     * 차트1: OS CPU 사용률 추이 (최근 10분)
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class OsCpuUsageTrend1h {
+    public static class OsCpuUsageTrend10m {
         private List<String> categories;
         private List<Double> data;
     }
 
     /**
-     * 차트2: PostgreSQL TPS 추이 (1시간)
+     * 차트2: PostgreSQL TPS 추이 (최근 10분)
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class PostgresqlTpsTrend1h {
+    public static class PostgresqlTpsTrend10m {
         private List<String> categories;
         private List<Integer> commitTps;
         private List<Integer> rollbackTps;
     }
 
     /**
-     * 차트3: OS CPU vs PostgreSQL 활성 연결 (24시간)
+     * 차트3: PostgreSQL 활성 연결 (최근 10분)
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class OsCpuVsActiveConnections24h {
+    public static class PostgresqlActiveConnections10m {
         private List<String> categories;
         private List<Double> osCpuUsage;
         private List<Integer> activeConnections;
     }
 
     /**
-     * 차트4: Load Average 추이 (24시간)
+     * 차트4: Load Average 추이 (최근 15분)
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class LoadAverageTrend24h {
+    public static class LoadAverageTrend15m {
         private List<String> categories;
         private List<Double> load1m;
         private List<Double> load5m;
@@ -379,13 +379,13 @@ public class CpuDto {
     }
 
     /**
-     * 차트5: 연결 상태 분포 (24시간)
+     * 차트5: 연결 상태 분포 (1시간)
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class ConnectionStatus24h {
+    public static class ConnectionStatus1h {
         private List<String> categories;
         private List<Integer> active;
         private List<Integer> idle;
@@ -406,13 +406,13 @@ public class CpuDto {
     }
 
     /**
-     * 차트7: Wait Event 유형별 분포 (24시간)
+     * 차트7: Wait Event 유형별 분포 (최근 15분)
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class WaitEventDistribution24h {
+    public static class WaitEventDistribution15m {
         private List<String> categories;
         private List<Integer> lock;
         private List<Integer> io;
@@ -438,13 +438,13 @@ public class CpuDto {
     }
 
     /**
-     * 차트9: 에러율 추이 (24시간)
+     * 차트9: 에러율 추이 (최근 15분)
      */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class ErrorRateTrend24h {
+    public static class ErrorRateTrend15m {
         private List<String> categories;
         private List<Double> data;
     }

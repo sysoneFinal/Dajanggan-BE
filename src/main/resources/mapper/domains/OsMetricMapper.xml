@@ -166,7 +166,7 @@
     <select id="selectAggregatedMetrics" resultType="java.util.HashMap">
         SELECT
             collected_at,
-            avg_value,
+            avg_value AS usage_percent,
             max_value,
             min_value,
             sample_count

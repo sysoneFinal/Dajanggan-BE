@@ -1,6 +1,6 @@
 package com.dajanggan.domain.system.cpu.controller;
 
-import com.dajanggan.domain.system.cpu.dto.CpuDto;
+import com.dajanggan.domain.system.cpu.dto.*;
 import com.dajanggan.domain.system.cpu.service.CpuService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
