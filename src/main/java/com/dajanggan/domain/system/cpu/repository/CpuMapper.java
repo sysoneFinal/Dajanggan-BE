@@ -86,11 +86,41 @@ public interface CpuMapper {
     );
 
     /**
+     * CPU Agg 5분 데이터 조회 (시간 범위 + LIMIT)
+     */
+    List<CpuAgg5m> selectCpuAgg5mByTimeRangeWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
+    );
+
+    /**
+     * CPU Agg 데이터 조회 (시간 범위 + LIMIT)
+     */
+    List<CpuAgg> selectCpuAggByTimeRangeWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
+    );
+
+    /**
      * CPU Agg 30분 데이터 조회 (시간 범위)
      */
     List<CpuAgg30m> selectCpuAgg30mByTimeRange(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * CPU Agg 30분 데이터 조회 (시간 범위 + LIMIT)
+     */
+    List<CpuAgg30m> selectCpuAgg30mByTimeRangeWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
     );
 }

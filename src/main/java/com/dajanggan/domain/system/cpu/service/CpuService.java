@@ -15,12 +15,13 @@ import org.springframework.stereotype.Service;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
  * 데이터 흐름:
  * 1. 실시간 CPU: SSE로 직접 전송 (OsMetricSseService)
- * 2. PostgreSQL 메트릭: cpu_agg (1분), cpu_agg_5m (5분)
+ * 2. PostgreSQL 메트릭: cpu_agg_1m (1분), cpu_agg_5m (5분)
  * 3. OS 메트릭 집계: os_metric_agg (1분)
  */
 @Slf4j
@@ -39,7 +40,8 @@ public class CpuService {
      * CPU 대시보드 전체 데이터 조회 (PDF 명세 기반)
      */
     public CpuDto.DashboardResponse getCpuDashboard(Long instanceId) {
-        log.debug("CPU 대시보드 조회 - instanceId: {}", instanceId);
+        log.info("========== CPU 대시보드 데이터 조회 시작: instanceId={} ==========", instanceId);
+        long startTime = System.currentTimeMillis();
 
         if (instanceId == null) {
             throw new IllegalArgumentException("instanceId는 필수입니다");
@@ -51,6 +53,10 @@ public class CpuService {
 
             // 차트 9개 구성
             CpuDto.Charts charts = buildCharts(instanceId);
+
+            long endTime = System.currentTimeMillis();
+            log.info("========== CPU 대시보드 데이터 조회 완료: instanceId={}, 소요시간={}ms ==========",
+                    instanceId, (endTime - startTime));
 
             return CpuDto.DashboardResponse.builder()
                     .widgets(widgets)
@@ -73,13 +79,32 @@ public class CpuService {
         OffsetDateTime twoMinutesAgo = now.minusMinutes(2);
 
         // PostgreSQL 메트릭 (최신 2분)
-        List<CpuAgg> recentCpu = cpuMapper.selectCpuAggByTimeRange(instanceId, twoMinutesAgo, now);
+        List<CpuAgg> recentCpu;
+        try {
+            recentCpu = cpuMapper.selectCpuAggByTimeRange(instanceId, twoMinutesAgo, now);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_1m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                recentCpu = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
         CpuAgg latestCpu = recentCpu.isEmpty() ? null : recentCpu.get(recentCpu.size() - 1);
         CpuAgg previousCpu = recentCpu.size() > 1 ? recentCpu.get(recentCpu.size() - 2) : null;
 
         // OS 메트릭 (최신 2분)
-        List<OsMetricAgg> recentOs = osMetricMapper.findAggByInstanceAndPeriod(
-                instanceId, "CPU", twoMinutesAgo, now);
+        List<OsMetricAgg> recentOs;
+        try {
+            recentOs = osMetricMapper.findAggByInstanceAndPeriod(instanceId, "CPU", twoMinutesAgo, now);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("os_metric_agg 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                recentOs = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
         OsMetricAgg latestOs = recentOs.isEmpty() ? null : recentOs.get(recentOs.size() - 1);
         OsMetricAgg previousOs = recentOs.size() > 1 ? recentOs.get(recentOs.size() - 2) : null;
 
@@ -265,34 +290,91 @@ public class CpuService {
     // ========================================
 
     private CpuDto.Charts buildCharts(Long instanceId) {
+        // 모든 차트를 병렬로 조회
+        CompletableFuture<CpuDto.OsCpuUsageTrend10m> osCpuUsageTrend10mFuture =
+                CompletableFuture.supplyAsync(() -> buildOsCpuUsageTrend1h(instanceId));
+
+        CompletableFuture<CpuDto.PostgresqlTpsTrend10m> postgresqlTpsTrend10mFuture =
+                CompletableFuture.supplyAsync(() -> buildPostgresqlTpsTrend1h(instanceId));
+
+        CompletableFuture<CpuDto.PostgresqlActiveConnections10m> postgresqlActiveConnections10mFuture =
+                CompletableFuture.supplyAsync(() -> buildOsCpuVsActiveConnections24h(instanceId));
+
+        CompletableFuture<CpuDto.LoadAverageTrend15m> loadAverageTrend15mFuture =
+                CompletableFuture.supplyAsync(() -> buildLoadAverageTrend24h(instanceId));
+
+        CompletableFuture<CpuDto.ConnectionStatus1h> connectionStatus1hFuture =
+                CompletableFuture.supplyAsync(() -> buildConnectionStatus24h(instanceId));
+
+        CompletableFuture<CpuDto.TpsDailyTrend24h> tpsDailyTrend24hFuture =
+                CompletableFuture.supplyAsync(() -> buildTpsDailyTrend24h(instanceId));
+
+        CompletableFuture<CpuDto.WaitEventDistribution15m> waitEventDistribution15mFuture =
+                CompletableFuture.supplyAsync(() -> buildWaitEventDistribution24h(instanceId));
+
+        CompletableFuture<CpuDto.BackendTypeTrend24h> backendTypeTrend24hFuture =
+                CompletableFuture.supplyAsync(() -> buildBackendTypeTrend24h(instanceId));
+
+        CompletableFuture<CpuDto.ErrorRateTrend15m> errorRateTrend15mFuture =
+                CompletableFuture.supplyAsync(() -> buildErrorRateTrend24h(instanceId));
+
+        // 모든 작업이 완료될 때까지 대기
+        CompletableFuture.allOf(
+                osCpuUsageTrend10mFuture,
+                postgresqlTpsTrend10mFuture,
+                postgresqlActiveConnections10mFuture,
+                loadAverageTrend15mFuture,
+                connectionStatus1hFuture,
+                tpsDailyTrend24hFuture,
+                waitEventDistribution15mFuture,
+                backendTypeTrend24hFuture,
+                errorRateTrend15mFuture
+        ).join();
+
+        // 결과 조합
         return CpuDto.Charts.builder()
-                .osCpuUsageTrend1h(buildOsCpuUsageTrend1h(instanceId))
-                .postgresqlTpsTrend1h(buildPostgresqlTpsTrend1h(instanceId))
-                .osCpuVsActiveConnections24h(buildOsCpuVsActiveConnections24h(instanceId))
-                .loadAverageTrend24h(buildLoadAverageTrend24h(instanceId))
-                .connectionStatus24h(buildConnectionStatus24h(instanceId))
-                .tpsDailyTrend24h(buildTpsDailyTrend24h(instanceId))
-                .waitEventDistribution24h(buildWaitEventDistribution24h(instanceId))
-                .backendTypeTrend24h(buildBackendTypeTrend24h(instanceId))
-                .errorRateTrend24h(buildErrorRateTrend24h(instanceId))
+                .osCpuUsageTrend10m(osCpuUsageTrend10mFuture.join())
+                .postgresqlTpsTrend10m(postgresqlTpsTrend10mFuture.join())
+                .postgresqlActiveConnections10m(postgresqlActiveConnections10mFuture.join())
+                .loadAverageTrend15m(loadAverageTrend15mFuture.join())
+                .connectionStatus1h(connectionStatus1hFuture.join())
+                .tpsDailyTrend24h(tpsDailyTrend24hFuture.join())
+                .waitEventDistribution15m(waitEventDistribution15mFuture.join())
+                .backendTypeTrend24h(backendTypeTrend24hFuture.join())
+                .errorRateTrend15m(errorRateTrend15mFuture.join())
                 .build();
     }
 
     /**
      * 차트1: OS CPU 사용률 추이 (1시간)
+     * 최근 60개 데이터 포인트로 제한
      */
-    private CpuDto.OsCpuUsageTrend1h buildOsCpuUsageTrend1h(Long instanceId) {
+    private CpuDto.OsCpuUsageTrend10m buildOsCpuUsageTrend1h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(1);
 
-        List<OsMetricAgg> osMetrics = osMetricMapper.findAggByInstanceAndPeriod(
-                instanceId, "CPU", start, now);
+        List<OsMetricAgg> osMetrics;
+        try {
+            osMetrics = osMetricMapper.findAggByInstanceAndPeriod(instanceId, "CPU", start, now);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("os_metric_agg 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                osMetrics = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (osMetrics == null || osMetrics.isEmpty()) {
-            return CpuDto.OsCpuUsageTrend1h.builder()
+            return CpuDto.OsCpuUsageTrend10m.builder()
                     .categories(new ArrayList<>())
                     .data(new ArrayList<>())
                     .build();
+        }
+
+        // 최근 60개 데이터 포인트로 제한
+        if (osMetrics.size() > 60) {
+            osMetrics = osMetrics.subList(osMetrics.size() - 60, osMetrics.size());
         }
 
         List<String> categories = osMetrics.stream()
@@ -303,7 +385,7 @@ public class CpuService {
                 .map(m -> safe(m.getAvgValue()))
                 .collect(Collectors.toList());
 
-        return CpuDto.OsCpuUsageTrend1h.builder()
+        return CpuDto.OsCpuUsageTrend10m.builder()
                 .categories(categories)
                 .data(data)
                 .build();
@@ -311,20 +393,34 @@ public class CpuService {
 
     /**
      * 차트2: PostgreSQL TPS 추이 (1시간)
+     * 최근 60개 데이터 포인트로 제한
      */
-    private CpuDto.PostgresqlTpsTrend1h buildPostgresqlTpsTrend1h(Long instanceId) {
+    private CpuDto.PostgresqlTpsTrend10m buildPostgresqlTpsTrend1h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(1);
 
-        List<CpuAgg> cpuList = cpuMapper.selectCpuAggByTimeRange(instanceId, start, now);
+        List<CpuAgg> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAggByTimeRangeWithLimit(instanceId, start, now, 60);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_1m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList == null || cpuList.isEmpty()) {
-            return CpuDto.PostgresqlTpsTrend1h.builder()
+            return CpuDto.PostgresqlTpsTrend10m.builder()
                     .categories(new ArrayList<>())
                     .commitTps(new ArrayList<>())
                     .rollbackTps(new ArrayList<>())
                     .build();
         }
+
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
 
         List<String> categories = cpuList.stream()
                 .map(m -> m.getCollectedAt().format(TIME_FORMATTER))
@@ -338,7 +434,7 @@ public class CpuService {
                 .map(m -> safe(m.getXactRollbackRate()).intValue())
                 .collect(Collectors.toList());
 
-        return CpuDto.PostgresqlTpsTrend1h.builder()
+        return CpuDto.PostgresqlTpsTrend10m.builder()
                 .categories(categories)
                 .commitTps(commitTps)
                 .rollbackTps(rollbackTps)
@@ -347,30 +443,53 @@ public class CpuService {
 
     /**
      * 차트3: OS CPU vs PostgreSQL 활성 연결 (24시간)
+     * 최근 200개 데이터 포인트로 제한
      */
-    private CpuDto.OsCpuVsActiveConnections24h buildOsCpuVsActiveConnections24h(Long instanceId) {
+    private CpuDto.PostgresqlActiveConnections10m buildOsCpuVsActiveConnections24h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(24);
 
-        // 5분 집계 데이터 사용
-        List<CpuAgg5m> cpuList = cpuMapper.selectCpuAgg5mByTimeRange(instanceId, start, now);
+        // 5분 집계 데이터 사용 (최근 200개)
+        List<CpuAgg5m> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAgg5mByTimeRangeWithLimit(instanceId, start, now, 200);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_5m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList.isEmpty()) {
             log.warn("차트3: cpu_agg_5m 데이터가 없습니다. instanceId={}", instanceId);
-            return CpuDto.OsCpuVsActiveConnections24h.builder()
+            return CpuDto.PostgresqlActiveConnections10m.builder()
                     .categories(new ArrayList<>())
                     .osCpuUsage(new ArrayList<>())
                     .activeConnections(new ArrayList<>())
                     .build();
         }
 
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
+
         List<String> categories = cpuList.stream()
                 .map(m -> m.getTimeBucket().format(DATETIME_FORMATTER))
                 .collect(Collectors.toList());
 
         // OS 메트릭 (1분 집계에서 5분마다 샘플링)
-        List<OsMetricAgg> osMetrics = osMetricMapper.findAggByInstanceAndPeriod(
-                instanceId, "CPU", start, now);
+        List<OsMetricAgg> osMetrics;
+        try {
+            osMetrics = osMetricMapper.findAggByInstanceAndPeriod(instanceId, "CPU", start, now);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("os_metric_agg 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                osMetrics = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (osMetrics.isEmpty()) {
             log.warn("차트3: os_metric_agg 데이터가 없습니다. instanceId={}", instanceId);
@@ -380,7 +499,7 @@ public class CpuService {
                     .map(m -> safe(m.getAvgActiveConnections()).intValue())
                     .collect(Collectors.toList());
 
-            return CpuDto.OsCpuVsActiveConnections24h.builder()
+            return CpuDto.PostgresqlActiveConnections10m.builder()
                     .categories(categories)
                     .osCpuUsage(zeroCpu)
                     .activeConnections(activeConnections)
@@ -412,7 +531,7 @@ public class CpuService {
                 .map(m -> safe(m.getAvgActiveConnections()).intValue())
                 .collect(Collectors.toList());
 
-        return CpuDto.OsCpuVsActiveConnections24h.builder()
+        return CpuDto.PostgresqlActiveConnections10m.builder()
                 .categories(categories)
                 .osCpuUsage(osCpuUsage)
                 .activeConnections(activeConnections)
@@ -425,15 +544,26 @@ public class CpuService {
      * - load1m: Total Backend 프로세스 수 (Client + Autovacuum + Parallel + Background)
      * - load5m: Active Connections (활성 연결 수)
      * - load15m: Waiting Sessions (대기 중인 세션 수)
+     * 최근 200개 데이터 포인트로 제한
      */
-    private CpuDto.LoadAverageTrend24h buildLoadAverageTrend24h(Long instanceId) {
+    private CpuDto.LoadAverageTrend15m buildLoadAverageTrend24h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(24);
 
-        List<CpuAgg5m> cpuList = cpuMapper.selectCpuAgg5mByTimeRange(instanceId, start, now);
+        List<CpuAgg5m> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAgg5mByTimeRangeWithLimit(instanceId, start, now, 200);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_5m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList.isEmpty()) {
-            return CpuDto.LoadAverageTrend24h.builder()
+            return CpuDto.LoadAverageTrend15m.builder()
                     .categories(new ArrayList<>())
                     .load1m(new ArrayList<>())
                     .load5m(new ArrayList<>())
@@ -441,6 +571,9 @@ public class CpuService {
                     .cpuCoreCount(getCpuCoreCount(instanceId))
                     .build();
         }
+
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
 
         List<String> categories = cpuList.stream()
                 .map(m -> m.getTimeBucket().format(DATETIME_FORMATTER))
@@ -464,7 +597,7 @@ public class CpuService {
                 .map(m -> safe(m.getAvgWaitingSessions()))
                 .collect(Collectors.toList());
 
-        return CpuDto.LoadAverageTrend24h.builder()
+        return CpuDto.LoadAverageTrend15m.builder()
                 .categories(categories)
                 .load1m(totalBackends)
                 .load5m(activeConnections)
@@ -494,21 +627,35 @@ public class CpuService {
 
     /**
      * 차트5: 연결 상태 분포 (24시간)
+     * 최근 200개 데이터 포인트로 제한
      */
-    private CpuDto.ConnectionStatus24h buildConnectionStatus24h(Long instanceId) {
+    private CpuDto.ConnectionStatus1h buildConnectionStatus24h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(24);
 
-        List<CpuAgg5m> cpuList = cpuMapper.selectCpuAgg5mByTimeRange(instanceId, start, now);
+        List<CpuAgg5m> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAgg5mByTimeRangeWithLimit(instanceId, start, now, 200);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_5m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList.isEmpty()) {
-            return CpuDto.ConnectionStatus24h.builder()
+            return CpuDto.ConnectionStatus1h.builder()
                     .categories(new ArrayList<>())
                     .active(new ArrayList<>())
                     .idle(new ArrayList<>())
                     .idleInTx(new ArrayList<>())
                     .build();
         }
+
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
 
         List<String> categories = cpuList.stream()
                 .map(m -> m.getTimeBucket().format(DATETIME_FORMATTER))
@@ -526,7 +673,7 @@ public class CpuService {
                 .map(m -> safe(m.getAvgIdleInTransaction()).intValue())
                 .collect(Collectors.toList());
 
-        return CpuDto.ConnectionStatus24h.builder()
+        return CpuDto.ConnectionStatus1h.builder()
                 .categories(categories)
                 .active(active)
                 .idle(idle)
@@ -536,12 +683,23 @@ public class CpuService {
 
     /**
      * 차트6: TPS 일일 추이 (24시간)
+     * 최근 200개 데이터 포인트로 제한
      */
     private CpuDto.TpsDailyTrend24h buildTpsDailyTrend24h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(24);
 
-        List<CpuAgg5m> cpuList = cpuMapper.selectCpuAgg5mByTimeRange(instanceId, start, now);
+        List<CpuAgg5m> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAgg5mByTimeRangeWithLimit(instanceId, start, now, 200);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_5m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList.isEmpty()) {
             return CpuDto.TpsDailyTrend24h.builder()
@@ -550,6 +708,9 @@ public class CpuService {
                     .rollbackTps(new ArrayList<>())
                     .build();
         }
+
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
 
         List<String> categories = cpuList.stream()
                 .map(m -> m.getTimeBucket().format(DATETIME_FORMATTER))
@@ -581,15 +742,26 @@ public class CpuService {
 
     /**
      * 차트7: Wait Event 유형별 분포 (24시간)
+     * 최근 200개 데이터 포인트로 제한
      */
-    private CpuDto.WaitEventDistribution24h buildWaitEventDistribution24h(Long instanceId) {
+    private CpuDto.WaitEventDistribution15m buildWaitEventDistribution24h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(24);
 
-        List<CpuAgg5m> cpuList = cpuMapper.selectCpuAgg5mByTimeRange(instanceId, start, now);
+        List<CpuAgg5m> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAgg5mByTimeRangeWithLimit(instanceId, start, now, 200);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_5m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList.isEmpty()) {
-            return CpuDto.WaitEventDistribution24h.builder()
+            return CpuDto.WaitEventDistribution15m.builder()
                     .categories(new ArrayList<>())
                     .lock(new ArrayList<>())
                     .io(new ArrayList<>())
@@ -599,6 +771,9 @@ public class CpuService {
                     .other(new ArrayList<>())
                     .build();
         }
+
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
 
         List<String> categories = cpuList.stream()
                 .map(m -> m.getTimeBucket().format(DATETIME_FORMATTER))
@@ -632,7 +807,7 @@ public class CpuService {
                         safe(m.getAvgWaitEventIpc()).intValue())
                 .collect(Collectors.toList());
 
-        return CpuDto.WaitEventDistribution24h.builder()
+        return CpuDto.WaitEventDistribution15m.builder()
                 .categories(categories)
                 .lock(lock)
                 .io(io)
@@ -645,12 +820,23 @@ public class CpuService {
 
     /**
      * 차트8: Backend 유형별 추이 (24시간)
+     * 최근 200개 데이터 포인트로 제한
      */
     private CpuDto.BackendTypeTrend24h buildBackendTypeTrend24h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(24);
 
-        List<CpuAgg5m> cpuList = cpuMapper.selectCpuAgg5mByTimeRange(instanceId, start, now);
+        List<CpuAgg5m> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAgg5mByTimeRangeWithLimit(instanceId, start, now, 200);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_5m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList.isEmpty()) {
             return CpuDto.BackendTypeTrend24h.builder()
@@ -661,6 +847,9 @@ public class CpuService {
                     .background(new ArrayList<>())
                     .build();
         }
+
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
 
         List<String> categories = cpuList.stream()
                 .map(m -> m.getTimeBucket().format(DATETIME_FORMATTER))
@@ -693,19 +882,33 @@ public class CpuService {
 
     /**
      * 차트9: 에러율 추이 (24시간)
+     * 최근 200개 데이터 포인트로 제한
      */
-    private CpuDto.ErrorRateTrend24h buildErrorRateTrend24h(Long instanceId) {
+    private CpuDto.ErrorRateTrend15m buildErrorRateTrend24h(Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime start = now.minusHours(24);
 
-        List<CpuAgg5m> cpuList = cpuMapper.selectCpuAgg5mByTimeRange(instanceId, start, now);
+        List<CpuAgg5m> cpuList;
+        try {
+            cpuList = cpuMapper.selectCpuAgg5mByTimeRangeWithLimit(instanceId, start, now, 200);
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                log.warn("cpu_agg_5m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                cpuList = new ArrayList<>();
+            } else {
+                throw e;
+            }
+        }
 
         if (cpuList.isEmpty()) {
-            return CpuDto.ErrorRateTrend24h.builder()
+            return CpuDto.ErrorRateTrend15m.builder()
                     .categories(new ArrayList<>())
                     .data(new ArrayList<>())
                     .build();
         }
+
+        // DESC로 조회했으므로 역순으로 정렬
+        Collections.reverse(cpuList);
 
         List<String> categories = cpuList.stream()
                 .map(m -> m.getTimeBucket().format(DATETIME_FORMATTER))
@@ -726,7 +929,7 @@ public class CpuService {
                 })
                 .collect(Collectors.toList());
 
-        return CpuDto.ErrorRateTrend24h.builder()
+        return CpuDto.ErrorRateTrend15m.builder()
                 .categories(categories)
                 .data(data)
                 .build();
@@ -751,11 +954,30 @@ public class CpuService {
             OffsetDateTime startTime = calculateStartTime(endTime, request.getTimeRange());
 
             // PostgreSQL 메트릭
-            List<CpuAgg> cpuList = cpuMapper.selectCpuAggByTimeRange(instanceId, startTime, endTime);
+            List<CpuAgg> cpuList;
+            try {
+                cpuList = cpuMapper.selectCpuAggByTimeRange(instanceId, startTime, endTime);
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                    log.warn("cpu_agg_1m 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                    cpuList = new ArrayList<>();
+                } else {
+                    throw e;
+                }
+            }
 
             // OS 메트릭
-            List<OsMetricAgg> osMetrics = osMetricMapper.findAggByInstanceAndPeriod(
-                    instanceId, "CPU", startTime, endTime);
+            List<OsMetricAgg> osMetrics;
+            try {
+                osMetrics = osMetricMapper.findAggByInstanceAndPeriod(instanceId, "CPU", startTime, endTime);
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                    log.warn("os_metric_agg 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                    osMetrics = new ArrayList<>();
+                } else {
+                    throw e;
+                }
+            }
 
             List<CpuDto.CpuListItem> items = buildCpuListItems(cpuList, osMetrics, request.getStatus());
 
@@ -817,8 +1039,17 @@ public class CpuService {
             OffsetDateTime now = OffsetDateTime.now();
             OffsetDateTime start = now.minusMinutes(60);
 
-            List<OsMetricAgg> osMetrics = osMetricMapper.findAggByInstanceAndPeriod(
-                    instanceId, "CPU", start, now);
+            List<OsMetricAgg> osMetrics;
+            try {
+                osMetrics = osMetricMapper.findAggByInstanceAndPeriod(instanceId, "CPU", start, now);
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("does not exist")) {
+                    log.warn("os_metric_agg 테이블이 존재하지 않습니다. 빈 데이터를 반환합니다. instanceId={}", instanceId);
+                    osMetrics = new ArrayList<>();
+                } else {
+                    throw e;
+                }
+            }
 
             if (osMetrics == null || osMetrics.isEmpty()) {
                 return CpuDto.CpuUsageTrend.builder()
