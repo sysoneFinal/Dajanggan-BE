@@ -191,4 +191,34 @@
         WHERE instance_id = #{instanceId}
     </select>
 
+    <!-- ✅ 신규: 데이터베이스 ID와 기간으로 조회 -->
+    <select id="findByDatabaseIdAndDays" parameterType="map"
+            resultType="com.dajanggan.domain.query.domain.QueryMetricsRaw">
+        SELECT
+            query_metric_id AS queryMetricId,
+            database_id AS databaseId,
+            collected_at AS collectedAt,
+            query_id AS queryId,
+            query_hash AS queryHash,
+            query_text AS queryText,
+            short_query AS shortQuery,
+            query_type AS queryType,
+            execution_count AS executionCount,
+            io_blocks AS ioBlocks,
+            explain_plan AS explainPlan,
+            planning_time_ms AS planningTimeMs,
+            execution_time_ms AS executionTimeMs,
+            cpu_usage_percent AS cpuUsagePercent,
+            memory_usage_mb AS memoryUsageMb,
+            username,
+            application_name AS applicationName,
+            client_addr AS clientAddr,
+            state,
+            created_at AS createdAt
+        FROM query_metrics_raw
+        WHERE database_id = #{databaseId}
+          AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '${days} days'
+        ORDER BY collected_at DESC
+            LIMIT 10000
+    </select>
 </mapper>

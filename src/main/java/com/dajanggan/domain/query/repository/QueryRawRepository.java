@@ -17,7 +17,7 @@ public interface QueryRawRepository {
     void insertQueryMetrics(@Param("metrics") List<QueryRawMetricDto> metrics);
 
     /**
-     * 대상 PostgreSQL 인스턴스의 쿼리 메트릭 조회
+     * 대상 PostgreSQL 인스턴스의 쿼리 메트릭 조회a
      * (JdbcTemplate 사용 - 동적으로 다른 DB 조회)
      */
     List<QueryRawMetricDto> getQueryMetrics(JdbcTemplate jdbcTemplate);
