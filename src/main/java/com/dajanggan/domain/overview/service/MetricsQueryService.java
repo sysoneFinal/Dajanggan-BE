@@ -22,14 +22,14 @@ public class MetricsQueryService {
 
     /**
      * 메트릭 데이터 조회
-     * @param dbName 데이터베이스명
+     * @param databaseId 데이터베이스명
      * @param instanceId 인스턴스 ID
      * @param metricNames 메트릭명 리스트
      * @param timeRange 시간 범위
      * @return 조회된 메트릭 데이터
      */
     public List<Map<String, Object>> queryMetrics(
-            String dbName,
+            Long databaseId,
             Long instanceId,
             List<String> metricNames,
             String timeRange
@@ -76,7 +76,7 @@ public class MetricsQueryService {
                 List<MetricDefinition> tableMetrics = entry.getValue();
 
                 List<Map<String, Object>> tableResults = queryTable(
-                        dbName,
+                        databaseId,
                         tableName,
                         tableMetrics,
                         instanceId,
@@ -91,7 +91,7 @@ public class MetricsQueryService {
 
         } catch (Exception e) {
             log.error("메트릭 조회 실패: dbName={}, instanceId={}, metrics={}, error={}",
-                    dbName, instanceId, metricNames, e.getMessage(), e);
+                    databaseId, instanceId, metricNames, e.getMessage(), e);
             throw new DajangganException(ExceptionMessage.DB_QUERY_EXECUTION_FAILED);
         }
     }
@@ -100,7 +100,7 @@ public class MetricsQueryService {
      * 특정 테이블에서 메트릭 데이터 조회
      */
     private List<Map<String, Object>> queryTable(
-            String dbName,
+            Long databaseId,
             String tableName,
             List<MetricDefinition> metrics,
             Long instanceId,
@@ -114,6 +114,7 @@ public class MetricsQueryService {
         Map<String, Object> params = new HashMap<>();
         params.put("tableName", tableName);
         params.put("columns", columns);
+        params.put("databaseId", databaseId);
         params.put("instanceId", instanceId);
         params.put("interval", "15 MINUTE");  // 고정 15분
 

@@ -111,6 +111,7 @@
         OFFSET #{offset}
     </select>
 
+
     <!--  전체 개수 조회  -->
     <select id="getEventListCount" resultType="int" parameterType="map">
         SELECT COUNT(*)
