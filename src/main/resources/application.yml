@@ -8,9 +8,9 @@ spring:
 
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: ${DB_URL}
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${GOOGLE_DB_URL}
+    username: ${GOOGLE_DB_USERNAME}
+    password: ${GOOGLE_DB_PASSWORD}
 
   # Redis 설정
   data:

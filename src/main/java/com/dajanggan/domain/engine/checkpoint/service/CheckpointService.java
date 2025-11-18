@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.checkpoint.service;
 
-import com.dajanggan.domain.engine.checkpoint.dto.CheckpointDto;
+import com.dajanggan.domain.engine.checkpoint.dto.*;
 import com.dajanggan.domain.engine.checkpoint.repository.CheckpointMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +24,7 @@ public class CheckpointService {
      * @param instanceId PostgreSQL 인스턴스 ID
      * @return Checkpoint 대시보드 데이터
      */
-    public CheckpointDto.DashboardResponse getCheckpointDashboard(Long instanceId) {
+    public CheckpointDashboardResponse getCheckpointDashboard(Long instanceId) {
         log.debug("Checkpoint 대시보드 데이터 조회 시작 - instanceId: {}", instanceId);
 
         // instanceId가 null이면 예외 발생
@@ -33,38 +33,43 @@ public class CheckpointService {
             throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
         }
         
-        // 조회 시간 범위 설정 (최근 24시간)
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusHours(24);
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
         
-        log.info("데이터 조회 범위: {} ~ {}", startTime, endTime);
+        log.info("데이터 조회 시작 - instanceId: {}", instanceId);
 
         try {
             // 1. 요청형 체크포인트 비율 조회
-            CheckpointDto.RequestRatio requestRatio = getRequestRatio(instanceId);
+            CheckpointDashboardResponse.RequestRatio requestRatio = getRequestRatio(instanceId);
             
-            // 2. 평균 쓰기 시간 시계열 데이터 조회
-            CheckpointDto.AvgWriteTime avgWriteTime = getAvgWriteTime(instanceId, startTime, endTime);
+            // 2. 평균 쓰기 시간 시계열 데이터 조회 (최근 10분, 1분 집계)
+            LocalDateTime avgWriteTimeStart = endTime.minusMinutes(10);
+            CheckpointDashboardResponse.AvgWriteTime avgWriteTime = getAvgWriteTime(instanceId, avgWriteTimeStart, endTime);
             
-            // 3. 체크포인트 발생 횟수 데이터 조회
-            CheckpointDto.Occurrence occurrence = getOccurrence(instanceId, startTime, endTime);
+            // 3. 체크포인트 발생 횟수 데이터 조회 (최근 15분, 1분 집계)
+            LocalDateTime occurrenceStart = endTime.minusMinutes(15);
+            CheckpointDashboardResponse.Occurrence occurrence = getOccurrence(instanceId, occurrenceStart, endTime);
             
-            // 4. WAL 생성량 데이터 조회
-            CheckpointDto.WalGeneration walGeneration = getWalGeneration(instanceId, startTime, endTime);
+            // 4. WAL 생성량 데이터 조회 (1시간, 5분 집계)
+            LocalDateTime walStart = endTime.minusHours(1);
+            CheckpointDashboardResponse.WalGeneration walGeneration = getWalGeneration(instanceId, walStart, endTime);
             
-            // 5. 처리 시간 데이터 조회
-            CheckpointDto.ProcessTime processTime = getProcessTime(instanceId, startTime, endTime);
+            // 5. 처리 시간 데이터 조회 (1시간, 5분 집계)
+            LocalDateTime processTimeStart = endTime.minusHours(1);
+            CheckpointDashboardResponse.ProcessTime processTime = getProcessTime(instanceId, processTimeStart, endTime);
             
-            // 6. 버퍼 처리량 데이터 조회
-            CheckpointDto.Buffer buffer = getBuffer(instanceId, startTime.plusHours(23), endTime);
+            // 6. 버퍼 처리량 데이터 조회 (24시간, 30분 또는 5분 집계)
+            LocalDateTime bufferStart = endTime.minusHours(24);
+            CheckpointDashboardResponse.Buffer buffer = getBuffer(instanceId, bufferStart, endTime);
             
-            // 7. 체크포인트 간격 데이터 조회
-            CheckpointDto.CheckpointInterval checkpointInterval = getCheckpointInterval(instanceId, startTime, endTime);
+            // 7. 체크포인트 간격 데이터 조회 (24시간, 30분 또는 5분 집계)
+            LocalDateTime intervalStart = endTime.minusHours(24);
+            CheckpointDashboardResponse.CheckpointInterval checkpointInterval = getCheckpointInterval(instanceId, intervalStart, endTime);
             
             // 8. 최근 통계 조회
-            CheckpointDto.RecentStats recentStats = getRecentStats(instanceId);
+            CheckpointDashboardResponse.RecentStats recentStats = getRecentStats(instanceId);
 
-            return CheckpointDto.DashboardResponse.builder()
+            return CheckpointDashboardResponse.builder()
                     .requestRatio(requestRatio)
                     .avgWriteTime(avgWriteTime)
                     .occurrence(occurrence)
@@ -84,19 +89,19 @@ public class CheckpointService {
     /**
      * 요청형 체크포인트 비율 조회
      */
-    private CheckpointDto.RequestRatio getRequestRatio(Long instanceId) {
+    private CheckpointDashboardResponse.RequestRatio getRequestRatio(Long instanceId) {
         Map<String, Object> data = checkpointMapper.selectRequestRatio(instanceId);
         
         if (data == null || data.isEmpty()) {
             log.warn("요청형 체크포인트 비율 데이터 없음 - instanceId: {}", instanceId);
-            return CheckpointDto.RequestRatio.builder()
+            return CheckpointDashboardResponse.RequestRatio.builder()
                     .value(0.0)
                     .requestedCount(0L)
                     .timedCount(0L)
                     .build();
         }
         
-        return CheckpointDto.RequestRatio.builder()
+        return CheckpointDashboardResponse.RequestRatio.builder()
                 .value(getDoubleValue(data, "value"))
                 .requestedCount(getLongValue(data, "requestedcount"))
                 .timedCount(getLongValue(data, "timedcount"))
@@ -106,8 +111,9 @@ public class CheckpointService {
     /**
      * 평균 쓰기 시간 시계열 데이터 조회
      */
-    private CheckpointDto.AvgWriteTime getAvgWriteTime(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = checkpointMapper.selectAvgWriteTimeTimeSeries(instanceId, startTime, endTime);
+    private CheckpointDashboardResponse.AvgWriteTime getAvgWriteTime(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = checkpointMapper.selectAvgWriteTimeTimeSeries(instanceId, startTime, endTime, intervalMinutes);
         
         if (dataList == null || dataList.isEmpty()) {
             log.warn("평균 쓰기 시간 데이터 없음 - instanceId: {}", instanceId);
@@ -126,7 +132,7 @@ public class CheckpointService {
         double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
         
-        return CheckpointDto.AvgWriteTime.builder()
+        return CheckpointDashboardResponse.AvgWriteTime.builder()
                 .categories(categories)
                 .data(values)
                 .average(average)
@@ -138,8 +144,9 @@ public class CheckpointService {
     /**
      * 체크포인트 발생 횟수 시계열 데이터 조회
      */
-    private CheckpointDto.Occurrence getOccurrence(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = checkpointMapper.selectOccurrenceTimeSeries(instanceId, startTime, endTime);
+    private CheckpointDashboardResponse.Occurrence getOccurrence(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = checkpointMapper.selectOccurrenceTimeSeries(instanceId, startTime, endTime, intervalMinutes);
         
         if (dataList == null || dataList.isEmpty()) {
             log.warn("체크포인트 발생 횟수 데이터 없음 - instanceId: {}", instanceId);
@@ -166,7 +173,7 @@ public class CheckpointService {
             ratio = (double) requestedTotal / (requestedTotal + timedTotal) * 100.0;
         }
         
-        return CheckpointDto.Occurrence.builder()
+        return CheckpointDashboardResponse.Occurrence.builder()
                 .categories(categories)
                 .requested(requested)
                 .timed(timed)
@@ -179,8 +186,9 @@ public class CheckpointService {
     /**
      * WAL 생성량 시계열 데이터 조회
      */
-    private CheckpointDto.WalGeneration getWalGeneration(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = checkpointMapper.selectWalGenerationTimeSeries(instanceId, startTime, endTime);
+    private CheckpointDashboardResponse.WalGeneration getWalGeneration(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = checkpointMapper.selectWalGenerationTimeSeries(instanceId, startTime, endTime, intervalMinutes);
         
         if (dataList == null || dataList.isEmpty()) {
             log.warn("WAL 생성량 데이터 없음 - instanceId: {}", instanceId);
@@ -199,7 +207,7 @@ public class CheckpointService {
         double average = values.stream().mapToLong(Long::longValue).average().orElse(0.0);
         long max = values.stream().mapToLong(Long::longValue).max().orElse(0L);
         
-        return CheckpointDto.WalGeneration.builder()
+        return CheckpointDashboardResponse.WalGeneration.builder()
                 .categories(categories)
                 .data(values)
                 .total(total)
@@ -211,8 +219,9 @@ public class CheckpointService {
     /**
      * 처리 시간 시계열 데이터 조회
      */
-    private CheckpointDto.ProcessTime getProcessTime(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = checkpointMapper.selectProcessTimeTimeSeries(instanceId, startTime, endTime);
+    private CheckpointDashboardResponse.ProcessTime getProcessTime(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = checkpointMapper.selectProcessTimeTimeSeries(instanceId, startTime, endTime, intervalMinutes);
         
         if (dataList == null || dataList.isEmpty()) {
             log.warn("처리 시간 데이터 없음 - instanceId: {}", instanceId);
@@ -235,7 +244,7 @@ public class CheckpointService {
         double avgWrite = writeTime.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
         double avgTotal = avgSync + avgWrite;
         
-        return CheckpointDto.ProcessTime.builder()
+        return CheckpointDashboardResponse.ProcessTime.builder()
                 .categories(categories)
                 .syncTime(syncTime)
                 .writeTime(writeTime)
@@ -248,8 +257,9 @@ public class CheckpointService {
     /**
      * 버퍼 처리량 시계열 데이터 조회
      */
-    private CheckpointDto.Buffer getBuffer(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = checkpointMapper.selectBufferTimeSeries(instanceId, startTime, endTime);
+    private CheckpointDashboardResponse.Buffer getBuffer(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = checkpointMapper.selectBufferTimeSeries(instanceId, startTime, endTime, intervalMinutes);
         
         if (dataList == null || dataList.isEmpty()) {
             log.warn("버퍼 처리량 데이터 없음 - instanceId: {}", instanceId);
@@ -268,7 +278,7 @@ public class CheckpointService {
         double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
         
-        return CheckpointDto.Buffer.builder()
+        return CheckpointDashboardResponse.Buffer.builder()
                 .categories(categories)
                 .data(values)
                 .average(average)
@@ -280,8 +290,9 @@ public class CheckpointService {
     /**
      * 체크포인트 간격 시계열 데이터 조회
      */
-    private CheckpointDto.CheckpointInterval getCheckpointInterval(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = checkpointMapper.selectCheckpointIntervalTimeSeries(instanceId, startTime, endTime);
+    private CheckpointDashboardResponse.CheckpointInterval getCheckpointInterval(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = checkpointMapper.selectCheckpointIntervalTimeSeries(instanceId, startTime, endTime, intervalMinutes);
         
         if (dataList == null || dataList.isEmpty()) {
             log.warn("체크포인트 간격 데이터 없음 - instanceId: {}", instanceId);
@@ -300,7 +311,7 @@ public class CheckpointService {
         double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
         
-        return CheckpointDto.CheckpointInterval.builder()
+        return CheckpointDashboardResponse.CheckpointInterval.builder()
                 .categories(categories)
                 .data(values)
                 .average(average)
@@ -312,7 +323,7 @@ public class CheckpointService {
     /**
      * 최근 통계 조회
      */
-    private CheckpointDto.RecentStats getRecentStats(Long instanceId) {
+    private CheckpointDashboardResponse.RecentStats getRecentStats(Long instanceId) {
         Map<String, Object> data = checkpointMapper.selectRecentStats(instanceId);
         
         if (data == null || data.isEmpty()) {
@@ -320,7 +331,7 @@ public class CheckpointService {
             return createEmptyRecentStats();
         }
         
-        return CheckpointDto.RecentStats.builder()
+        return CheckpointDashboardResponse.RecentStats.builder()
                 .buffersWritten(getLongValue(data, "bufferswritten"))
                 .avgTotalProcessTime(getDoubleValue(data, "avgtotalprocesstime"))
                 .checkpointDistance(getDoubleValue(data, "checkpointdistance"))
@@ -336,7 +347,7 @@ public class CheckpointService {
      * @param statusList 상태 필터 리스트
      * @return Checkpoint 리스트 데이터
      */
-    public CheckpointDto.ListResponse getCheckpointList(Long instanceId, String timeRange, List<String> statusList) {
+    public CheckpointListResponse getCheckpointList(Long instanceId, String timeRange, List<String> statusList) {
         log.debug("Checkpoint 리스트 데이터 조회 시작 - instanceId: {}, timeRange: {}, statusList: {}", 
                 instanceId, timeRange, statusList);
 
@@ -347,34 +358,37 @@ public class CheckpointService {
         }
         
         // 시간 범위 계산
-        LocalDateTime endTime = LocalDateTime.now();
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
         LocalDateTime startTime = calculateStartTime(endTime, timeRange);
         
-        log.info("리스트 데이터 조회 범위: {} ~ {}", startTime, endTime);
+        log.info("리스트 데이터 조회 범위: {} ~ {} (최신 데이터 포함)", startTime, endTime);
 
         try {
             // 리스트 데이터 조회
+            int intervalMinutes = determineIntervalMinutes(startTime, endTime);
             List<Map<String, Object>> dataList = checkpointMapper.selectCheckpointList(
                     instanceId, 
                     startTime, 
                     endTime, 
-                    statusList
+                    statusList,
+                    intervalMinutes
             );
             
             if (dataList == null || dataList.isEmpty()) {
                 log.warn("Checkpoint 리스트 데이터 없음 - instanceId: {}, timeRange: {}", instanceId, timeRange);
-                return CheckpointDto.ListResponse.builder()
+                return CheckpointListResponse.builder()
                         .data(new ArrayList<>())
                         .total(0L)
                         .build();
             }
             
             // DTO 변환
-            List<CheckpointDto.ListItem> items = dataList.stream()
+            List<CheckpointListItem> items = dataList.stream()
                     .map(this::convertToListItem)
                     .collect(Collectors.toList());
             
-            return CheckpointDto.ListResponse.builder()
+            return CheckpointListResponse.builder()
                     .data(items)
                     .total((long) items.size())
                     .build();
@@ -416,8 +430,8 @@ public class CheckpointService {
      * @param data Map 데이터
      * @return ListItem DTO
      */
-    private CheckpointDto.ListItem convertToListItem(Map<String, Object> data) {
-        return CheckpointDto.ListItem.builder()
+    private CheckpointListItem convertToListItem(Map<String, Object> data) {
+        return CheckpointListItem.builder()
                 .id(getString(data, "id"))
                 .timestamp(getString(data, "timestamp"))
                 .type(getString(data, "type"))
@@ -472,8 +486,8 @@ public class CheckpointService {
 
     // ========== 빈 데이터 생성 메서드 ==========
     
-    private CheckpointDto.AvgWriteTime createEmptyAvgWriteTime() {
-        return CheckpointDto.AvgWriteTime.builder()
+    private CheckpointDashboardResponse.AvgWriteTime createEmptyAvgWriteTime() {
+        return CheckpointDashboardResponse.AvgWriteTime.builder()
                 .categories(new ArrayList<>())
                 .data(new ArrayList<>())
                 .average(0.0)
@@ -482,8 +496,8 @@ public class CheckpointService {
                 .build();
     }
     
-    private CheckpointDto.Occurrence createEmptyOccurrence() {
-        return CheckpointDto.Occurrence.builder()
+    private CheckpointDashboardResponse.Occurrence createEmptyOccurrence() {
+        return CheckpointDashboardResponse.Occurrence.builder()
                 .categories(new ArrayList<>())
                 .requested(new ArrayList<>())
                 .timed(new ArrayList<>())
@@ -493,8 +507,8 @@ public class CheckpointService {
                 .build();
     }
     
-    private CheckpointDto.WalGeneration createEmptyWalGeneration() {
-        return CheckpointDto.WalGeneration.builder()
+    private CheckpointDashboardResponse.WalGeneration createEmptyWalGeneration() {
+        return CheckpointDashboardResponse.WalGeneration.builder()
                 .categories(new ArrayList<>())
                 .data(new ArrayList<>())
                 .total(0L)
@@ -503,8 +517,8 @@ public class CheckpointService {
                 .build();
     }
     
-    private CheckpointDto.ProcessTime createEmptyProcessTime() {
-        return CheckpointDto.ProcessTime.builder()
+    private CheckpointDashboardResponse.ProcessTime createEmptyProcessTime() {
+        return CheckpointDashboardResponse.ProcessTime.builder()
                 .categories(new ArrayList<>())
                 .syncTime(new ArrayList<>())
                 .writeTime(new ArrayList<>())
@@ -514,8 +528,8 @@ public class CheckpointService {
                 .build();
     }
     
-    private CheckpointDto.Buffer createEmptyBuffer() {
-        return CheckpointDto.Buffer.builder()
+    private CheckpointDashboardResponse.Buffer createEmptyBuffer() {
+        return CheckpointDashboardResponse.Buffer.builder()
                 .categories(new ArrayList<>())
                 .data(new ArrayList<>())
                 .average(0.0)
@@ -524,8 +538,8 @@ public class CheckpointService {
                 .build();
     }
     
-    private CheckpointDto.CheckpointInterval createEmptyCheckpointInterval() {
-        return CheckpointDto.CheckpointInterval.builder()
+    private CheckpointDashboardResponse.CheckpointInterval createEmptyCheckpointInterval() {
+        return CheckpointDashboardResponse.CheckpointInterval.builder()
                 .categories(new ArrayList<>())
                 .data(new ArrayList<>())
                 .average(0.0)
@@ -534,13 +548,33 @@ public class CheckpointService {
                 .build();
     }
     
-    private CheckpointDto.RecentStats createEmptyRecentStats() {
-        return CheckpointDto.RecentStats.builder()
+    private CheckpointDashboardResponse.RecentStats createEmptyRecentStats() {
+        return CheckpointDashboardResponse.RecentStats.builder()
                 .buffersWritten(0L)
                 .avgTotalProcessTime(0.0)
                 .checkpointDistance(0.0)
                 .checkpointInterval(0.0)
                 .avgWalGenerationSpeed(0.0)
                 .build();
+    }
+
+    /**
+     * 시간 범위에 따라 집계 간격 결정
+     * @param startTime 시작 시간
+     * @param endTime 종료 시간
+     * @return 집계 간격 (분 단위: 1, 5, 또는 30)
+     * - 1시간 이내: 1분 집계
+     * - 6시간 이내: 5분 집계
+     * - 24시간: 30분 집계 (없으면 5분 집계로 fallback)
+     */
+    private int determineIntervalMinutes(LocalDateTime startTime, LocalDateTime endTime) {
+        long hours = java.time.Duration.between(startTime, endTime).toHours();
+        if (hours <= 1) {
+            return 1; // 1시간 차트: 1분 집계
+        } else if (hours <= 6) {
+            return 5; // 6시간 차트: 5분 집계
+        } else {
+            return 30; // 24시간 차트: 30분 집계 (없으면 5분으로 fallback)
+        }
     }
 }

@@ -1,6 +1,6 @@
 package com.dajanggan.domain.system.memory.controller;
 
-import com.dajanggan.domain.system.memory.dto.MemoryDto;
+import com.dajanggan.domain.system.memory.dto.*;
 import com.dajanggan.domain.system.memory.service.MemoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,7 +13,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/system/memory")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class MemoryController {
 
     private final MemoryService memoryService;
@@ -23,12 +22,12 @@ public class MemoryController {
      * @param instanceId PostgreSQL 인스턴스 ID
      * @return Memory 대시보드 데이터
      */
-    @GetMapping("/dashboard")
-    public ResponseEntity<MemoryDto.DashboardResponse> getMemoryDashboard(
+    @GetMapping
+    public ResponseEntity<MemoryDashboardResponse> getMemoryDashboard(
             @RequestParam Long instanceId) {
         log.info("========== Memory 대시보드 조회 API 호출: instanceId={} ==========", instanceId);
 
-        MemoryDto.DashboardResponse response = memoryService.getMemoryDashboard(instanceId);
+        MemoryDashboardResponse response = memoryService.getMemoryDashboard(instanceId);
 
         return ResponseEntity.ok(response);
     }
@@ -41,7 +40,7 @@ public class MemoryController {
      * @return Memory 리스트 데이터
      */
     @GetMapping("/list")
-    public ResponseEntity<MemoryDto.ListResponse> getMemoryList(
+    public ResponseEntity<MemoryListResponse> getMemoryList(
             @RequestParam Long instanceId,
             @RequestParam(defaultValue = "24h") String timeRange,
             @RequestParam(required = false) String status) {
@@ -54,7 +53,7 @@ public class MemoryController {
             statusList = List.of(status.split(","));
         }
 
-        MemoryDto.ListResponse response = memoryService.getMemoryList(instanceId, timeRange, statusList);
+        MemoryListResponse response = memoryService.getMemoryList(instanceId, timeRange, statusList);
 
         return ResponseEntity.ok(response);
     }

@@ -108,16 +108,15 @@ public class HotTableCollectionScheduler {
 
         if (!rawList.isEmpty()) {
             hotTableMapper.insertRawBatch(rawList);
-            log.debug("Raw 데이터 일괄 저장 완료: databaseId={}, count={}", database.getDatabaseId(), rawList.size());
+            log.debug("Raw 데이터 일괄 저장 완료");
         }
 
         if (!aggList.isEmpty()) {
             hotTableMapper.insertAggBatch(aggList);
-            log.debug("Agg 데이터 일괄 저장 완료: databaseId={}, count={}", database.getDatabaseId(), aggList.size());
+            log.debug("Agg 데이터 일괄 저장 완료");
         }
 
-        log.info("메트릭 처리 완료: databaseId={}, databaseName={}, tables={}", 
-                database.getDatabaseId(), database.getDatabaseName(), topTables.size());
+        log.info("메트릭 처리 완료");
     }
 
     /**

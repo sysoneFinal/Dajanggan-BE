@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.bgwriter.service;
 
-import com.dajanggan.domain.engine.bgwriter.dto.BgWriterDto;
+import com.dajanggan.domain.engine.bgwriter.dto.*;
 import com.dajanggan.domain.engine.bgwriter.repository.BgWriterMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +25,7 @@ public class BgWriterService {
      * @param instanceId PostgreSQL 인스턴스 ID
      * @return BGWriter 대시보드 데이터
      */
-    public BgWriterDto.DashboardResponse getBgWriterDashboard(Long instanceId) {
+    public BgWriterDashboardResponse getBgWriterDashboard(Long instanceId) {
         log.debug("BGWriter 대시보드 데이터 조회 시작 - instanceId: {}", instanceId);
 
         // instanceId가 null이면 예외 발생
@@ -34,35 +34,39 @@ public class BgWriterService {
             throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
         }
 
-        // 조회 시간 범위 설정 (최근 24시간)
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusHours(24);
-
-        log.info("데이터 조회 범위: {} ~ {}", startTime, endTime);
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
+        
+        log.info("데이터 조회 시작 - instanceId: {}", instanceId);
 
         try {
             // 1. Backend Flush 비율 조회
-            BgWriterDto.BackendFlushRatio backendFlushRatio = getBackendFlushRatio(instanceId);
+            BgWriterDashboardResponse.BackendFlushRatio backendFlushRatio = getBackendFlushRatio(instanceId);
 
-            // 2. Clean Rate 시계열 데이터 조회
-            BgWriterDto.CleanRate cleanRate = getCleanRate(instanceId, startTime, endTime);
+            // 2. Clean Rate 시계열 데이터 조회 (최근 10분, 1분 집계)
+            LocalDateTime cleanRateStart = endTime.minusMinutes(10);
+            BgWriterDashboardResponse.CleanRate cleanRate = getCleanRate(instanceId, cleanRateStart, endTime);
 
-            // 3. Buffer Flush 비율 비교 데이터 조회
-            BgWriterDto.BufferFlushRatio bufferFlushRatio = getBufferFlushRatio(instanceId, startTime, endTime);
+            // 3. Buffer Flush 비율 비교 데이터 조회 (1시간, 5분 집계)
+            LocalDateTime bufferFlushStart = endTime.minusHours(1);
+            BgWriterDashboardResponse.BufferFlushRatio bufferFlushRatio = getBufferFlushRatio(instanceId, bufferFlushStart, endTime);
 
-            // 4. Maxwritten Clean 데이터 조회
-            BgWriterDto.MaxwrittenClean maxwrittenClean = getMaxwrittenClean(instanceId, startTime, endTime);
+            // 4. Maxwritten Clean 데이터 조회 (1시간, 5분 집계)
+            LocalDateTime maxwrittenStart = endTime.minusHours(1);
+            BgWriterDashboardResponse.MaxwrittenClean maxwrittenClean = getMaxwrittenClean(instanceId, maxwrittenStart, endTime);
 
-            // 5. BGWriter vs Checkpoint 비교 데이터 조회
-            BgWriterDto.BgwriterVsCheckpoint bgwriterVsCheckpoint = getBgwriterVsCheckpoint(instanceId, startTime, endTime);
+            // 5. BGWriter vs Checkpoint 비교 데이터 조회 (24시간, 30분 또는 5분 집계)
+            LocalDateTime bgwriterVsCheckpointStart = endTime.minusHours(24);
+            BgWriterDashboardResponse.BgwriterVsCheckpoint bgwriterVsCheckpoint = getBgwriterVsCheckpoint(instanceId, bgwriterVsCheckpointStart, endTime);
 
-            // 6. Buffer 재사용률 데이터 조회
-            BgWriterDto.BufferReuseRate bufferReuseRate = getBufferReuseRate(instanceId, startTime, endTime);
+            // 6. Buffer 재사용률 데이터 조회 (24시간, 30분 또는 5분 집계)
+            LocalDateTime bufferReuseStart = endTime.minusHours(24);
+            BgWriterDashboardResponse.BufferReuseRate bufferReuseRate = getBufferReuseRate(instanceId, bufferReuseStart, endTime);
 
             // 7. 최근 통계 조회
-            BgWriterDto.RecentStats recentStats = getRecentStats(instanceId);
+            BgWriterDashboardResponse.RecentStats recentStats = getRecentStats(instanceId);
 
-            return BgWriterDto.DashboardResponse.builder()
+            return BgWriterDashboardResponse.builder()
                     .backendFlushRatio(backendFlushRatio)
                     .cleanRate(cleanRate)
                     .bufferFlushRatio(bufferFlushRatio)
@@ -81,19 +85,19 @@ public class BgWriterService {
     /**
      * Backend Flush 비율 조회
      */
-    private BgWriterDto.BackendFlushRatio getBackendFlushRatio(Long instanceId) {
+    private BgWriterDashboardResponse.BackendFlushRatio getBackendFlushRatio(Long instanceId) {
         Map<String, Object> data = bgWriterMapper.selectBackendFlushRatio(instanceId);
 
         if (data == null || data.isEmpty()) {
             log.warn("Backend Flush 비율 데이터 없음 - instanceId: {}", instanceId);
-            return BgWriterDto.BackendFlushRatio.builder()
+            return BgWriterDashboardResponse.BackendFlushRatio.builder()
                     .value(0.0)
                     .buffersClean(0L)
                     .buffersBackend(0L)
                     .build();
         }
 
-        return BgWriterDto.BackendFlushRatio.builder()
+        return BgWriterDashboardResponse.BackendFlushRatio.builder()
                 .value(getDoubleValue(data, "value"))
                 .buffersClean(getLongValue(data, "buffersclean"))
                 .buffersBackend(getLongValue(data, "buffersbackend"))
@@ -102,9 +106,11 @@ public class BgWriterService {
 
     /**
      * Clean Rate 시계열 데이터 조회
+     * 24시간 차트: 30분 집계 사용 (없으면 5분)
      */
-    private BgWriterDto.CleanRate getCleanRate(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = bgWriterMapper.selectCleanRateTimeSeries(instanceId, startTime, endTime);
+    private BgWriterDashboardResponse.CleanRate getCleanRate(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = bgWriterMapper.selectCleanRateTimeSeries(instanceId, startTime, endTime, intervalMinutes);
 
         if (dataList == null || dataList.isEmpty()) {
             log.warn("Clean Rate 데이터 없음 - instanceId: {}", instanceId);
@@ -123,7 +129,7 @@ public class BgWriterService {
         double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
 
-        return BgWriterDto.CleanRate.builder()
+        return BgWriterDashboardResponse.CleanRate.builder()
                 .categories(categories)
                 .data(values)
                 .average(average)
@@ -134,9 +140,11 @@ public class BgWriterService {
 
     /**
      * Buffer Flush 비율 시계열 데이터 조회
+     * 24시간 차트: 30분 집계 사용 (없으면 5분)
      */
-    private BgWriterDto.BufferFlushRatio getBufferFlushRatio(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = bgWriterMapper.selectBufferFlushRatioTimeSeries(instanceId, startTime, endTime);
+    private BgWriterDashboardResponse.BufferFlushRatio getBufferFlushRatio(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = bgWriterMapper.selectBufferFlushRatioTimeSeries(instanceId, startTime, endTime, intervalMinutes);
 
         if (dataList == null || dataList.isEmpty()) {
             log.warn("Buffer Flush 비율 데이터 없음 - instanceId: {}", instanceId);
@@ -158,7 +166,7 @@ public class BgWriterService {
         long backendTotal = backend.stream().mapToLong(Long::longValue).sum();
         long cleanTotal = clean.stream().mapToLong(Long::longValue).sum();
 
-        return BgWriterDto.BufferFlushRatio.builder()
+        return BgWriterDashboardResponse.BufferFlushRatio.builder()
                 .categories(categories)
                 .backend(backend)
                 .clean(clean)
@@ -169,9 +177,11 @@ public class BgWriterService {
 
     /**
      * Maxwritten Clean 시계열 데이터 조회
+     * 24시간 차트: 30분 집계 사용 (없으면 5분)
      */
-    private BgWriterDto.MaxwrittenClean getMaxwrittenClean(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = bgWriterMapper.selectMaxwrittenCleanTimeSeries(instanceId, startTime, endTime);
+    private BgWriterDashboardResponse.MaxwrittenClean getMaxwrittenClean(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = bgWriterMapper.selectMaxwrittenCleanTimeSeries(instanceId, startTime, endTime, intervalMinutes);
 
         if (dataList == null || dataList.isEmpty()) {
             log.warn("Maxwritten Clean 데이터 없음 - instanceId: {}", instanceId);
@@ -189,7 +199,7 @@ public class BgWriterService {
         long total = values.stream().mapToLong(Long::longValue).sum();
         long average = (long) values.stream().mapToLong(Long::longValue).average().orElse(0.0);
 
-        return BgWriterDto.MaxwrittenClean.builder()
+        return BgWriterDashboardResponse.MaxwrittenClean.builder()
                 .categories(categories)
                 .data(values)
                 .average(average)
@@ -199,9 +209,11 @@ public class BgWriterService {
 
     /**
      * BGWriter vs Checkpoint 비교 데이터 조회
+     * 24시간 차트: 30분 집계 사용 (없으면 5분)
      */
-    private BgWriterDto.BgwriterVsCheckpoint getBgwriterVsCheckpoint(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = bgWriterMapper.selectBgwriterVsCheckpointTimeSeries(instanceId, startTime, endTime);
+    private BgWriterDashboardResponse.BgwriterVsCheckpoint getBgwriterVsCheckpoint(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = bgWriterMapper.selectBgwriterVsCheckpointTimeSeries(instanceId, startTime, endTime, intervalMinutes);
 
         if (dataList == null || dataList.isEmpty()) {
             log.warn("BGWriter vs Checkpoint 데이터 없음 - instanceId: {}", instanceId);
@@ -223,7 +235,7 @@ public class BgWriterService {
         long bgwriterTotal = bgwriter.stream().mapToLong(Long::longValue).sum();
         long checkpointTotal = checkpoint.stream().mapToLong(Long::longValue).sum();
 
-        return BgWriterDto.BgwriterVsCheckpoint.builder()
+        return BgWriterDashboardResponse.BgwriterVsCheckpoint.builder()
                 .categories(categories)
                 .bgwriter(bgwriter)
                 .checkpoint(checkpoint)
@@ -234,9 +246,11 @@ public class BgWriterService {
 
     /**
      * Buffer 재사용률 시계열 데이터 조회
+     * 24시간 차트: 30분 집계 사용 (없으면 5분)
      */
-    private BgWriterDto.BufferReuseRate getBufferReuseRate(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
-        List<Map<String, Object>> dataList = bgWriterMapper.selectBufferReuseRateTimeSeries(instanceId, startTime, endTime);
+    private BgWriterDashboardResponse.BufferReuseRate getBufferReuseRate(Long instanceId, LocalDateTime startTime, LocalDateTime endTime) {
+        int intervalMinutes = determineIntervalMinutes(startTime, endTime);
+        List<Map<String, Object>> dataList = bgWriterMapper.selectBufferReuseRateTimeSeries(instanceId, startTime, endTime, intervalMinutes);
 
         if (dataList == null || dataList.isEmpty()) {
             log.warn("Buffer 재사용률 데이터 없음 - instanceId: {}", instanceId);
@@ -255,7 +269,7 @@ public class BgWriterService {
         double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
 
-        return BgWriterDto.BufferReuseRate.builder()
+        return BgWriterDashboardResponse.BufferReuseRate.builder()
                 .categories(categories)
                 .data(values)
                 .average(average)
@@ -267,7 +281,7 @@ public class BgWriterService {
     /**
      * 최근 통계 조회
      */
-    private BgWriterDto.RecentStats getRecentStats(Long instanceId) {
+    private BgWriterDashboardResponse.RecentStats getRecentStats(Long instanceId) {
         Map<String, Object> data = bgWriterMapper.selectRecentStats(instanceId);
 
         if (data == null || data.isEmpty()) {
@@ -275,7 +289,7 @@ public class BgWriterService {
             return createEmptyRecentStats();
         }
 
-        return BgWriterDto.RecentStats.builder()
+        return BgWriterDashboardResponse.RecentStats.builder()
                 .bgwriterActivityRate(getDoubleValue(data, "bgwriteractivityrate"))
                 .cleanBufferReuseRate(getDoubleValue(data, "cleanbufferreuserate"))
                 .backendFsyncCount(getLongValue(data, "backendfsyncount"))
@@ -293,7 +307,7 @@ public class BgWriterService {
      * @param statusList 상태 필터 리스트
      * @return BGWriter 리스트 데이터
      */
-    public BgWriterDto.ListResponse getBgWriterList(Long instanceId, String timeRange, List<String> statusList) {
+    public BgWriterListResponse getBgWriterList(Long instanceId, String timeRange, List<String> statusList) {
         log.debug("BGWriter 리스트 데이터 조회 시작 - instanceId: {}, timeRange: {}, statusList: {}",
                 instanceId, timeRange, statusList);
 
@@ -304,10 +318,11 @@ public class BgWriterService {
         }
 
         // 시간 범위 계산
-        LocalDateTime endTime = LocalDateTime.now();
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
         LocalDateTime startTime = calculateStartTime(endTime, timeRange);
-
-        log.info("리스트 데이터 조회 범위: {} ~ {}", startTime, endTime);
+        
+        log.info("리스트 데이터 조회 범위: {} ~ {} (최신 데이터 포함)", startTime, endTime);
 
         try {
             // 리스트 데이터 조회
@@ -320,18 +335,18 @@ public class BgWriterService {
 
             if (dataList == null || dataList.isEmpty()) {
                 log.warn("BGWriter 리스트 데이터 없음 - instanceId: {}, timeRange: {}", instanceId, timeRange);
-                return BgWriterDto.ListResponse.builder()
+                return BgWriterListResponse.builder()
                         .data(new ArrayList<>())
                         .total(0L)
                         .build();
             }
 
             // DTO 변환
-            List<BgWriterDto.ListItem> items = dataList.stream()
+            List<BgWriterListItem> items = dataList.stream()
                     .map(this::convertToListItem)
                     .collect(Collectors.toList());
 
-            return BgWriterDto.ListResponse.builder()
+            return BgWriterListResponse.builder()
                     .data(items)
                     .total((long) items.size())
                     .build();
@@ -375,8 +390,8 @@ public class BgWriterService {
      * @param data Map 데이터
      * @return ListItem DTO
      */
-    private BgWriterDto.ListItem convertToListItem(Map<String, Object> data) {
-        return BgWriterDto.ListItem.builder()
+    private BgWriterListItem convertToListItem(Map<String, Object> data) {
+        return BgWriterListItem.builder()
                 .id(getString(data, "id"))
                 .timestamp(getString(data, "timestamp"))
                 .buffersAlloc(getLongValue(data, "buffersalloc"))
@@ -428,8 +443,8 @@ public class BgWriterService {
 
     // ========== 빈 데이터 생성 메서드 ==========
 
-    private BgWriterDto.CleanRate createEmptyCleanRate() {
-        return BgWriterDto.CleanRate.builder()
+    private BgWriterDashboardResponse.CleanRate createEmptyCleanRate() {
+        return BgWriterDashboardResponse.CleanRate.builder()
                 .categories(new ArrayList<>())
                 .data(new ArrayList<>())
                 .average(0.0)
@@ -438,8 +453,8 @@ public class BgWriterService {
                 .build();
     }
 
-    private BgWriterDto.BufferFlushRatio createEmptyBufferFlushRatio() {
-        return BgWriterDto.BufferFlushRatio.builder()
+    private BgWriterDashboardResponse.BufferFlushRatio createEmptyBufferFlushRatio() {
+        return BgWriterDashboardResponse.BufferFlushRatio.builder()
                 .categories(new ArrayList<>())
                 .backend(new ArrayList<>())
                 .clean(new ArrayList<>())
@@ -448,8 +463,8 @@ public class BgWriterService {
                 .build();
     }
 
-    private BgWriterDto.MaxwrittenClean createEmptyMaxwrittenClean() {
-        return BgWriterDto.MaxwrittenClean.builder()
+    private BgWriterDashboardResponse.MaxwrittenClean createEmptyMaxwrittenClean() {
+        return BgWriterDashboardResponse.MaxwrittenClean.builder()
                 .categories(new ArrayList<>())
                 .data(new ArrayList<>())
                 .average(0L)
@@ -457,8 +472,8 @@ public class BgWriterService {
                 .build();
     }
 
-    private BgWriterDto.BgwriterVsCheckpoint createEmptyBgwriterVsCheckpoint() {
-        return BgWriterDto.BgwriterVsCheckpoint.builder()
+    private BgWriterDashboardResponse.BgwriterVsCheckpoint createEmptyBgwriterVsCheckpoint() {
+        return BgWriterDashboardResponse.BgwriterVsCheckpoint.builder()
                 .categories(new ArrayList<>())
                 .bgwriter(new ArrayList<>())
                 .checkpoint(new ArrayList<>())
@@ -467,8 +482,8 @@ public class BgWriterService {
                 .build();
     }
 
-    private BgWriterDto.BufferReuseRate createEmptyBufferReuseRate() {
-        return BgWriterDto.BufferReuseRate.builder()
+    private BgWriterDashboardResponse.BufferReuseRate createEmptyBufferReuseRate() {
+        return BgWriterDashboardResponse.BufferReuseRate.builder()
                 .categories(new ArrayList<>())
                 .data(new ArrayList<>())
                 .average(0.0)
@@ -477,8 +492,8 @@ public class BgWriterService {
                 .build();
     }
 
-    private BgWriterDto.RecentStats createEmptyRecentStats() {
-        return BgWriterDto.RecentStats.builder()
+    private BgWriterDashboardResponse.RecentStats createEmptyRecentStats() {
+        return BgWriterDashboardResponse.RecentStats.builder()
                 .bgwriterActivityRate(0.0)
                 .cleanBufferReuseRate(0.0)
                 .backendFsyncCount(0L)
@@ -486,5 +501,25 @@ public class BgWriterService {
                 .checkpointInterruptionCount(0L)
                 .dirtyBufferAccumulationRate(0.0)
                 .build();
+    }
+
+    /**
+     * 시간 범위에 따라 집계 간격 결정
+     * @param startTime 시작 시간
+     * @param endTime 종료 시간
+     * @return 집계 간격 (분 단위: 1, 5, 또는 30)
+     * - 1시간 이내: 1분 집계
+     * - 6시간 이내: 5분 집계
+     * - 24시간: 30분 집계 (없으면 5분 집계로 fallback)
+     */
+    private int determineIntervalMinutes(LocalDateTime startTime, LocalDateTime endTime) {
+        long hours = java.time.Duration.between(startTime, endTime).toHours();
+        if (hours <= 1) {
+            return 1; // 1시간 차트: 1분 집계
+        } else if (hours <= 6) {
+            return 5; // 6시간 차트: 5분 집계
+        } else {
+            return 30; // 24시간 차트: 30분 집계 (없으면 5분으로 fallback)
+        }
     }
 }

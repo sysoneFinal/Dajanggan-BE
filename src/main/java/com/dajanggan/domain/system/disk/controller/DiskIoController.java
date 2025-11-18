@@ -2,7 +2,7 @@ package com.dajanggan.domain.system.disk.controller;
 
 
 
-import com.dajanggan.domain.system.disk.dto.DiskIoDto;
+import com.dajanggan.domain.system.disk.dto.*;
 import com.dajanggan.domain.system.disk.service.DiskIoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,11 +25,11 @@ public class DiskIoController {
      * @return Disk I/O 대시보드 데이터
      */
     @GetMapping
-    public ResponseEntity<DiskIoDto.DashboardResponse> getDiskIoDashboard(
+    public ResponseEntity<DiskIoDashboardResponse> getDiskIoDashboard(
             @RequestParam(required = false) Long instanceId) {
         log.debug("Disk I/O 대시보드 조회 요청 - instanceId: {}", instanceId);
 
-        DiskIoDto.DashboardResponse response = diskIoService.getDiskIoDashboard(instanceId);
+        DiskIoDashboardResponse response = diskIoService.getDiskIoDashboard(instanceId);
 
         return ResponseEntity.ok(response);
     }
@@ -42,7 +42,7 @@ public class DiskIoController {
      * @return Disk I/O 리스트 데이터
      */
     @GetMapping("/list")
-    public ResponseEntity<DiskIoDto.ListResponse> getDiskIoList(
+    public ResponseEntity<DiskIoListResponse> getDiskIoList(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(defaultValue = "7d") String timeRange,
             @RequestParam(required = false) String status) {
@@ -55,7 +55,7 @@ public class DiskIoController {
             statusList = List.of(status.split(","));
         }
 
-        DiskIoDto.ListResponse response = diskIoService.getDiskIoList(instanceId, timeRange, statusList);
+        DiskIoListResponse response = diskIoService.getDiskIoList(instanceId, timeRange, statusList);
 
         return ResponseEntity.ok(response);
     }

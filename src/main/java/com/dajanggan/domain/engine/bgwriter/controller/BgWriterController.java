@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.bgwriter.controller;
 
-import com.dajanggan.domain.engine.bgwriter.dto.BgWriterDto;
+import com.dajanggan.domain.engine.bgwriter.dto.*;
 import com.dajanggan.domain.engine.bgwriter.service.BgWriterService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,11 +23,11 @@ public class BgWriterController {
      * @return BGWriter 대시보드 데이터
      */
     @GetMapping
-    public ResponseEntity<BgWriterDto.DashboardResponse> getBgWriterDashboard(
+    public ResponseEntity<BgWriterDashboardResponse> getBgWriterDashboard(
             @RequestParam(required = false) Long instanceId) {
         log.debug("BGWriter 대시보드 조회 요청 - instanceId: {}", instanceId);
         
-        BgWriterDto.DashboardResponse response = bgWriterService.getBgWriterDashboard(instanceId);
+        BgWriterDashboardResponse response = bgWriterService.getBgWriterDashboard(instanceId);
         
         return ResponseEntity.ok(response);
     }
@@ -40,7 +40,7 @@ public class BgWriterController {
      * @return BGWriter 리스트 데이터
      */
     @GetMapping("/list")
-    public ResponseEntity<BgWriterDto.ListResponse> getBgWriterList(
+    public ResponseEntity<BgWriterListResponse> getBgWriterList(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(defaultValue = "7d") String timeRange,
             @RequestParam(required = false) String status) {
@@ -53,7 +53,7 @@ public class BgWriterController {
             statusList = List.of(status.split(","));
         }
         
-        BgWriterDto.ListResponse response = bgWriterService.getBgWriterList(instanceId, timeRange, statusList);
+        BgWriterListResponse response = bgWriterService.getBgWriterList(instanceId, timeRange, statusList);
         
         return ResponseEntity.ok(response);
     }
