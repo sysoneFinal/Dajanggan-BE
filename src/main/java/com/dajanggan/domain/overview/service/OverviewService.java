@@ -87,15 +87,13 @@ public class OverviewService {
         String chartType = widgetNode.get("chartType").asText();
         String title = widgetNode.get("title").asText();
 
-        // databases 배열에서 첫 번째 DB 정보 추출
+        // databases 배열 추출
         JsonNode databasesNode = widgetNode.get("databases");
         if (databasesNode == null || !databasesNode.isArray() || databasesNode.size() == 0) {
             throw new IllegalArgumentException("데이터베이스 정보가 없습니다");
         }
 
-        String dbName = databasesNode.get(0).get("name").asText();
-
-        // metrics 배열 추출 (column_name 들어있음)
+        // metrics 배열 추출
         JsonNode metricsNode = widgetNode.get("metrics");
         if (metricsNode == null || !metricsNode.isArray()) {
             throw new IllegalArgumentException("메트릭 정보가 없습니다");
@@ -108,13 +106,34 @@ public class OverviewService {
 
         String timeRange = "15m";
 
-        // 실제 메트릭 데이터 조회
-        List<Map<String, Object>> data = metricsQueryService.queryMetrics(
-                dbName,
-                instanceId,
-                metricColumns,
-                timeRange
-        );
+        // 🔥 모든 DB에 대해 데이터 조회
+        List<Map<String, Object>> allData = new ArrayList<>();
+
+        for (JsonNode dbNode : databasesNode) {
+            Long databaseId = dbNode.get("id").asLong();
+            String dbName = dbNode.get("name").asText();
+
+            try {
+                List<Map<String, Object>> dbData = metricsQueryService.queryMetrics(
+                        databaseId,
+                        instanceId,
+                        metricColumns,
+                        timeRange
+                );
+
+                // 🔥 각 데이터에 DB 이름 추가 (프론트에서 구분할 수 있도록)
+                for (Map<String, Object> row : dbData) {
+                    row.put("database", dbName);
+                    row.put("database_id", databaseId);
+                }
+
+                allData.addAll(dbData);
+                log.debug("DB 데이터 조회 성공: dbName={}, rowCount={}", dbName, dbData.size());
+            } catch (Exception e) {
+                log.error("DB 데이터 조회 실패: dbName={}, error={}", dbName, e.getMessage(), e);
+                // 특정 DB 실패해도 다른 DB는 계속 조회
+            }
+        }
 
         // 🔥 각 메트릭의 definition 정보 조회
         ObjectMapper mapper = new ObjectMapper();
@@ -189,7 +208,7 @@ public class OverviewService {
                 .layout(widgetNode.get("layout"))
                 .options(enhancedOptions)
                 .metrics(metricColumns)
-                .data(data)
+                .data(allData)
                 .error(null)
                 .build();
     }
@@ -207,8 +226,6 @@ public class OverviewService {
             .error(errorMessage)
             .build();
     }
-
-
 
 
 
