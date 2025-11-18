@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.hotindex.controller;
 
-import com.dajanggan.domain.engine.hotindex.dto.HotIndexDto;
+import com.dajanggan.domain.engine.hotindex.dto.*;
 import com.dajanggan.domain.engine.hotindex.service.HotIndexService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,12 +24,12 @@ public class HotIndexController {
      * @return HotIndex 대시보드 데이터
      */
     @GetMapping
-    public ResponseEntity<HotIndexDto.DashboardResponse> getHotIndexDashboard(
+    public ResponseEntity<HotIndexDashboardResponse> getHotIndexDashboard(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(required = false) Long databaseId) {
         log.debug("HotIndex 대시보드 조회 요청 - instanceId: {}, databaseId: {}", instanceId, databaseId);
 
-        HotIndexDto.DashboardResponse response = hotIndexService.getHotIndexDashboard(instanceId, databaseId);
+        HotIndexDashboardResponse response = hotIndexService.getHotIndexDashboard(instanceId, databaseId);
 
         return ResponseEntity.ok(response);
     }
@@ -43,7 +43,7 @@ public class HotIndexController {
      * @return HotIndex 리스트 데이터
      */
     @GetMapping("/list")
-    public ResponseEntity<HotIndexDto.ListResponse> getHotIndexList(
+    public ResponseEntity<HotIndexListResponse> getHotIndexList(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(required = false) Long databaseId,
             @RequestParam(defaultValue = "7d") String timeRange,
@@ -57,7 +57,7 @@ public class HotIndexController {
             statusList = List.of(status.split(","));
         }
 
-        HotIndexDto.ListResponse response = hotIndexService.getHotIndexList(instanceId, databaseId, timeRange, statusList);
+        HotIndexListResponse response = hotIndexService.getHotIndexList(instanceId, databaseId, timeRange, statusList);
 
         return ResponseEntity.ok(response);
     }
