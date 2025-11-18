@@ -4,11 +4,6 @@
 
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumRiskMapper">
 
-    <!--
-        ✅ VacuumRisk는 vacuum_raw_metrics를 사용
-        이유: 테이블별 상세 정보, bloat, wraparound 등 고급 메트릭 필요
-    -->
-
     <!-- Blockers per Hour -->
     <select id="getBlockersPerHour" resultType="com.dajanggan.domain.vacuum.dto.VacuumRiskDto$BlockersPerHourRaw">
         WITH time_series AS (
@@ -47,13 +42,12 @@
         SELECT DISTINCT ON (table_name)
         database_id,
         table_name,
-        relsize_total_bytes AS bloat_bytes,
-        CASE
-        WHEN relsize_total_bytes > 0 AND (n_live_tup + n_dead_tup) > 0
-        THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup + 1))
-        ELSE 0
-        END AS bloat_ratio,
+        -- ✅ 실제 bloat_bytes 컬럼 사용 (Collector에서 계산됨)
+        COALESCE(bloat_bytes, 0) AS bloat_bytes,
+        -- ✅ 실제 bloat_ratio 컬럼 사용
+        COALESCE(bloat_ratio, 0) AS bloat_ratio,
         n_dead_tup AS dead_tuple_total,
+        relsize_total_bytes AS table_size,
         collected_at
         FROM vacuum_raw_metrics
         WHERE collected_at BETWEEN COALESCE(#{start}, NOW() - INTERVAL '24 hours')
@@ -128,11 +122,14 @@
         WITH latest_wraparound AS (
         SELECT DISTINCT ON (database_id)
         database_id,
-        -- Wraparound 근사 계산: (total_dead_tuples / max_expected) * 100
-        -- PostgreSQL의 autovacuum_freeze_max_age 기본값: 200M
+        -- ✅ 실제 wraparound_progress 컬럼 사용 (Collector에서 계산됨)
+        COALESCE(
+        AVG(wraparound_progress) OVER (PARTITION BY database_id),
+        -- Fallback: Dead Tuples 기반 근사 계산
         LEAST(
         (SUM(n_dead_tup) OVER (PARTITION BY database_id)::NUMERIC / 200000000) * 100,
         100
+        )
         ) AS wraparound_progress_pct,
         collected_at
         FROM vacuum_raw_metrics

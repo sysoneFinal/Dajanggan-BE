@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+                "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+    <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumAgg5mMapper">
+
+    <resultMap id="vacuumAgg5mMap" type="com.dajanggan.domain.vacuum.dto.agg.VacuumAgg5mDto">
+        <result column="database_id" property="databaseId"/>
+        <result column="instance_id" property="instanceId"/>
+        <result column="collected_at" property="collectedAt"/>
+        <result column="total_vacuum_sessions" property="totalVacuumSessions"/>
+        <result column="active_vacuum_sessions" property="activeVacuumSessions"/>
+        <result column="autovacuum_sessions" property="autovacuumSessions"/>
+        <result column="manual_vacuum_sessions" property="manualVacuumSessions"/>
+        <result column="avg_dead_tuples" property="avgDeadTuples"/>
+        <result column="max_dead_tuples" property="maxDeadTuples"/>
+        <result column="total_dead_tuples" property="totalDeadTuples"/>
+        <result column="dead_tuple_increase_rate" property="deadTupleIncreaseRate"/>
+        <result column="dead_tuple_decrease_rate" property="deadTupleDecreaseRate"/>
+        <result column="net_dead_tuple_change" property="netDeadTupleChange"/>
+        <result column="avg_progress" property="avgProgress"/>
+        <result column="tables_with_dead_tuples" property="tablesWithDeadTuples"/>
+        <result column="tables_being_vacuumed" property="tablesBeingVacuumed"/>
+        <result column="avg_elapsed_seconds" property="avgElapsedSeconds"/>
+        <result column="max_elapsed_seconds" property="maxElapsedSeconds"/>
+        <result column="avg_cost_delay_ms" property="avgCostDelayMs"/>
+        <result column="worker_utilization_pct" property="workerUtilizationPct"/>
+        <result column="max_workers_configured" property="maxWorkersConfigured"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <!-- KPI 요약 조회 - 파라미터 이름 수정! -->
+    <select id="getKpiSummary" resultMap="vacuumAgg5mMap">
+        SELECT
+            database_id,
+            instance_id,
+            MAX(collected_at) as collected_at,
+            AVG(avg_elapsed_seconds) as avg_elapsed_seconds,
+            SUM(total_dead_tuples) as total_dead_tuples,
+            AVG(worker_utilization_pct) as worker_utilization_pct,
+            AVG(avg_cost_delay_ms) as avg_cost_delay_ms,
+            SUM(active_vacuum_sessions) as active_vacuum_sessions
+        FROM vacuum_metrics_agg_5m
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY database_id, instance_id
+    </select>
+
+    <!-- 시계열 데이터 조회 - 파라미터 이름 수정! -->
+    <select id="findByTimeRange" resultMap="vacuumAgg5mMap">
+        SELECT
+            database_id,
+            instance_id,
+            collected_at,
+            total_vacuum_sessions,
+            active_vacuum_sessions,
+            autovacuum_sessions,
+            manual_vacuum_sessions,
+            avg_dead_tuples,
+            max_dead_tuples,
+            total_dead_tuples,
+            dead_tuple_increase_rate,
+            dead_tuple_decrease_rate,
+            net_dead_tuple_change,
+            avg_progress,
+            tables_with_dead_tuples,
+            tables_being_vacuumed,
+            avg_elapsed_seconds,
+            max_elapsed_seconds,
+            avg_cost_delay_ms,
+            worker_utilization_pct,
+            max_workers_configured,
+            created_at
+        FROM vacuum_metrics_agg_5m
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- Bloat KPI 집계 -->
+    <select id="getBloatKpiSummary" resultType="com.dajanggan.domain.vacuum.dto.agg.VacuumAgg5mDto">
+        SELECT
+            #{databaseId} AS database_id,
+            #{instanceId} AS instance_id,
+            AVG(total_bloat_bytes) AS total_bloat_bytes,
+            AVG(avg_bloat_ratio) AS avg_bloat_ratio,
+            SUM(critical_bloat_tables) AS critical_bloat_tables,
+            AVG(total_table_size_bytes) AS total_table_size_bytes
+        FROM vacuum_metrics_agg_5m
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+    </select>
+
+
+    <!-- VacuumAgg5mDto Insert -->
+    <insert id="insertAgg5m">
+        INSERT INTO vacuum_metrics_agg_5m (
+            database_id,
+            instance_id,
+            collected_at,
+            total_vacuum_sessions,
+            active_vacuum_sessions,
+            autovacuum_sessions,
+            manual_vacuum_sessions,
+            avg_dead_tuples,
+            max_dead_tuples,
+            total_dead_tuples,
+            avg_progress,
+            tables_with_dead_tuples,
+            tables_being_vacuumed,
+            avg_elapsed_seconds,
+            max_elapsed_seconds,
+            dead_tuple_increase_rate,
+            dead_tuple_decrease_rate,
+            net_dead_tuple_change,
+            avg_cost_delay_ms,
+            worker_utilization_pct,
+            max_workers_configured,
+            avg_bloat_bytes,
+            max_bloat_bytes,
+            total_bloat_bytes,
+            avg_bloat_ratio,
+            max_bloat_ratio,
+            critical_bloat_tables,
+            total_table_size_bytes,
+            blocked_vacuum_count,
+            avg_blocked_seconds,
+            max_blocked_seconds,
+            top_table_1,
+            top_table_1_dead_tuples,
+            top_table_2,
+            top_table_2_dead_tuples,
+            top_table_3,
+            top_table_3_dead_tuples,
+            top_table_4,
+            top_table_4_dead_tuples,
+            top_table_5,
+            top_table_5_dead_tuples,
+            top_bloat_table_1,
+            top_bloat_table_1_bytes,
+            top_bloat_table_2,
+            top_bloat_table_2_bytes,
+            top_bloat_table_3,
+            top_bloat_table_3_bytes,
+            top_bloat_table_4,
+            top_bloat_table_4_bytes,
+            top_bloat_table_5,
+            top_bloat_table_5_bytes,
+            top_blocker_table_1,
+            top_blocker_table_1_seconds,
+            top_blocker_table_2,
+            top_blocker_table_2_seconds,
+            top_blocker_table_3,
+            top_blocker_table_3_seconds,
+            created_at
+        ) VALUES (
+                     #{databaseId},
+                     #{instanceId},
+                     #{collectedAt},
+                     #{totalVacuumSessions},
+                     #{activeVacuumSessions},
+                     #{autovacuumSessions},
+                     #{manualVacuumSessions},
+                     #{avgDeadTuples},
+                     #{maxDeadTuples},
+                     #{totalDeadTuples},
+                     #{avgProgress},
+                     #{tablesWithDeadTuples},
+                     #{tablesBeingVacuumed},
+                     #{avgElapsedSeconds},
+                     #{maxElapsedSeconds},
+                     #{deadTupleIncreaseRate},
+                     #{deadTupleDecreaseRate},
+                     #{netDeadTupleChange},
+                     #{avgCostDelayMs},
+                     #{workerUtilizationPct},
+                     #{maxWorkersConfigured},
+                     #{avgBloatBytes},
+                     #{maxBloatBytes},
+                     #{totalBloatBytes},
+                     #{avgBloatRatio},
+                     #{maxBloatRatio},
+                     #{criticalBloatTables},
+                     #{totalTableSizeBytes},
+                     #{blockedVacuumCount},
+                     #{avgBlockedSeconds},
+                     #{maxBlockedSeconds},
+                     #{topTable1},
+                     #{topTable1DeadTuples},
+                     #{topTable2},
+                     #{topTable2DeadTuples},
+                     #{topTable3},
+                     #{topTable3DeadTuples},
+                     #{topTable4},
+                     #{topTable4DeadTuples},
+                     #{topTable5},
+                     #{topTable5DeadTuples},
+                     #{topBloatTable1},
+                     #{topBloatTable1Bytes},
+                     #{topBloatTable2},
+                     #{topBloatTable2Bytes},
+                     #{topBloatTable3},
+                     #{topBloatTable3Bytes},
+                     #{topBloatTable4},
+                     #{topBloatTable4Bytes},
+                     #{topBloatTable5},
+                     #{topBloatTable5Bytes},
+                     #{topBlockerTable1},
+                     #{topBlockerTable1Seconds},
+                     #{topBlockerTable2},
+                     #{topBlockerTable2Seconds},
+                     #{topBlockerTable3},
+                     #{topBlockerTable3Seconds},
+                     #{createdAt}
+                 )
+            ON CONFLICT (database_id, instance_id, collected_at)
+        DO UPDATE SET
+            total_vacuum_sessions = EXCLUDED.total_vacuum_sessions,
+                           active_vacuum_sessions = EXCLUDED.active_vacuum_sessions,
+                           autovacuum_sessions = EXCLUDED.autovacuum_sessions,
+                           manual_vacuum_sessions = EXCLUDED.manual_vacuum_sessions,
+                           avg_dead_tuples = EXCLUDED.avg_dead_tuples,
+                           max_dead_tuples = EXCLUDED.max_dead_tuples,
+                           total_dead_tuples = EXCLUDED.total_dead_tuples,
+                           avg_progress = EXCLUDED.avg_progress,
+                           tables_with_dead_tuples = EXCLUDED.tables_with_dead_tuples,
+                           tables_being_vacuumed = EXCLUDED.tables_being_vacuumed,
+                           avg_elapsed_seconds = EXCLUDED.avg_elapsed_seconds,
+                           max_elapsed_seconds = EXCLUDED.max_elapsed_seconds,
+                           dead_tuple_increase_rate = EXCLUDED.dead_tuple_increase_rate,
+                           dead_tuple_decrease_rate = EXCLUDED.dead_tuple_decrease_rate,
+                           net_dead_tuple_change = EXCLUDED.net_dead_tuple_change,
+                           avg_cost_delay_ms = EXCLUDED.avg_cost_delay_ms,
+                           worker_utilization_pct = EXCLUDED.worker_utilization_pct,
+                           max_workers_configured = EXCLUDED.max_workers_configured,
+                           avg_bloat_bytes = EXCLUDED.avg_bloat_bytes,
+                           max_bloat_bytes = EXCLUDED.max_bloat_bytes,
+                           total_bloat_bytes = EXCLUDED.total_bloat_bytes,
+                           avg_bloat_ratio = EXCLUDED.avg_bloat_ratio,
+                           max_bloat_ratio = EXCLUDED.max_bloat_ratio,
+                           critical_bloat_tables = EXCLUDED.critical_bloat_tables,
+                           total_table_size_bytes = EXCLUDED.total_table_size_bytes,
+                           blocked_vacuum_count = EXCLUDED.blocked_vacuum_count,
+                           avg_blocked_seconds = EXCLUDED.avg_blocked_seconds,
+                           max_blocked_seconds = EXCLUDED.max_blocked_seconds,
+                           top_table_1 = EXCLUDED.top_table_1,
+                           top_table_1_dead_tuples = EXCLUDED.top_table_1_dead_tuples,
+                           top_table_2 = EXCLUDED.top_table_2,
+                           top_table_2_dead_tuples = EXCLUDED.top_table_2_dead_tuples,
+                           top_table_3 = EXCLUDED.top_table_3,
+                           top_table_3_dead_tuples = EXCLUDED.top_table_3_dead_tuples,
+                           top_table_4 = EXCLUDED.top_table_4,
+                           top_table_4_dead_tuples = EXCLUDED.top_table_4_dead_tuples,
+                           top_table_5 = EXCLUDED.top_table_5,
+                           top_table_5_dead_tuples = EXCLUDED.top_table_5_dead_tuples,
+                           top_bloat_table_1 = EXCLUDED.top_bloat_table_1,
+                           top_bloat_table_1_bytes = EXCLUDED.top_bloat_table_1_bytes,
+                           top_bloat_table_2 = EXCLUDED.top_bloat_table_2,
+                           top_bloat_table_2_bytes = EXCLUDED.top_bloat_table_2_bytes,
+                           top_bloat_table_3 = EXCLUDED.top_bloat_table_3,
+                           top_bloat_table_3_bytes = EXCLUDED.top_bloat_table_3_bytes,
+                           top_bloat_table_4 = EXCLUDED.top_bloat_table_4,
+                           top_bloat_table_4_bytes = EXCLUDED.top_bloat_table_4_bytes,
+                           top_bloat_table_5 = EXCLUDED.top_bloat_table_5,
+                           top_bloat_table_5_bytes = EXCLUDED.top_bloat_table_5_bytes,
+                           top_blocker_table_1 = EXCLUDED.top_blocker_table_1,
+                           top_blocker_table_1_seconds = EXCLUDED.top_blocker_table_1_seconds,
+                           top_blocker_table_2 = EXCLUDED.top_blocker_table_2,
+                           top_blocker_table_2_seconds = EXCLUDED.top_blocker_table_2_seconds,
+                           top_blocker_table_3 = EXCLUDED.top_blocker_table_3,
+                           top_blocker_table_3_seconds = EXCLUDED.top_blocker_table_3_seconds,
+                           created_at = EXCLUDED.created_at
+    </insert>
+
+    <!-- Batch Insert -->
+    <insert id="insertAgg5mBatch">
+        INSERT INTO vacuum_metrics_agg_5m (
+        database_id, instance_id, collected_at,
+        total_vacuum_sessions, active_vacuum_sessions,
+        autovacuum_sessions, manual_vacuum_sessions,
+        avg_dead_tuples, max_dead_tuples, total_dead_tuples,
+        avg_progress, tables_with_dead_tuples, tables_being_vacuumed,
+        avg_elapsed_seconds, max_elapsed_seconds,
+        dead_tuple_increase_rate, dead_tuple_decrease_rate, net_dead_tuple_change,
+        avg_cost_delay_ms, worker_utilization_pct, max_workers_configured,
+        avg_bloat_bytes, max_bloat_bytes, total_bloat_bytes,
+        avg_bloat_ratio, max_bloat_ratio, critical_bloat_tables, total_table_size_bytes,
+        blocked_vacuum_count, avg_blocked_seconds, max_blocked_seconds,
+        top_table_1, top_table_1_dead_tuples,
+        top_table_2, top_table_2_dead_tuples,
+        top_table_3, top_table_3_dead_tuples,
+        top_table_4, top_table_4_dead_tuples,
+        top_table_5, top_table_5_dead_tuples,
+        top_bloat_table_1, top_bloat_table_1_bytes,
+        top_bloat_table_2, top_bloat_table_2_bytes,
+        top_bloat_table_3, top_bloat_table_3_bytes,
+        top_bloat_table_4, top_bloat_table_4_bytes,
+        top_bloat_table_5, top_bloat_table_5_bytes,
+        top_blocker_table_1, top_blocker_table_1_seconds,
+        top_blocker_table_2, top_blocker_table_2_seconds,
+        top_blocker_table_3, top_blocker_table_3_seconds,
+        created_at
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.databaseId},
+            #{item.instanceId},
+            #{item.collectedAt},
+            #{item.totalVacuumSessions},
+            #{item.activeVacuumSessions},
+            #{item.autovacuumSessions},
+            #{item.manualVacuumSessions},
+            #{item.avgDeadTuples},
+            #{item.maxDeadTuples},
+            #{item.totalDeadTuples},
+            #{item.avgProgress},
+            #{item.tablesWithDeadTuples},
+            #{item.tablesBeingVacuumed},
+            #{item.avgElapsedSeconds},
+            #{item.maxElapsedSeconds},
+            #{item.deadTupleIncreaseRate},
+            #{item.deadTupleDecreaseRate},
+            #{item.netDeadTupleChange},
+            #{item.avgCostDelayMs},
+            #{item.workerUtilizationPct},
+            #{item.maxWorkersConfigured},
+            #{item.avgBloatBytes},
+            #{item.maxBloatBytes},
+            #{item.totalBloatBytes},
+            #{item.avgBloatRatio},
+            #{item.maxBloatRatio},
+            #{item.criticalBloatTables},
+            #{item.totalTableSizeBytes},
+            #{item.blockedVacuumCount},
+            #{item.avgBlockedSeconds},
+            #{item.maxBlockedSeconds},
+            #{item.topTable1},
+            #{item.topTable1DeadTuples},
+            #{item.topTable2},
+            #{item.topTable2DeadTuples},
+            #{item.topTable3},
+            #{item.topTable3DeadTuples},
+            #{item.topTable4},
+            #{item.topTable4DeadTuples},
+            #{item.topTable5},
+            #{item.topTable5DeadTuples},
+            #{item.topBloatTable1},
+            #{item.topBloatTable1Bytes},
+            #{item.topBloatTable2},
+            #{item.topBloatTable2Bytes},
+            #{item.topBloatTable3},
+            #{item.topBloatTable3Bytes},
+            #{item.topBloatTable4},
+            #{item.topBloatTable4Bytes},
+            #{item.topBloatTable5},
+            #{item.topBloatTable5Bytes},
+            #{item.topBlockerTable1},
+            #{item.topBlockerTable1Seconds},
+            #{item.topBlockerTable2},
+            #{item.topBlockerTable2Seconds},
+            #{item.topBlockerTable3},
+            #{item.topBlockerTable3Seconds},
+            #{item.createdAt}
+            )
+        </foreach>
+        ON CONFLICT (database_id, instance_id, collected_at) DO NOTHING
+    </insert>
+
+
+</mapper>

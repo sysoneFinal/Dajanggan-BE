@@ -10,43 +10,81 @@ public class MetricConfig {
      */
     public String getMetricQuery(String metricType) {
         return switch (metricType) {
+            // vacuum
+            case "autovacuum_worker_utilization" ->
+                    "SELECT (COUNT(*) FILTER (WHERE query LIKE 'autovacuum:%')::NUMERIC / " +
+                            "NULLIF((SELECT setting::NUMERIC FROM pg_settings WHERE name = 'autovacuum_max_workers'), 0) * 100) " +
+                            "FROM pg_stat_activity";
+
+            case "blockers_per_hour" ->
+                    "SELECT COUNT(*)::NUMERIC FROM pg_locks WHERE NOT granted";
+
+            case "transaction_age" ->
+                    "SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - xact_start))), 0)::NUMERIC " +
+                            "FROM pg_stat_activity WHERE xact_start IS NOT NULL AND state != 'idle'";
+
+            case "block_duration" ->
+                    "SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - query_start))), 0)::NUMERIC " +
+                            "FROM pg_stat_activity WHERE wait_event_type = 'Lock'";
+
+            case "wraparound_progress" ->
+                    "SELECT COALESCE(MAX(age(relfrozenxid)::NUMERIC / " +
+                            "(SELECT setting::NUMERIC FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * 100), 0) " +
+                            "FROM pg_class WHERE relkind = 'r'";
+
+            case "total_table_bloat" ->
+                    "SELECT COALESCE(SUM(CASE WHEN n_live_tup + n_dead_tup > 0 " +
+                            "THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup)) * pg_total_relation_size(relid) " +
+                            "ELSE 0 END), 0) FROM pg_stat_user_tables";
+
+            case "bloat_percent" ->
+                    "SELECT COALESCE(AVG(CASE WHEN n_live_tup + n_dead_tup > 0 " +
+                            "THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup)) * 100 " +
+                            "ELSE 0 END), 0) FROM pg_stat_user_tables";
+
             case "dead_tuples" ->
-                    "SELECT SUM(n_dead_tup)::NUMERIC FROM pg_stat_user_tables";
+                    "SELECT COALESCE(SUM(n_dead_tup), 0)::NUMERIC FROM pg_stat_user_tables";
 
-            case "bloat_size" ->
-                    "SELECT SUM(pg_relation_size(schemaname||'.'||tablename))::NUMERIC " +
-                            "FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')";
+            case "table_size" ->
+                    "SELECT COALESCE(SUM(pg_total_relation_size(relid)), 0)::NUMERIC FROM pg_stat_user_tables";
 
-            case "unused_indexes" ->
-                    "SELECT COUNT(*)::NUMERIC FROM pg_stat_user_indexes WHERE idx_scan = 0";
-
-            case "connection_count" ->
-                    "SELECT COUNT(*)::NUMERIC FROM pg_stat_activity WHERE state = 'active'";
-
+            // 세션
             case "long_running_queries" ->
                     "SELECT COUNT(*)::NUMERIC FROM pg_stat_activity " +
                             "WHERE state = 'active' AND query_start < NOW() - INTERVAL '5 minutes'";
 
-            case "cache_hit_ratio" ->
-                    "SELECT ROUND((sum(blks_hit) * 100.0 / NULLIF(sum(blks_hit + blks_read), 0))::NUMERIC, 2) " +
-                            "FROM pg_stat_database";
-
-            case "table_bloat_ratio" ->
-                    "SELECT ROUND(AVG((pg_stat_get_live_tuples(c.oid)::FLOAT / " +
-                            "NULLIF(pg_stat_get_tuples_inserted(c.oid), 0)) * 100)::NUMERIC, 2) " +
-                            "FROM pg_class c WHERE c.relkind = 'r'";
-
             case "lock_waits" ->
                     "SELECT COUNT(*)::NUMERIC FROM pg_locks WHERE NOT granted";
 
-            case "sequential_scans" ->
-                    "SELECT SUM(seq_scan)::NUMERIC FROM pg_stat_user_tables";
+            case "long_idle_sessions" ->
+                    "SELECT COUNT(*)::NUMERIC FROM pg_stat_activity " +
+                            "WHERE state = 'idle in transaction' " +
+                            "AND state_change < NOW() - INTERVAL '10 minutes'";
 
-            case "temp_files" ->
-                    "SELECT SUM(temp_files)::NUMERIC FROM pg_stat_database";
+            case "blocking_sessions" ->
+                    "SELECT COUNT(DISTINCT blocking.pid)::NUMERIC FROM pg_stat_activity blocked " +
+                            "JOIN pg_stat_activity blocking ON blocking.pid = ANY(pg_blocking_pids(blocked.pid)) " +
+                            "WHERE blocked.wait_event_type IS NOT NULL";
 
-            case "replication_lag" ->
-                    "SELECT EXTRACT(EPOCH FROM (NOW() - pg_last_xact_replay_timestamp()))::NUMERIC";
+            // 쿼리
+            case "slow_query_spike" ->
+                    "SELECT COALESCE(SUM(slow_query_count), 0) " +
+                            "FROM query_metrics_agg_1m " +
+                            "WHERE instance_id = ? AND database_id = ? " +
+                            "AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'";
+
+            case "avg_execution_spike" ->
+                    "SELECT AVG(avg_execution_time_ms) " +
+                            "FROM query_metrics_agg_1m " +
+                            "WHERE instance_id = ? AND database_id = ? " +
+                            "AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'";
+
+
+            case "qps_spike" ->
+                    "SELECT CAST(COALESCE(SUM(total_queries), 0) / 300.0 AS INTEGER) " +
+                            "FROM query_metrics_agg_1m " +
+                            "WHERE instance_id = ? AND database_id = ? " +
+                            "AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'";
 
             case "long_idle_sessions" ->
                     "SELECT COUNT(*)::NUMERIC FROM pg_stat_activity " +
