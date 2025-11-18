@@ -7,8 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.OffsetDateTime;
-
 @Slf4j
 @RestController
 @RequestMapping("/api/vacuum/bloat")
@@ -19,60 +17,28 @@ public class VacuumBloatController {
 
     @GetMapping("/dashboard")
     public ResponseEntity<VacuumBloatDto.Response> getDashboard(
-            @RequestParam(required = false) Long databaseId) {
+            @RequestParam Long databaseId,
+            @RequestParam Long instanceId) {
 
-        log.info("GET /api/vacuum/bloat/dashboard - databaseId: {}", databaseId);
-        VacuumBloatDto.Response dashboard = vacuumBloatService.getDashboardData(databaseId);
+        log.info("GET /api/vacuum/bloat/dashboard - databaseId: {}, instanceId: {}",
+                databaseId, instanceId);
+
+        VacuumBloatDto.Response dashboard = vacuumBloatService.getDashboardData(
+                databaseId, instanceId);
+
         return ResponseEntity.ok(dashboard);
-    }
-
-    @GetMapping("/xmin-horizon")
-    public ResponseEntity<VacuumBloatDto.XminHorizonMonitor> getXminHorizon(
-            @RequestParam(required = false) Long databaseId,
-            @RequestParam(required = false) OffsetDateTime startTime,
-            @RequestParam(required = false) OffsetDateTime endTime) {
-
-        // 기본값: 최근 7일
-        if (startTime == null) {
-            startTime = OffsetDateTime.now().minusDays(7);
-        }
-        if (endTime == null) {
-            endTime = OffsetDateTime.now();
-        }
-
-        log.info("GET /api/vacuum/bloat/xmin-horizon - databaseId: {}, period: {} ~ {}",
-                databaseId, startTime, endTime);
-
-        VacuumBloatDto.XminHorizonMonitor data = vacuumBloatService.getXminHorizonData(
-                databaseId, startTime, endTime);
-        return ResponseEntity.ok(data);
-    }
-
-    @GetMapping("/trend")
-    public ResponseEntity<VacuumBloatDto.BloatTrend> getTrend(
-            @RequestParam(required = false) Long databaseId,
-            @RequestParam(defaultValue = "30") int days) {
-
-        log.info("GET /api/vacuum/bloat/trend - databaseId: {}, days: {}", databaseId, days);
-        VacuumBloatDto.BloatTrend data = vacuumBloatService.getBloatTrendData(databaseId, days);
-        return ResponseEntity.ok(data);
-    }
-
-    @GetMapping("/distribution")
-    public ResponseEntity<VacuumBloatDto.BloatDistribution> getDistribution(
-            @RequestParam(required = false) Long databaseId) {
-
-        log.info("GET /api/vacuum/bloat/distribution - databaseId: {}", databaseId);
-        VacuumBloatDto.BloatDistribution data = vacuumBloatService.getBloatDistributionData(databaseId);
-        return ResponseEntity.ok(data);
     }
 
     @GetMapping("/kpi")
     public ResponseEntity<VacuumBloatDto.Kpi> getKpi(
-            @RequestParam(required = false) Long databaseId) {
+            @RequestParam Long databaseId,
+            @RequestParam Long instanceId) {
 
-        log.info("GET /api/vacuum/bloat/kpi - databaseId: {}", databaseId);
-        VacuumBloatDto.Kpi data = vacuumBloatService.getKpiData(databaseId);
+        log.info("GET /api/vacuum/bloat/kpi - databaseId: {}, instanceId: {}",
+                databaseId, instanceId);
+
+        VacuumBloatDto.Kpi data = vacuumBloatService.getKpiData(databaseId, instanceId);
+
         return ResponseEntity.ok(data);
     }
 }

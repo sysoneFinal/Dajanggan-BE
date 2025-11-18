@@ -1,6 +1,8 @@
 package com.dajanggan.domain.vacuum.repository;
 
 import com.dajanggan.domain.vacuum.dto.VacuumMaintenanceDto;
+import com.dajanggan.domain.vacuum.dto.agg.VacuumAgg1mDto;
+import com.dajanggan.domain.vacuum.dto.agg.VacuumAgg5mDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -12,64 +14,53 @@ import java.util.List;
 public class VacuumMaintenanceRepository {
 
     private final VacuumRawMapper rawMapper;
-    private final VacuumTrendMapper trendMapper;
+    private final VacuumAgg1mMapper agg1mRepo;
+    private final VacuumAgg5mMapper agg5mRepo;
 
-    // ========== KPI 지표 (✅ aggTable 추가) ==========
+    // ========== KPI 지표 (집계 테이블) ==========
 
-    public Double getAvgDelaySeconds(
-            OffsetDateTime start, OffsetDateTime end,
-            Long databaseId, String aggTable) {
-        return trendMapper.getAvgDelaySeconds(start, end, databaseId, aggTable);
+    /**
+     * KPI 요약 정보 조회
+     */
+    public VacuumAgg1mDto getKpiFrom1m(
+            Long databaseId, Long instanceId,
+            OffsetDateTime start, OffsetDateTime end) {
+        return agg1mRepo.getKpiSummary(databaseId, instanceId, start, end);
     }
 
-    public Double getAvgVacuumDuration(
-            OffsetDateTime start, OffsetDateTime end,
-            Long databaseId, String aggTable) {
-        return trendMapper.getAvgVacuumDuration(start, end, databaseId, aggTable);
+    public VacuumAgg5mDto getKpiFrom5m(
+            Long databaseId, Long instanceId,
+            OffsetDateTime start, OffsetDateTime end) {
+        return agg5mRepo.getKpiSummary(databaseId, instanceId, start, end);
     }
 
-    public Long getTotalDeadTuples(
-            OffsetDateTime start, OffsetDateTime end,
-            Long databaseId, String aggTable) {
-        return trendMapper.getTotalDeadTuples(start, end, databaseId, aggTable);
+    // ========== 차트 데이터 (집계 테이블) ==========
+
+    /**
+     * 1분 집계 시계열 데이터
+     */
+    public List<VacuumAgg1mDto> getTimeSeriesFrom1m(
+            Long databaseId, Long instanceId,
+            OffsetDateTime start, OffsetDateTime end) {
+        return agg1mRepo.findByTimeRange(databaseId, instanceId, start, end);
     }
 
-    public Integer getMaxWorkers(Long databaseId) {
-        return rawMapper.getMaxWorkers(databaseId);
+    /**
+     * 5분 집계 시계열 데이터
+     */
+    public List<VacuumAgg5mDto> getTimeSeriesFrom5m(
+            Long databaseId, Long instanceId,
+            OffsetDateTime start, OffsetDateTime end) {
+        return agg5mRepo.findByTimeRange(databaseId, instanceId, start, end);
     }
 
-    public Integer getActiveWorkers(Long databaseId) {
-        return rawMapper.getActiveWorkers(databaseId);
-    }
+    // ========== 세션 데이터 (Raw 데이터) ==========
 
-    // ========== 차트 데이터 (✅ aggTable 추가) ==========
-
-    public List<VacuumMaintenanceDto.VacuumTrendRaw> getDeadTupleTrend(
-            OffsetDateTime start, OffsetDateTime end, int buckets,
-            Long databaseId, String aggTable) {
-        return trendMapper.getDeadTupleTrend(start, end, buckets, databaseId, aggTable);
-    }
-
-    public List<VacuumMaintenanceDto.VacuumTrendRaw> getAutovacuumTrend(
-            OffsetDateTime start, OffsetDateTime end, int buckets,
-            Long databaseId, String aggTable) {
-        return trendMapper.getAutovacuumTrend(start, end, buckets, databaseId, aggTable);
-    }
-
-    public List<VacuumMaintenanceDto.VacuumTrendRaw> getLatencyTrend(
-            OffsetDateTime start, OffsetDateTime end, int buckets,
-            Long databaseId, String aggTable) {
-        return trendMapper.getLatencyTrend(start, end, buckets, databaseId, aggTable);
-    }
-
-    // ========== 세션 데이터 (변경 없음 - raw 테이블 사용) ==========
-
+    /**
+     * 현재 실행 중인 Vacuum 세션
+     */
     public List<VacuumMaintenanceDto.VacuumSessionRaw> getCurrentVacuumSessions(
             Long databaseId, String tableName) {
         return rawMapper.getCurrentVacuumSessions(databaseId, tableName);
-    }
-
-    public List<Integer> getSessionProgressHistory(Long databaseId, String tableName, int limit) {
-        return rawMapper.getSessionProgressHistory(databaseId, tableName, limit);
     }
 }

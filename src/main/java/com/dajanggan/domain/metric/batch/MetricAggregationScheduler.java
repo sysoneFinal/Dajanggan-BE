@@ -111,7 +111,8 @@ public class MetricAggregationScheduler {
 
             log.info("{} 완료", jobName);
         } catch (Exception e) {
-            log.error("{} 실패: {}", jobName, e.getMessage(), e);
+            log.error("{} 실패: {}", jobName, e.getMessage(), e);  // ← 이 로그 확인!
+            e.printStackTrace();  // ← 추가
         }
     }
 }

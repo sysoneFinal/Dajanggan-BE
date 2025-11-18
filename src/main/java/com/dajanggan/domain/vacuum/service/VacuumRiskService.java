@@ -115,8 +115,9 @@ public class VacuumRiskService {
 
         var points = new ArrayList<List<Long>>(list.size());
         for (var v : list) {
-            if (v.getTransactionAge() == null || v.getBlockDuration() == null) continue;
-            points.add(List.of(v.getTransactionAge(), v.getBlockDuration()));
+            if (v.getTransactionAge() == null) continue;  // blockDuration은 0이어도 OK
+            points.add(List.of(v.getTransactionAge(), v.getBlockDuration() == null ? 0L : v.getBlockDuration()));
+
         }
 
         var dto = new VacuumRiskDto.ScatterDto();
