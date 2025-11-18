@@ -141,7 +141,6 @@ public class MemoryCollectionScheduler {
 
         if (!rawList.isEmpty()) {
             memoryMapper.insertRawBatch(rawList);
-            log.debug("Raw 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, rawList.size());
         }
 
         // 7. Agg 데이터 생성 및 저장 (증분 계산)
@@ -158,7 +157,6 @@ public class MemoryCollectionScheduler {
 
         if (!aggList.isEmpty()) {
             memoryMapper.insertAggBatch(aggList);
-            log.debug("Agg 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, aggList.size());
         }
 
         log.info("메트릭 처리 완료: instanceId={}, raw={}, agg={}, tempFiles={}", 
