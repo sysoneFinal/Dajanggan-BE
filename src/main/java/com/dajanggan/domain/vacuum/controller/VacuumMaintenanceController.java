@@ -22,15 +22,16 @@ public class VacuumMaintenanceController {
 
     @GetMapping("/dashboard")
     public ResponseEntity<VacuumMaintenanceDto.Response> getDashboard(
-            @RequestParam(defaultValue = "1000") int hours,
-            @RequestParam(required = false) Long databaseId, String tableName) {
+            @RequestParam(defaultValue = "24") int hours,
+            @RequestParam Long databaseId,
+            @RequestParam Long instanceId,
+            @RequestParam(required = false) String tableName) {
 
-        log.info("Dashboard 조회 요청 - databaseId: {}, hours: {}",
-                databaseId, hours);
-
+        log.info("Dashboard 조회 요청 - databaseId: {}, instanceId: {}, hours: {}",
+                databaseId, instanceId, hours);
 
         VacuumMaintenanceDto.Response dashboard =
-                vacuumMaintenanceService.getDashboardData(hours,databaseId, tableName);
+                vacuumMaintenanceService.getDashboardData(hours, databaseId, instanceId, tableName);
 
         return ResponseEntity.ok(dashboard);
     }

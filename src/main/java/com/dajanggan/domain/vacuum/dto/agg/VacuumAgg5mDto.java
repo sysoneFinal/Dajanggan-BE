@@ -30,6 +30,9 @@ public class VacuumAgg5mDto {
     private Long avgDeadTuples;
     private Long maxDeadTuples;
     private Long totalDeadTuples;
+    private Long deadTupleIncreaseRate;
+    private Long deadTupleDecreaseRate;
+    private Long netDeadTupleChange;
 
     // 진행률 통계
     private Double avgProgress;
@@ -42,6 +45,39 @@ public class VacuumAgg5mDto {
     private Double avgElapsedSeconds;
     private Double maxElapsedSeconds;
 
+    private Double avgCostDelayMs;
+
+    // 대기 시간 정보 (추가됨!)
+    private Double avgBlockedSeconds;        // 평균 블로킹 대기 시간
+
+
+
+    // Worker 통계
+    private Double workerUtilizationPct;
+    private Integer maxWorkersConfigured;
+
+    //  Bloat 관련 추가
+    private Long avgBloatBytes;
+    private Long maxBloatBytes;
+    private Long totalBloatBytes;
+    private Double avgBloatRatio;
+    private Double maxBloatRatio;
+    private Integer criticalBloatTables;
+    private Long totalTableSizeBytes;
+
+    // Top 5 Bloat 테이블
+    private String topBloatTable1;
+    private Long topBloatTable1Bytes;
+    private String topBloatTable2;
+    private Long topBloatTable2Bytes;
+    private String topBloatTable3;
+    private Long topBloatTable3Bytes;
+    private String topBloatTable4;
+    private Long topBloatTable4Bytes;
+    private String topBloatTable5;
+    private Long topBloatTable5Bytes;
+
+
     // Top 5 테이블 (dead tuple 기준)
     private String topTable1;
     private Long topTable1DeadTuples;
@@ -53,6 +89,20 @@ public class VacuumAgg5mDto {
     private Long topTable4DeadTuples;
     private String topTable5;
     private Long topTable5DeadTuples;
+
+
+    private String topBlockerTable1;
+    private Integer topBlockerTable1Seconds;
+    private String topBlockerTable2;
+    private Integer topBlockerTable2Seconds;
+    private String topBlockerTable3;
+    private Integer topBlockerTable3Seconds;
+
+
+    private Integer blockedVacuumCount;
+    private Integer maxBlockedSeconds;
+
+
 
     private OffsetDateTime createdAt;
 }

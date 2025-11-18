@@ -5,7 +5,6 @@ import com.dajanggan.domain.alarm.repository.AlarmRuleMapper;
 import com.dajanggan.domain.alarm.repository.AlarmTrackingMapper;
 import com.dajanggan.domain.alarm.repository.AlarmFeedMapper;
 import com.dajanggan.domain.alarm.domain.AlarmRule;
-import com.dajanggan.domain.alarm.domain.AlarmTracking;
 import com.dajanggan.domain.alarm.dto.AlarmTrackingDto;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.domain.Database;

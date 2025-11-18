@@ -53,7 +53,7 @@ public class VacuumHistoryService {
                 .lastAutovacuum(formatDateTime(raw.getLastAutovacuum()))
                 .deadTuples(formatTuples(raw.getDeadTuples()))
                 .modSinceAnalyze(formatTuples(raw.getModSinceAnalyze()))
-                .bloatPct(formatBloatPct(raw.getBloatRatio()))
+                .bloatRatio(formatBloatRatio(raw.getBloatRatio()))
                 .frequency(frequencyStr)
                 .status(status)
                 .build();
@@ -96,7 +96,7 @@ public class VacuumHistoryService {
         return timestamp.toLocalDateTime().format(DATETIME_FORMATTER);
     }
 
-    private String formatBloatPct(Double ratio) {
+    private String formatBloatRatio(Double ratio) {
         if (ratio == null) return "0.0%";
         return String.format("%.1f%%", ratio * 100);
     }

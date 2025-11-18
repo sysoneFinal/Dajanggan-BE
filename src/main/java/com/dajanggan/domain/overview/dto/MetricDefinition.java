@@ -6,6 +6,7 @@ import lombok.*;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Data
 public class MetricDefinition {
     private Long metricId;
     private String name;           // 메트릭명 (avg_system_cpu)

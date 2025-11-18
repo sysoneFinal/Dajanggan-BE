@@ -12,6 +12,22 @@
         FROM metric_definition
     </select>
 
-
+    <!-- 특정 metric 정의 조회 -->
+    <select id="findByCategoryAndColumnName"
+            resultType="com.dajanggan.domain.overview.dto.MetricDefinition">
+        SELECT metric_id AS metricId,
+        name,
+        table_name AS tableName,
+        column_name AS columnName,
+        category,
+        level,
+        unit,
+        description,
+        available_chart AS availableChart,
+        default_chart_type AS defaultChartType
+        FROM metric_definition
+        WHERE category = #{category}
+        AND column_name = #{columnName}
+    </select>
 
 </mapper>

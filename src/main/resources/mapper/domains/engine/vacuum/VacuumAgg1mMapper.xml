@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumAgg1mMapper">
+
+    <resultMap id="vacuumAgg1mMap" type="com.dajanggan.domain.vacuum.dto.agg.VacuumAgg1mDto">
+        <result column="database_id" property="databaseId"/>
+        <result column="instance_id" property="instanceId"/>
+        <result column="collected_at" property="collectedAt"/>
+        <result column="total_vacuum_sessions" property="totalVacuumSessions"/>
+        <result column="active_vacuum_sessions" property="activeVacuumSessions"/>
+        <result column="autovacuum_sessions" property="autovacuumSessions"/>
+        <result column="manual_vacuum_sessions" property="manualVacuumSessions"/>
+        <result column="avg_dead_tuples" property="avgDeadTuples"/>
+        <result column="max_dead_tuples" property="maxDeadTuples"/>
+        <result column="total_dead_tuples" property="totalDeadTuples"/>
+        <result column="dead_tuple_increase_rate" property="deadTupleIncreaseRate"/>
+        <result column="dead_tuple_decrease_rate" property="deadTupleDecreaseRate"/>
+        <result column="net_dead_tuple_change" property="netDeadTupleChange"/>
+        <result column="avg_progress" property="avgProgress"/>
+        <result column="tables_with_dead_tuples" property="tablesWithDeadTuples"/>
+        <result column="tables_being_vacuumed" property="tablesBeingVacuumed"/>
+        <result column="avg_elapsed_seconds" property="avgElapsedSeconds"/>
+        <result column="max_elapsed_seconds" property="maxElapsedSeconds"/>
+        <result column="avg_cost_delay_ms" property="avgCostDelayMs"/>
+        <result column="worker_utilization_pct" property="workerUtilizationPct"/>
+        <result column="max_workers_configured" property="maxWorkersConfigured"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <!-- KPI 요약 조회 - 파라미터 이름 수정! -->
+    <select id="getKpiSummary" resultMap="vacuumAgg1mMap">
+        SELECT
+            database_id,
+            instance_id,
+            MAX(collected_at) as collected_at,
+            AVG(avg_elapsed_seconds) as avg_elapsed_seconds,
+            SUM(total_dead_tuples) as total_dead_tuples,
+            AVG(worker_utilization_pct) as worker_utilization_pct,
+            AVG(avg_cost_delay_ms) as avg_cost_delay_ms,
+            SUM(active_vacuum_sessions) as active_vacuum_sessions
+        FROM vacuum_metrics_agg_1m
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        GROUP BY database_id, instance_id
+    </select>
+
+    <!-- 시계열 데이터 조회 - 파라미터 이름 수정! -->
+    <select id="findByTimeRange" resultMap="vacuumAgg1mMap">
+        SELECT
+            database_id,
+            instance_id,
+            collected_at,
+            total_vacuum_sessions,
+            active_vacuum_sessions,
+            autovacuum_sessions,
+            manual_vacuum_sessions,
+            avg_dead_tuples,
+            max_dead_tuples,
+            total_dead_tuples,
+            dead_tuple_increase_rate,
+            dead_tuple_decrease_rate,
+            net_dead_tuple_change,
+            avg_progress,
+            tables_with_dead_tuples,
+            tables_being_vacuumed,
+            avg_elapsed_seconds,
+            max_elapsed_seconds,
+            avg_cost_delay_ms,
+            worker_utilization_pct,
+            max_workers_configured,
+            created_at
+        FROM vacuum_metrics_agg_1m
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
+    </select>
+
+</mapper>
