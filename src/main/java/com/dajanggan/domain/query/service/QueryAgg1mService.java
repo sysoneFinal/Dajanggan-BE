@@ -11,9 +11,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 1ë¶„ ì§‘ê³„ ë°ì´í„° Service
+ * 1분 집계 데이터 Service
  *
- * @author ì´í•´ë“ 
+ * ✅ 수정사항:
+ * - timeRange 한글 인코딩 수정
+ *
+ * @author 이해든
  */
 @Slf4j
 @Service
@@ -28,45 +31,45 @@ public class QueryAgg1mService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    /** ì¿¼ë¦¬ íƒ€ìž…ë³„ ì¶”ì´ */
+    /** 쿼리 타입별 추이 */
     public List<QueryTypeTrendDto> findQueryTypeTrend(Map<String, Object> params) {
-        log.debug("findQueryTypeTrend í˜¸ì¶œ - params: {}", params);
+        log.debug("findQueryTypeTrend 호출 - params: {}", params);
         List<QueryTypeTrendDto> result = queryAgg1mRepository.getQueryTypeTrend(params);
-        log.debug("findQueryTypeTrend ê²°ê³¼ ê°œìˆ˜: {}", result != null ? result.size() : 0);
+        log.debug("findQueryTypeTrend 결과 개수: {}", result != null ? result.size() : 0);
         return result;
     }
 
-    /** í‰ê·  ì‹¤í–‰ ì‹œê°„ ì¶”ì´ */
+    /** 평균 실행 시간 추이 */
     public List<AvgExecutionTimeTrendDto> findAvgExecutionTimeTrend(Map<String, Object> params) {
-        log.debug("findAvgExecutionTimeTrend í˜¸ì¶œ - params: {}", params);
+        log.debug("findAvgExecutionTimeTrend 호출 - params: {}", params);
         List<AvgExecutionTimeTrendDto> result = queryAgg1mRepository.getAvgExecutionTimeTrend(params);
-        log.debug("findAvgExecutionTimeTrend ê²°ê³¼ ê°œìˆ˜: {}", result != null ? result.size() : 0);
+        log.debug("findAvgExecutionTimeTrend 결과 개수: {}", result != null ? result.size() : 0);
         return result;
     }
 
-    /** IO ë¸”ë¡ ì¶”ì´ */
+    /** IO 블록 추이 */
     public List<IoBlockTrendDto> findIoBlockTrend(Map<String, Object> params) {
-        log.debug("findIoBlockTrend í˜¸ì¶œ - params: {}", params);
+        log.debug("findIoBlockTrend 호출 - params: {}", params);
         List<IoBlockTrendDto> result = queryAgg1mRepository.getIoBlockTrend(params);
-        log.debug("findIoBlockTrend ê²°ê³¼ ê°œìˆ˜: {}", result != null ? result.size() : 0);
+        log.debug("findIoBlockTrend 결과 개수: {}", result != null ? result.size() : 0);
         return result;
     }
 
-    /** ìŠ¬ë¡œìš° ì¿¼ë¦¬ ì¶”ì´ */
+    /** 슬로우 쿼리 추이 */
     public List<SlowQueryTrendDto> findSlowQueryTrend(Map<String, Object> params) {
-        log.debug("findSlowQueryTrend í˜¸ì¶œ - params: {}", params);
+        log.debug("findSlowQueryTrend 호출 - params: {}", params);
         List<SlowQueryTrendDto> result = queryAgg1mRepository.getSlowQueryTrend(params);
-        log.debug("findSlowQueryTrend ê²°ê³¼ ê°œìˆ˜: {}", result != null ? result.size() : 0);
+        log.debug("findSlowQueryTrend 결과 개수: {}", result != null ? result.size() : 0);
         return result;
     }
 
     /**
-     * ðŸ†• ìš”ì•½ ë°ì´í„° ì¡°íšŒ (ìµœê·¼ 5ë¶„ ì§‘ê³„)
-     * - QueryOverview ìš”ì•½ ì¹´ë“œìš©
-     * - ê¸°ì¡´ agg5m.findLatestSummaryë¥¼ ëŒ€ì²´
+     * 📊 요약 데이터 조회 (최근 5분 집계)
+     * - QueryOverview 요약 카드용
+     * - 기존 agg5m.findLatestSummary를 대체
      */
     public QuerySummaryDto findRecentSummary(Long instanceId, Long databaseId) {
-        log.info("ðŸ“Š ìš”ì•½ ë°ì´í„° ì¡°íšŒ ì‹œìž‘ - instanceId: {}, databaseId: {}", instanceId, databaseId);
+        log.info("📊 요약 데이터 조회 시작 - instanceId: {}, databaseId: {}", instanceId, databaseId);
 
         Map<String, Object> params = new HashMap<>();
         params.put("instanceId", instanceId);
@@ -76,8 +79,8 @@ public class QueryAgg1mService {
             QuerySummaryDto result = queryAgg1mRepository.findRecentSummary(params);
 
             if (result == null) {
-                log.warn("âš ï¸ ìš”ì•½ ë°ì´í„°ê°€ ì—†ìŠµë‹ˆë‹¤ - ê¸°ë³¸ê°’ ë°˜í™˜");
-                // ê¸°ë³¸ê°’ ë°˜í™˜
+                log.warn("⚠️ 요약 데이터가 없습니다 - 기본값 반환");
+                // 기본값 반환
                 result = QuerySummaryDto.builder()
                         .instanceId(instanceId)
                         .databaseId(databaseId)
@@ -91,28 +94,28 @@ public class QueryAgg1mService {
                         .insertCount(0)
                         .updateCount(0)
                         .deleteCount(0)
-                        .timeRange("ìµœê·¼ 5ë¶„")
+                        .timeRange("최근 5분")  // ✅ 수정
                         .build();
             } else {
-                result.setTimeRange("ìµœê·¼ 5ë¶„");
-                log.info("âœ… ìš”ì•½ ë°ì´í„° ì¡°íšŒ ì™„ë£Œ - TPS: {}, QPS: {}, í‰ê· ì‘ë‹µ: {}ms",
+                result.setTimeRange("최근 5분");  // ✅ 수정
+                log.info("✅ 요약 데이터 조회 완료 - TPS: {}, QPS: {}, 평균 시간: {}ms",
                         result.getCurrentTps(), result.getCurrentQps(), result.getAvgExecutionTimeMs());
             }
 
             return result;
 
         } catch (Exception e) {
-            log.error("âŒ ìš”ì•½ ë°ì´í„° ì¡°íšŒ ì¤‘ ì˜¤ë¥˜ ë°œìƒ", e);
-            throw new RuntimeException("ìš”ì•½ ë°ì´í„° ì¡°íšŒ ì‹¤íŒ¨", e);
+            log.error("❌ 요약 데이터 조회 중 오류 발생", e);
+            throw new RuntimeException("요약 데이터 조회 실패", e);
         }
     }
 
     /**
-     * ðŸ†• ìš”ì•½ ë°ì´í„° ì¡°íšŒ (Map íŒŒë¼ë¯¸í„° ë²„ì „)
-     * - ê¸°ì¡´ agg5mê³¼ í˜¸í™˜ì„± ìœ ì§€
+     * 📊 요약 데이터 조회 (Map 파라미터 버전)
+     * - 기존 agg5m과 호환성 유지
      */
     public QuerySummaryDto findLatestSummary(Map<String, Object> params) {
-        log.debug("findLatestSummary í˜¸ì¶œ (Map ë²„ì „) - params: {}", params);
+        log.debug("findLatestSummary 호출 (Map 버전) - params: {}", params);
 
         Long instanceId = (Long) params.get("instanceId");
         Long databaseId = (Long) params.get("databaseId");
@@ -121,15 +124,15 @@ public class QueryAgg1mService {
     }
 
     /**
-     * ðŸ†• íŠ¸ë Œë“œ ë°ì´í„° ì¡°íšŒ (ìµœê·¼ Nì‹œê°„)
-     * - QueryOverview TPS/QPS ì°¨íŠ¸ìš©
+     * 📊 트렌드 데이터 조회 (최근 N시간)
+     * - QueryOverview TPS/QPS 차트용
      */
     public QueryOverviewTrendDto findTrendData(Long instanceId, Long databaseId, Integer hours) {
-        log.info("ðŸ“ˆ íŠ¸ë Œë“œ ë°ì´í„° ì¡°íšŒ ì‹œìž‘ - instanceId: {}, databaseId: {}, hours: {}",
+        log.info("📈 트렌드 데이터 조회 시작 - instanceId: {}, databaseId: {}, hours: {}",
                 instanceId, databaseId, hours);
 
         if (hours == null || hours <= 0) {
-            hours = 12; // ê¸°ë³¸ê°’: 12ì‹œê°„
+            hours = 12; // 기본값: 12시간
         }
 
         Map<String, Object> params = new HashMap<>();
@@ -141,7 +144,7 @@ public class QueryAgg1mService {
             List<QueryAgg1mDto> rawData = queryAgg1mRepository.findTrendData(params);
 
             if (rawData == null || rawData.isEmpty()) {
-                log.warn("âš ï¸ íŠ¸ë Œë“œ ë°ì´í„°ê°€ ì—†ìŠµë‹ˆë‹¤ - ë¹ˆ ê²°ê³¼ ë°˜í™˜");
+                log.warn("⚠️ 트렌드 데이터가 없습니다 - 빈 결과 반환");
                 return QueryOverviewTrendDto.builder()
                         .instanceId(instanceId)
                         .databaseId(databaseId)
@@ -153,7 +156,7 @@ public class QueryAgg1mService {
                         .build();
             }
 
-            // DTO ë³€í™˜ (1ë¶„ ì§‘ê³„ë¥¼ TPS/QPSë¡œ ë³€í™˜)
+            // DTO 변환 (1분 집계를 TPS/QPS로 변환)
             List<QueryOverviewTrendDto.TrendDataPoint> trendData = new ArrayList<>();
             double totalTps = 0.0;
             double totalQps = 0.0;
@@ -161,7 +164,7 @@ public class QueryAgg1mService {
             int count = 0;
 
             for (QueryAgg1mDto dto : rawData) {
-                // TPS/QPS = 1ë¶„ê°„ ì¿¼ë¦¬ìˆ˜ / 60ì´ˆ
+                // TPS/QPS = 1분간 쿼리수 / 60초
                 Integer tps = dto.getTotalQueries() != null ? dto.getTotalQueries() / 60 : 0;
                 Integer qps = dto.getTotalQueries() != null ? dto.getTotalQueries() / 60 : 0;
 
@@ -192,27 +195,27 @@ public class QueryAgg1mService {
                     .avgExecutionTimeMs(count > 0 ? totalExecTime / count : 0.0)
                     .build();
 
-            log.info("âœ… íŠ¸ë Œë“œ ë°ì´í„° ì¡°íšŒ ì™„ë£Œ - ë°ì´í„° í¬ì¸íŠ¸: {}, í‰ê·  TPS: {}, í‰ê·  QPS: {}",
+            log.info("✅ 트렌드 데이터 조회 완료 - 데이터 포인트: {}, 평균 TPS: {}, 평균 QPS: {}",
                     count, result.getAvgTps(), result.getAvgQps());
 
             return result;
 
         } catch (Exception e) {
-            log.error("âŒ íŠ¸ë Œë“œ ë°ì´í„° ì¡°íšŒ ì¤‘ ì˜¤ë¥˜ ë°œìƒ", e);
-            throw new RuntimeException("íŠ¸ë Œë“œ ë°ì´í„° ì¡°íšŒ ì‹¤íŒ¨", e);
+            log.error("❌ 트렌드 데이터 조회 중 오류 발생", e);
+            throw new RuntimeException("트렌드 데이터 조회 실패", e);
         }
     }
 
     /**
-     * ðŸ†• Top Query ì¡°íšŒ (ë¦¬ì†ŒìŠ¤ë³„)
-     * - CPU, ë©”ëª¨ë¦¬, I/O, ì‹¤í–‰ì‹œê°„ ê¸°ì¤€ Top-N ì¿¼ë¦¬ ì¡°íšŒ
+     * 📊 Top Query 조회 (리소스별)
+     * - CPU, 메모리, I/O, 실행시간 기준 Top-N 쿼리 조회
      */
     public List<QueryAgg1mDto> findTopQueries(Long instanceId, Long databaseId, String orderBy, Integer limit) {
-        log.info("ðŸ† Top Query ì¡°íšŒ ì‹œìž‘ - instanceId: {}, databaseId: {}, orderBy: {}, limit: {}",
+        log.info("🔝 Top Query 조회 시작 - instanceId: {}, databaseId: {}, orderBy: {}, limit: {}",
                 instanceId, databaseId, orderBy, limit);
 
         if (limit == null || limit <= 0) {
-            limit = 5; // ê¸°ë³¸ê°’: 5ê°œ
+            limit = 5; // 기본값: 5개
         }
 
         Map<String, Object> params = new HashMap<>();
@@ -225,16 +228,16 @@ public class QueryAgg1mService {
             List<QueryAgg1mDto> result = queryAgg1mRepository.findTopQueries(params);
 
             if (result == null || result.isEmpty()) {
-                log.warn("âš ï¸ Top Query ë°ì´í„°ê°€ ì—†ìŠµë‹ˆë‹¤");
+                log.warn("⚠️ Top Query 데이터가 없습니다");
                 return new ArrayList<>();
             }
 
-            log.info("âœ… Top Query ì¡°íšŒ ì™„ë£Œ - {}ê°œ", result.size());
+            log.info("✅ Top Query 조회 완료 - {}개", result.size());
             return result;
 
         } catch (Exception e) {
-            log.error("âŒ Top Query ì¡°íšŒ ì¤‘ ì˜¤ë¥˜ ë°œìƒ", e);
-            throw new RuntimeException("Top Query ì¡°íšŒ ì‹¤íŒ¨", e);
+            log.error("❌ Top Query 조회 중 오류 발생", e);
+            throw new RuntimeException("Top Query 조회 실패", e);
         }
     }
 

@@ -8,12 +8,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * 쿼리 메트릭스 원시 데이터 서비스 구현체
  * Singleton으로 관리됨 (Spring의 기본 빈 스코프)
+ *
+ * ✅ 수정사항:
+ * - getQueryMetricsByDatabaseIdAndDays 메서드 추가
  *
  * @author 이해든
  */
@@ -87,7 +93,7 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
     }
 
     /**
-     * 데이터베이스 ID로 쿼리 메트릭스 목록 조회
+     * 데이터베이스 ID로 쿼리 메트릭스 목록 조회 (전체)
      */
     @Override
     public List<QueryMetricsRawDto> getQueryMetricsByDatabaseId(Long databaseId) {
@@ -115,7 +121,46 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
     }
 
     /**
-     * 🆕 최근 N분간의 쿼리 메트릭스 조회
+     * ✅ 신규: 데이터베이스 ID와 기간으로 쿼리 메트릭스 조회
+     */
+    @Override
+    public List<QueryMetricsRawDto> getQueryMetricsByDatabaseIdAndDays(Long databaseId, Integer days) {
+        logger.info("📊 데이터베이스별 기간 조회 - databaseId: {}, days: {}", databaseId, days);
+
+        if (databaseId == null) {
+            logger.warn("databaseId가 null입니다");
+            throw new IllegalArgumentException("databaseId는 필수입니다");
+        }
+
+        if (days == null || days < 0) {
+            logger.warn("days가 유효하지 않습니다: {}", days);
+            days = 1; // 기본값 1일
+        }
+
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("databaseId", databaseId);
+            params.put("days", days);
+
+            // ✅ Repository는 Entity를 반환하므로 DTO로 변환 필요
+            List<QueryMetricsRaw> entities = queryMetricsRawRepository.findByDatabaseIdAndDays(params);
+            List<QueryMetricsRawDto> result = entities.stream()
+                    .map(QueryMetricsRawDto::from)
+                    .collect(Collectors.toList());
+
+            logger.info("✅ 조회 완료: databaseId = {}, days = {}, 조회 건수 = {}",
+                    databaseId, days, result.size());
+
+            return result;
+
+        } catch (Exception e) {
+            logger.error("❌ 데이터베이스별 기간 조회 중 오류 발생: databaseId = {}, days = {}", databaseId, days, e);
+            throw new RuntimeException("쿼리 메트릭스 조회 실패", e);
+        }
+    }
+
+    /**
+     * 최근 N분간의 쿼리 메트릭스 조회
      */
     @Override
     public List<QueryMetricsRawDto> getRecentMetrics(Long databaseId, Integer minutes) {
