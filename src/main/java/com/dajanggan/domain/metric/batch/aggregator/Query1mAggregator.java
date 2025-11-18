@@ -71,37 +71,43 @@ public class Query1mAggregator {
     @Bean
     public JdbcCursorItemReader<QueryAgg1mDto> queryAgg1mReader() {
         String sql = """
-            SELECT 
-                instance_id,
-                database_id,
-                DATE_TRUNC('minute', collected_at) as collected_at,
-                
-                -- 쿼리 수 집계
-                COUNT(*) as total_queries,
-                COUNT(*) FILTER (WHERE query_type = 'SELECT') as select_queries,
-                COUNT(*) FILTER (WHERE query_type = 'INSERT') as insert_queries,
-                COUNT(*) FILTER (WHERE query_type = 'UPDATE') as update_queries,
-                COUNT(*) FILTER (WHERE query_type = 'DELETE') as delete_queries,
-                COUNT(*) FILTER (WHERE query_type NOT IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')) as other_queries,
-                
-                -- 실행 시간 집계
-                AVG(execution_time_ms) as avg_execution_time_ms,
-                MAX(execution_time_ms) as max_execution_time_ms,
-                AVG(planning_time_ms) as avg_planning_time_ms,
-                
-                -- IO 블록 집계
-                SUM(io_blocks) as total_io_blocks,
-                AVG(io_blocks) as avg_io_blocks,
-                
-                -- 슬로우 쿼리 (1초 초과)
-                COUNT(*) FILTER (WHERE execution_time_ms > 1000) as slow_query_count
-                
-            FROM query_metrics_raw
-            WHERE collected_at >= NOW() - INTERVAL '2 minutes'
-              AND collected_at < NOW() - INTERVAL '1 minute'
-            GROUP BY instance_id, database_id, DATE_TRUNC('minute', collected_at)
-            ORDER BY instance_id, database_id, collected_at
-            """;
+        SELECT 
+            instance_id,
+            database_id,
+            DATE_TRUNC('minute', collected_at) as collected_at,
+            
+            -- 쿼리 수 집계
+            COUNT(*) as total_queries,
+            COUNT(*) FILTER (WHERE query_type = 'SELECT') as select_queries,
+            COUNT(*) FILTER (WHERE query_type = 'INSERT') as insert_queries,
+            COUNT(*) FILTER (WHERE query_type = 'UPDATE') as update_queries,
+            COUNT(*) FILTER (WHERE query_type = 'DELETE') as delete_queries,
+            COUNT(*) FILTER (WHERE query_type NOT IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')) as other_queries,
+            
+            -- 실행 시간 집계
+            AVG(execution_time_ms) as avg_execution_time_ms,
+            MAX(execution_time_ms) as max_execution_time_ms,
+            AVG(planning_time_ms) as avg_planning_time_ms,
+            
+            -- IO 블록 집계
+            SUM(io_blocks) as total_io_blocks,
+            AVG(io_blocks) as avg_io_blocks,
+            
+            -- 슬로우 쿼리 (1초 초과)
+            COUNT(*) FILTER (WHERE execution_time_ms > 1000) as slow_query_count,
+            
+            -- 🆕 리소스 사용률 (평균값 사용)
+            AVG(cpu_usage_percent) as current_cpu_usage_percent,
+            AVG(memory_usage_mb) as current_memory_usage_percent,
+            LEAST(AVG(io_blocks) * 100.0 / 10000, 100) as current_disk_io_usage_percent
+            
+        FROM query_metrics_raw
+        WHERE collected_at >= NOW() - INTERVAL '2 minutes'
+          AND collected_at < NOW() - INTERVAL '1 minute'
+        GROUP BY instance_id, database_id, DATE_TRUNC('minute', collected_at)
+        ORDER BY instance_id, database_id, collected_at
+        """;
+
 
         return new JdbcCursorItemReaderBuilder<QueryAgg1mDto>()
                 .name("queryAgg1mReader")
@@ -129,7 +135,15 @@ public class Query1mAggregator {
             if (item.getAvgIoBlocks() == null) {
                 item.setAvgIoBlocks(0.0);
             }
-
+            if (item.getCurrentCpuUsagePercent() == null) {
+                item.setCurrentCpuUsagePercent(0.0);
+            }
+            if (item.getCurrentMemoryUsagePercent() == null) {
+                item.setCurrentMemoryUsagePercent(0.0);
+            }
+            if (item.getCurrentDiskIoUsagePercent() == null) {
+                item.setCurrentDiskIoUsagePercent(0.0);
+            }
             return item;
         };
     }
@@ -195,6 +209,16 @@ public class Query1mAggregator {
 
             // 슬로우 쿼리
             dto.setSlowQueryCount(rs.getInt("slow_query_count"));
+
+            // 🆕 리소스 사용률
+            Double currentCpu = rs.getDouble("current_cpu_usage_percent");
+            dto.setCurrentCpuUsagePercent(rs.wasNull() ? null : currentCpu);
+
+            Double currentMemory = rs.getDouble("current_memory_usage_percent");
+            dto.setCurrentMemoryUsagePercent(rs.wasNull() ? null : currentMemory);
+
+            Double currentDiskIo = rs.getDouble("current_disk_io_usage_percent");
+            dto.setCurrentDiskIoUsagePercent(rs.wasNull() ? null : currentDiskIo);
 
             return dto;
         }

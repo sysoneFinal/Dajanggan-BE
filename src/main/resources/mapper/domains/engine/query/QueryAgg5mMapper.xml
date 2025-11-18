@@ -49,23 +49,6 @@
         created_at = NOW()
     </insert>
 
-    <!-- 요약카드 (단일 DB용 - Details 페이지) -->
-    <select id="findLatestSummary" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.QuerySummaryDto">
-        SELECT
-            instance_id AS instanceId,
-            database_id AS databaseId,
-            total_queries AS totalQueries,
-            avg_execution_time_ms AS avgExecutionTimeMs,
-            slow_query_count AS slowQueryCount,
-            created_at AS createdAt
-        FROM query_metrics_agg_5m
-        WHERE instance_id = #{instanceId}
-          AND database_id = #{databaseId}
-          AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'
-        ORDER BY collected_at DESC
-            LIMIT 1
-    </select>
-
     <!-- 상위 슬로우 쿼리 Top 5 -->
     <select id="findTopSlowQueries" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.TopSlowQueryDto">
         SELECT
