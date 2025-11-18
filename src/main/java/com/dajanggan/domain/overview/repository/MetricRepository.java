@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Mapper
 public interface MetricRepository {
@@ -22,4 +23,8 @@ public interface MetricRepository {
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime
     );
+
+    // 특정 지표 조회
+    Optional<MetricDefinition> findByCategoryAndColumnName(String category, String columnName);
+
 }

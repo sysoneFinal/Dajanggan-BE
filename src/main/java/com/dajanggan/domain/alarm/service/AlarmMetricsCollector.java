@@ -86,6 +86,8 @@ public class AlarmMetricsCollector {
                 checkMetricSafely(conn, instance, db, "long_running_queries");
                 checkMetricSafely(conn, instance, db, "cache_hit_ratio");
                 checkMetricSafely(conn, instance, db, "sequential_scans");
+                checkMetricSafely(conn, instance, db, "long_idle_sessions");
+                checkMetricSafely(conn, instance, db, "blocking_sessions");
                 // ... 더 추가 가능
 
                 checkedCount++;
