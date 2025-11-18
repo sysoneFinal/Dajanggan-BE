@@ -5,28 +5,27 @@
 <mapper namespace="com.dajanggan.domain.query.repository.QueryAgg1mRepository">
 
     <!-- 1분 집계 데이터 일괄 저장 -->
-    <insert id="insertAgg1m">
+    <insert id="insertAgg1m" parameterType="java.util.List">
         INSERT INTO query_metrics_agg_1m (
         instance_id, database_id, collected_at,
         total_queries, select_queries, insert_queries, update_queries, delete_queries, other_queries,
         avg_execution_time_ms, max_execution_time_ms, avg_planning_time_ms,
-        total_io_blocks, avg_io_blocks,
-        slow_query_count,
+        total_io_blocks, avg_io_blocks, slow_query_count,
+        current_cpu_usage_percent, current_memory_usage_percent, current_disk_io_usage_percent,
         created_at
         )
         VALUES
-        <foreach collection="metrics" item="m" separator=",">
+        <foreach collection="metrics" item="item" separator=",">
             (
-            #{m.instanceId}, #{m.databaseId}, #{m.collectedAt},
-            #{m.totalQueries}, #{m.selectQueries}, #{m.insertQueries}, #{m.updateQueries},
-            #{m.deleteQueries}, #{m.otherQueries},
-            #{m.avgExecutionTimeMs}, #{m.maxExecutionTimeMs}, #{m.avgPlanningTimeMs},
-            #{m.totalIoBlocks}, #{m.avgIoBlocks},
-            #{m.slowQueryCount},
+            #{item.instanceId}, #{item.databaseId}, #{item.collectedAt},
+            #{item.totalQueries}, #{item.selectQueries}, #{item.insertQueries},
+            #{item.updateQueries}, #{item.deleteQueries}, #{item.otherQueries},
+            #{item.avgExecutionTimeMs}, #{item.maxExecutionTimeMs}, #{item.avgPlanningTimeMs},
+            #{item.totalIoBlocks}, #{item.avgIoBlocks}, #{item.slowQueryCount},
+            #{item.currentCpuUsagePercent}, #{item.currentMemoryUsagePercent}, #{item.currentDiskIoUsagePercent},
             NOW()
             )
         </foreach>
-        <!-- PK 중복 시 UPDATE (UPSERT) -->
         ON CONFLICT (instance_id, database_id, collected_at)
         DO UPDATE SET
         total_queries = EXCLUDED.total_queries,
@@ -41,6 +40,9 @@
         total_io_blocks = EXCLUDED.total_io_blocks,
         avg_io_blocks = EXCLUDED.avg_io_blocks,
         slow_query_count = EXCLUDED.slow_query_count,
+        current_cpu_usage_percent = EXCLUDED.current_cpu_usage_percent,
+        current_memory_usage_percent = EXCLUDED.current_memory_usage_percent,
+        current_disk_io_usage_percent = EXCLUDED.current_disk_io_usage_percent,
         created_at = NOW()
     </insert>
 
@@ -95,4 +97,119 @@
         ORDER BY collected_at
     </select>
 
+    <!-- 🆕 요약 데이터 조회 (최근 5분 집계) - QueryOverview 요약 카드용 -->
+    <select id="findRecentSummary" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QuerySummaryDto">
+        SELECT
+            instance_id AS instanceId,
+            database_id AS databaseId,
+
+            -- 기존 필드 (agg5m 호환)
+            CAST(COALESCE(SUM(total_queries), 0) AS INTEGER) AS totalQueries,
+            CAST(AVG(avg_execution_time_ms) AS NUMERIC(10,2)) AS avgExecutionTimeMs,
+            CAST(COALESCE(SUM(slow_query_count), 0) AS INTEGER) AS slowQueryCount,
+
+            -- 새로운 필드 (agg1m 추가)
+            CAST(COALESCE(SUM(total_queries), 0) / 300.0 AS INTEGER) AS currentTps,
+            CAST(COALESCE(SUM(total_queries), 0) / 300.0 AS INTEGER) AS currentQps,
+            CAST(COALESCE(SUM(total_queries), 0) AS INTEGER) AS activeSessions,
+
+            -- 쿼리 타입별 합계
+            CAST(COALESCE(SUM(select_queries), 0) AS INTEGER) AS selectCount,
+            CAST(COALESCE(SUM(insert_queries), 0) AS INTEGER) AS insertCount,
+            CAST(COALESCE(SUM(update_queries), 0) AS INTEGER) AS updateCount,
+            CAST(COALESCE(SUM(delete_queries), 0) AS INTEGER) AS deleteCount,
+
+            -- 🆕 리소스 사용률 (Raw 테이블에서 직접 가져오기 - 최근 1분 평균)
+        <!-- agg_1m에서 바로 조회 -->
+        AVG(current_cpu_usage_percent) AS currentCpuUsagePercent,
+        AVG(current_memory_usage_percent) AS currentMemoryUsagePercent,
+        AVG(current_disk_io_usage_percent) AS currentDiskIoUsagePercent,
+        -- 시간 정보
+            MAX(created_at) AS createdAt,
+            '최근 5분 기준' AS timeRange
+
+        FROM query_metrics_agg_1m
+        WHERE instance_id = #{instanceId}
+          AND database_id = #{databaseId}
+          AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'
+        GROUP BY instance_id, database_id
+    </select>
+
+    <!-- 🆕 트렌드 데이터 조회 (최근 N시간) - QueryOverview TPS/QPS 차트용 -->
+    <select id="findTrendData" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QueryAgg1mDto">
+        SELECT
+        instance_id AS instanceId,
+        database_id AS databaseId,
+        collected_at AS collectedAt,
+        total_queries AS totalQueries,
+        select_queries AS selectQueries,
+        insert_queries AS insertQueries,
+        update_queries AS updateQueries,
+        delete_queries AS deleteQueries,
+        other_queries AS otherQueries,
+        avg_execution_time_ms AS avgExecutionTimeMs,
+        max_execution_time_ms AS maxExecutionTimeMs,
+        avg_planning_time_ms AS avgPlanningTimeMs,
+        total_io_blocks AS totalIoBlocks,
+        avg_io_blocks AS avgIoBlocks,
+        slow_query_count AS slowQueryCount,
+        created_at AS createdAt
+        FROM query_metrics_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND database_id = #{databaseId}
+        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '${hours} hours'  <!-- #{hours} → ${hours} -->
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- 🆕 Top Query 조회 (리소스별) -->
+    <select id="findTopQueries" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QueryAgg1mDto">
+        SELECT
+        r.query_metric_id AS queryMetricId,
+        r.instance_id AS instanceId,
+        r.database_id AS databaseId,
+        r.collected_at AS collectedAt,
+
+        r.query_text AS queryText,
+        r.short_query AS shortQuery,
+        r.query_type AS queryType,
+        r.execution_count AS executionCount,
+
+        r.execution_time_ms AS avgExecutionTimeMs,
+        r.planning_time_ms AS avgPlanningTimeMs,
+        r.io_blocks AS avgIoBlocks,
+        r.cpu_usage_percent AS avgCpuUsagePercent,
+        r.memory_usage_mb AS avgMemoryUsageMb,
+
+        r.created_at AS createdAt
+
+        FROM query_metrics_raw r
+        WHERE r.instance_id = #{instanceId}
+        AND r.database_id = #{databaseId}
+        AND r.collected_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour'
+
+        <choose>
+            <when test="orderBy == 'cpu'">
+                AND r.cpu_usage_percent IS NOT NULL
+                ORDER BY r.cpu_usage_percent DESC
+            </when>
+            <when test="orderBy == 'memory'">
+                AND r.memory_usage_mb IS NOT NULL
+                ORDER BY r.memory_usage_mb DESC
+            </when>
+            <when test="orderBy == 'io'">
+                AND r.io_blocks IS NOT NULL
+                ORDER BY r.io_blocks DESC
+            </when>
+            <when test="orderBy == 'execution_time'">
+                AND r.execution_time_ms IS NOT NULL
+                ORDER BY r.execution_time_ms DESC
+            </when>
+            <otherwise>
+                AND r.cpu_usage_percent IS NOT NULL
+                ORDER BY r.cpu_usage_percent DESC
+            </otherwise>
+        </choose>
+
+        LIMIT #{limit}
+    </select>
 </mapper>

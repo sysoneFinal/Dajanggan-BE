@@ -17,83 +17,95 @@ import java.time.OffsetDateTime;
 @Builder
 public class VacuumRawMetrics {
 
-    // 기본 정보
     private Long vacuumRawMetricsId;
-    private Long databaseId;
-    private OffsetDateTime collectedAt;
-    private OffsetDateTime createdAt;
-    private String tableName;
 
-    // Vacuum 세션 정보
-    private Long backendXid;
-    private Boolean autovacuum;
-    private String sessionTrigger;
+    // 기본 정보
+    private Long databaseId;
+    private Long instanceId;
+    private OffsetDateTime collectedAt;
+    private String tableName;
+    private String schemaName;
+
+    // Vacuum 진행 정보 (pg_stat_progress_vacuum)
+    private Long backendPid;
     private String sessionPhase;
     private Double sessionProgress;
-    private OffsetDateTime sessionStartedAt;
-    private Integer elapsedSeconds;
-
-    // 대기 이벤트
-    private String waitEventType;
-    private String waitEvent;
-
-    // Progress 단계별 정보
-    private Integer progressInitializing;
-    private Long progressScanningHeap;
-    private Long progressVacuumingHeap;
-    private Long progressVacuumingCleanup;
-    private Long progressTruncatingHeap;
-
-    // Heap 블록 통계
+    private Boolean autovacuum;
     private Long heapBlksTotal;
     private Long heapBlksScanned;
     private Long heapBlksVacuumed;
-
-    // Index 관련
     private Long indexVacuumCount;
+
+    // ✅ 추가: Wait Event 정보
+    private String waitEventType;
+    private String waitEvent;
+
+    // ✅ 추가: Progress 상세 정보
+    private Boolean progressInitializing;
+    private Boolean progressScanningHeap;
+    private Boolean progressVacuumingHeap;
+    private Boolean progressVacuumingCleanup;
+    private Boolean progressTruncatingHeap;
+
+    // ✅ 추가: 페이지 정보
     private Long pagesRemoved;
     private Long pagesSkippedDueToPin;
     private Long pagesSkippedFrozen;
 
-    // Tuple 통계
-    private Long tuplesDeleted;
-    private Long tuplesDeadButNotRemovable;
+    // Tuple 정보 (pg_stat_all_tables)
     private Long nDeadTup;
     private Long nLiveTup;
+    private Long nModSinceAnalyze;
+    private Long tuplesDeleted;
+    private Long tuplesDeadButNotRemovable;  // ✅ 추가
+
+    // Vacuum 세션 정보
+    private OffsetDateTime sessionStartedAt;
+    private Double elapsedSeconds;
+    private String sessionTrigger;  // 'manual' or 'autovacuum'
+
+    // 테이블 크기
+    private Long relsizeTotalBytes;
+    private Long relsizeHeapBytes;      // ✅ 추가
+    private Long relsizeToastBytes;     // ✅ 추가
+    private Long relsizeIndexesBytes;   // ✅ 추가
+
+    // ✅ 추가: Vacuum 실행 카운트
+    private Integer runningVacuumCount;
+
+    // Bloat 정보
+    private Long bloatBytes;
+    private Double bloatRatio;
+    private String indexBloatInfo;  // JSON string
+
+    // Xmin Horizon & Blocker 정보
+    private Long blockerXminHorizon;
+    private Integer blockedSeconds;
+    private Integer blockerPid;
+    private String blockerLockMode;
+    private String blockerTransactionState;  // ✅ 추가
+    private String blockerQuery;             // ✅ 추가
+    private Boolean isBlocked;
+    private String queryState;
+    private Long transactionAge;             // ✅ 추가
+
+    // Autovacuum 설정
+    private Integer autovacuumCostDelayMs;
+    private Integer autovacuumCostLimit;
+    private Integer maxWorkers;
+    private Integer activeWorkers;
+
+    // Wraparound 정보
+    private Long ageCurrentXid;
+    private Long ageMaxFreeze;
+    private Double wraparoundProgress;
+    private String wraparoundRiskLevel;      // ✅ 추가
 
     // Vacuum 이력
     private OffsetDateTime lastVacuum;
     private OffsetDateTime lastAutovacuum;
-    private Long nModSinceAnalyze;
 
-    // 테이블 크기 정보
-    private Long relsizeTotalBytes;
-    private Long relsizeHeapBytes;
-    private Long relsizeToastBytes;
-    private Long relsizeIndexesBytes;
+    // 생성 시간
+    private OffsetDateTime createdAt;
 
-    // Vacuum 실행 횟수
-    private Integer runningVacuumCount;
-    private Integer activeWorkers;
-    private Integer maxWorkers;
-
-    // Cost 관련
-    private Integer autovacuumCostDelayMs;
-    private Integer autovacuumCostLimit;
-
-    // Blocker 정보
-    private Boolean isBlocked;
-    private Integer blockerPid;
-    private String blockerLockMode;
-    private Integer blockedSeconds;
-    private Long blockerXminHorizon;
-
-    // 트랜잭션 상태
-    private String blockerTransactionState;
-    private Long ageCurrentXid;
-    private Long ageMaxFreeze;
-
-    // Wraparound 관련
-    private Double wraparoundProgress;
-    private String wraparoundRiskLevel;
 }

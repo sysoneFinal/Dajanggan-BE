@@ -8,6 +8,9 @@ import java.util.List;
  * 쿼리 메트릭스 원시 데이터 서비스 인터페이스
  * 비즈니스 로직 정의
  *
+ * ✅ 수정사항:
+ * - getQueryMetricsByDatabaseIdAndDays 메서드 추가
+ *
  * @author 이해든
  */
 public interface QueryMetricsRawService {
@@ -26,14 +29,22 @@ public interface QueryMetricsRawService {
     QueryMetricsRawDto getQueryMetricById(Long queryMetricId);
 
     /**
-     * 데이터베이스 ID로 쿼리 메트릭스 목록 조회
+     * 데이터베이스 ID로 쿼리 메트릭스 목록 조회 (전체)
      * @param databaseId 데이터베이스 ID
      * @return 해당 데이터베이스의 쿼리 메트릭스 DTO 목록
      */
     List<QueryMetricsRawDto> getQueryMetricsByDatabaseId(Long databaseId);
 
     /**
-     * 🆕 최근 N분간의 쿼리 메트릭스 조회
+     * ✅ 신규: 데이터베이스 ID와 기간으로 쿼리 메트릭스 조회
+     * @param databaseId 데이터베이스 ID
+     * @param days 조회 기간 (일 단위)
+     * @return 해당 기간의 쿼리 메트릭스 DTO 목록
+     */
+    List<QueryMetricsRawDto> getQueryMetricsByDatabaseIdAndDays(Long databaseId, Integer days);
+
+    /**
+     * 최근 N분간의 쿼리 메트릭스 조회
      * @param databaseId 데이터베이스 ID
      * @param minutes 조회할 시간(분)
      * @return 최근 N분간의 쿼리 메트릭스 DTO 목록

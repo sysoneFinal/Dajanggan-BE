@@ -1,56 +1,72 @@
 package com.dajanggan.domain.query.service;
 
+import com.dajanggan.domain.instance.domain.Database;
+import com.dajanggan.domain.instance.domain.Instance;
+import com.dajanggan.domain.instance.repository.DatabaseRepository;
+import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.query.dto.ExplainAnalyzeResult;
+import com.dajanggan.infrastructure.datasource.DataSourceFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * EXPLAIN ANALYZE 실행 Service
  * - PostgreSQL EXPLAIN ANALYZE 실행
- * - 안전 모드 처리 (DML 쿼리)
- * - PreparedStatement 파라미터 치환 처리
+ * - 안전 모드 처리 (DML 쿼리, 파라미터 포함 쿼리)
  *
- * @author 백엔드 담당자
+ * ✅ 올바른 방식:
+ * 1. 데이터 변경 쿼리 → EXPLAIN만 (안전 모드)
+ * 2. 파라미터 포함 → EXPLAIN만 (안전 모드)
+ * 3. 일반 SELECT → EXPLAIN ANALYZE (실제 실행)
+ *
+ * @author 이해든
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ExplainAnalyzeService {
 
-    private final DataSource dataSource;
+    private final DatabaseRepository databaseRepository;
+    private final InstanceRepository instanceRepository;
+    private final DataSourceFactory dataSourceFactory;
 
     /**
      * EXPLAIN ANALYZE 실행
      *
-     * @param databaseId 데이터베이스 ID (현재 미사용, 향후 다중 DB 지원 시 활용)
+     * @param databaseId 데이터베이스 ID
      * @param query 분석할 쿼리
      * @return EXPLAIN ANALYZE 결과
      */
     public ExplainAnalyzeResult execute(Long databaseId, String query) {
         log.info("🔍 쿼리 분석 시작");
+        log.info("  - Database ID: {}", databaseId);
 
-        // 🆕 1. PreparedStatement 파라미터 치환
-        String processedQuery = replaceParameters(query);
-
-        if (!query.equals(processedQuery)) {
-            log.info("  🔄 파라미터 치환 완료");
-            log.debug("    - 원본: {}", query.substring(0, Math.min(100, query.length())));
-            log.debug("    - 치환: {}", processedQuery.substring(0, Math.min(100, processedQuery.length())));
+        // 1. Database 정보 조회
+        Database database = databaseRepository.findById(databaseId);
+        if (database == null) {
+            throw new IllegalArgumentException("Database not found: " + databaseId);
         }
 
-        // 2. 쿼리 타입 체크
-        String trimmedQuery = processedQuery.trim();
+        log.info("  - Database Name: {}", database.getDatabaseName());
+
+        // 2. Instance 정보 조회
+        Instance instance = instanceRepository.findById(database.getInstanceId())
+                .orElseThrow(() -> new IllegalArgumentException("Instance not found: " + database.getInstanceId()));
+
+        log.info("  - Instance: {}:{}", instance.getHost(), instance.getPort());
+
+        // 3. 쿼리 전처리
+        String trimmedQuery = query.trim();
         String upperQuery = trimmedQuery.toUpperCase();
 
-        boolean isModifying = upperQuery.startsWith("UPDATE") ||
+        // 4. 쿼리 타입 체크
+        boolean isModifyingQuery = upperQuery.startsWith("UPDATE") ||
                 upperQuery.startsWith("INSERT") ||
                 upperQuery.startsWith("DELETE") ||
                 upperQuery.startsWith("CREATE") ||
@@ -58,46 +74,109 @@ public class ExplainAnalyzeService {
                 upperQuery.startsWith("ALTER") ||
                 upperQuery.startsWith("TRUNCATE");
 
-        String executionMode = isModifying ? "안전 모드" : "실제 실행";
+        // 5. 파라미터 플레이스홀더 체크
+        boolean hasParameters = containsParameterPlaceholders(trimmedQuery);
 
-        log.info("  - 실행 모드: {}", executionMode);
         log.info("  - 쿼리 타입: {}", getQueryType(upperQuery));
+        log.info("  - 데이터 변경 여부: {}", isModifyingQuery);
+        log.info("  - 파라미터 포함 여부: {}", hasParameters);
 
-        // 3. EXPLAIN 쿼리 생성
-        String explainQuery;
-        if (isModifying) {
-            // 안전 모드: EXPLAIN만 실행 (실제 데이터 변경 없음)
-            explainQuery = "EXPLAIN (FORMAT TEXT) " + trimmedQuery;
+        // 6. JdbcTemplate 생성
+        JdbcTemplate jdbcTemplate = dataSourceFactory.createJdbcTemplate(
+                instance,
+                database.getDatabaseName()
+        );
+
+        log.info("  🔗 데이터베이스 연결 성공");
+
+        // 7. 실행 전략 결정
+        if (isModifyingQuery) {
+            // 데이터 변경 쿼리 → EXPLAIN만 (안전 모드)
             log.info("  ⚠️ 데이터 변경 쿼리 감지 - 안전 모드로 실행");
-        } else {
-            // 실제 실행: EXPLAIN ANALYZE (쿼리 실제 실행)
-            explainQuery = "EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) " + trimmedQuery;
-            log.info("  ✅ SELECT 쿼리 - EXPLAIN ANALYZE 실행");
+            return executeExplainOnly(jdbcTemplate, trimmedQuery, "안전 모드");
         }
 
-        // 4. EXPLAIN 실행
-        StringBuilder resultBuilder = new StringBuilder();
-        Double executionTimeMs = null;
-        Double planningTimeMs = null;
+        if (hasParameters) {
+            // 파라미터 포함 → EXPLAIN만 (안전 모드)
+            log.info("  ⚠️ 파라미터 플레이스홀더 감지 - 안전 모드로 실행");
+            return executeExplainOnly(jdbcTemplate, trimmedQuery, "안전 모드 (파라미터 포함)");
+        }
 
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
+        // 일반 SELECT 쿼리 → EXPLAIN ANALYZE (실제 실행)
+        log.info("  ✅ 일반 SELECT 쿼리 - EXPLAIN ANALYZE 실행");
+        return executeExplainAnalyze(jdbcTemplate, trimmedQuery);
+    }
 
-            log.info("  🔗 데이터베이스 연결 성공");
+    /**
+     * ✅ 파라미터 플레이스홀더 포함 여부 확인
+     * $1, $2, $3 등의 패턴을 감지
+     */
+    private boolean containsParameterPlaceholders(String query) {
+        // $숫자 패턴 검색
+        Pattern pattern = Pattern.compile("\\$\\d+");
+        Matcher matcher = pattern.matcher(query);
+        return matcher.find();  // $1, $2 등이 있으면 true
+    }
 
-            try (ResultSet rs = stmt.executeQuery(explainQuery)) {
-                while (rs.next()) {
-                    String line = rs.getString(1);
-                    resultBuilder.append(line).append("\n");
+    /**
+     * ✅ EXPLAIN만 실행 (안전 모드)
+     * - 실제 쿼리 실행 없음
+     * - 예상 실행 계획만 표시
+     */
+    private ExplainAnalyzeResult executeExplainOnly(JdbcTemplate jdbcTemplate, String query, String mode) {
+        try {
+            String explainQuery = "EXPLAIN (FORMAT TEXT) " + query;
 
-                    // Execution Time 파싱
-                    if (line.contains("Execution Time:")) {
-                        executionTimeMs = parseTime(line);
-                    }
-                    // Planning Time 파싱
-                    if (line.contains("Planning Time:")) {
-                        planningTimeMs = parseTime(line);
-                    }
+            List<String> resultLines = jdbcTemplate.queryForList(explainQuery, String.class);
+
+            StringBuilder resultBuilder = new StringBuilder();
+            for (String line : resultLines) {
+                resultBuilder.append(line).append("\n");
+            }
+
+            String explainPlan = resultBuilder.toString();
+
+            log.info("  ✅ EXPLAIN ({}) 실행 완료", mode);
+
+            // 안전 모드에서는 실행 시간 없음
+            return ExplainAnalyzeResult.builder()
+                    .executionMode(mode)
+                    .explainPlan(explainPlan)
+                    .executionTimeMs(null)  // 실제 실행하지 않으므로 null
+                    .planningTimeMs(null)   // 실제 실행하지 않으므로 null
+                    .build();
+
+        } catch (Exception e) {
+            log.error("  ❌ EXPLAIN 실행 실패: {}", e.getMessage());
+            throw new RuntimeException("쿼리 분석 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * ✅ EXPLAIN ANALYZE 실행 (실제 실행)
+     * - 쿼리 실제 실행
+     * - 실행 시간 측정
+     */
+    private ExplainAnalyzeResult executeExplainAnalyze(JdbcTemplate jdbcTemplate, String query) {
+        try {
+            String explainQuery = "EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) " + query;
+
+            List<String> resultLines = jdbcTemplate.queryForList(explainQuery, String.class);
+
+            StringBuilder resultBuilder = new StringBuilder();
+            Double executionTimeMs = null;
+            Double planningTimeMs = null;
+
+            for (String line : resultLines) {
+                resultBuilder.append(line).append("\n");
+
+                // Execution Time 파싱
+                if (line.contains("Execution Time:")) {
+                    executionTimeMs = parseTime(line);
+                }
+                // Planning Time 파싱
+                if (line.contains("Planning Time:")) {
+                    planningTimeMs = parseTime(line);
                 }
             }
 
@@ -112,7 +191,7 @@ public class ExplainAnalyzeService {
             }
 
             return ExplainAnalyzeResult.builder()
-                    .executionMode(executionMode)
+                    .executionMode("실제 실행")
                     .explainPlan(explainPlan)
                     .executionTimeMs(executionTimeMs)
                     .planningTimeMs(planningTimeMs)
@@ -122,60 +201,6 @@ public class ExplainAnalyzeService {
             log.error("  ❌ EXPLAIN ANALYZE 실행 실패: {}", e.getMessage());
             throw new RuntimeException("쿼리 분석 실패: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * 🆕 PreparedStatement 파라미터 치환
-     * $1, $2, $3 등을 실제 값으로 치환
-     *
-     * 치환 규칙:
-     * - $1 → 'max_connections' (pg_settings의 name 파라미터)
-     * - $2 → 1 (LIMIT 값)
-     * - $3 → true (ON 조건)
-     * - 기타 숫자 파라미터 → NULL 또는 적절한 기본값
-     */
-    private String replaceParameters(String query) {
-        if (query == null || !query.contains("$")) {
-            return query;
-        }
-
-        String result = query;
-
-        // 공통 파라미터 치환 패턴
-        // $1 → 'max_connections' (WHERE name = $1)
-        result = result.replaceAll("= \\$1(?!\\d)", "= 'max_connections'");
-        result = result.replaceAll("WHERE name = \\$1", "WHERE name = 'max_connections'");
-
-        // $2 → 1 (LIMIT $2)
-        result = result.replaceAll("LIMIT \\$2(?!\\d)", "LIMIT 1");
-
-        // $3 → true (ON $3)
-        result = result.replaceAll("ON \\$3(?!\\d)", "ON true");
-
-        // 남은 $숫자 파라미터를 NULL로 치환 (안전한 폴백)
-        // 단, 이미 치환된 것은 건드리지 않음
-        Pattern pattern = Pattern.compile("\\$(\\d+)");
-        Matcher matcher = pattern.matcher(result);
-
-        StringBuffer sb = new StringBuffer();
-        while (matcher.find()) {
-            String paramNum = matcher.group(1);
-
-            // 컨텍스트에 따라 적절한 값 할당
-            String replacement;
-            if (result.substring(Math.max(0, matcher.start() - 20), matcher.start()).contains("LIMIT")) {
-                replacement = "10"; // LIMIT 절에서는 10
-            } else if (result.substring(Math.max(0, matcher.start() - 20), matcher.start()).contains("WHERE")) {
-                replacement = "NULL"; // WHERE 절에서는 NULL
-            } else {
-                replacement = "NULL"; // 기본값 NULL
-            }
-
-            matcher.appendReplacement(sb, replacement);
-        }
-        matcher.appendTail(sb);
-
-        return sb.toString();
     }
 
     /**
@@ -206,6 +231,7 @@ public class ExplainAnalyzeService {
         if (upperQuery.startsWith("CREATE")) return "CREATE";
         if (upperQuery.startsWith("DROP")) return "DROP";
         if (upperQuery.startsWith("ALTER")) return "ALTER";
+        if (upperQuery.startsWith("TRUNCATE")) return "TRUNCATE";
         return "OTHER";
     }
 }

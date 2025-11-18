@@ -13,9 +13,7 @@
         MAX(CASE WHEN v.session_trigger = 'autovacuum' THEN v.collected_at END) AS lastAutovacuum,
         AVG(v.n_dead_tup) AS deadTuples,
         AVG(v.n_mod_since_analyze) AS modSinceAnalyze,
-        -- vacuum_raw_metrics에는 bloat_bytes가 없으므로 계산 또는 trend_metrics 조인 필요
-        NULL AS bloatBytes,
-        NULL AS bloatRatio,
+        AVG(v.bloat_ratio) AS bloatRatio,
         COUNT(CASE WHEN v.session_trigger = 'manual'
         AND v.collected_at >= NOW() - INTERVAL '24 hours' THEN 1 END) AS vacuumCount24h,
         COUNT(CASE WHEN v.session_trigger = 'autovacuum'

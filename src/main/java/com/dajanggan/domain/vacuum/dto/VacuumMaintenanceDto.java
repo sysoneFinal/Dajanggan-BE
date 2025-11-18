@@ -9,18 +9,6 @@ public class VacuumMaintenanceDto {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class VacuumTrendRaw {
-        private String hourLabel;
-        private Double deadTupleIncreaseRate;
-        private Double avgProgress;
-        private Double avgCostDelayMs;
-        private Integer activeWorkers;
-        private Double avgDelaySeconds;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class VacuumSessionRaw {
         private Long databaseId;
         private String tableName;
@@ -41,10 +29,10 @@ public class VacuumMaintenanceDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Kpi {
-        private Double avgDelay;           // 평균 지연시간
-        private Double avgDuration;        // 평균 Duration
-        private Double deadTupleTotal;     // 총 Dead Tuple (M)
-        private Integer autovacuumWorker;  // Worker 활동률 (%)
+        private Integer blockedSessions;      // 차단된 세션 수
+        private Double avgRunningTime;        // 평균 실행 시간 (초)
+        private Long totalDeadTuples;         // Dead Tuple 총량
+        private String activeWorkers;         // "활성/최대" 형태 (예: "0/3")
     }
 
     @Data
