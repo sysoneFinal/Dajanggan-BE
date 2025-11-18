@@ -1,72 +1,109 @@
-name: Deploy to GCP VM
+name: Deploy to GCP VM with Docker Compose
+
 on:
   push:
-    branches: [ develop ]
+    branches: [ main, develop ]
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
       - name: Build with Gradle
-        run: ./gradlew build -x test
+        run: ./gradlew clean build -x test
 
-      - name: Build Docker image
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/dajanggan-backend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/dajanggan-backend:${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/dajanggan-backend:latest
+          cache-to: type=inline
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
         run: |
-          docker build -t spring-boot-app:latest .
+          cat > .env << EOF
+          GOOGLE_DB_URL=${{ secrets.GOOGLE_DB_URL }}
+          GOOGLE_DB_USERNAME=${{ secrets.GOOGLE_DB_USERNAME }}
+          GOOGLE_DB_PASSWORD=${{ secrets.GOOGLE_DB_PASSWORD }}
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+          APP_CRYPTO_KEYS_V1=${{ secrets.APP_CRYPTO_KEYS_V1 }}
+          APP_CRYPTO_PBKDF2_ITER=200000
+          APP_CRYPTO_SALT_LEN=16
+          APP_CRYPTO_IV_LEN=12
+          EOF
 
-      - name: Save Docker image
-        run: |
-          docker save spring-boot-app:latest | gzip > spring-boot-app.tar.gz
-
-      - name: Copy Docker image to VM
-        uses: appleboy/scp-action@master
+      - name: Copy files to VM
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "spring-boot-app.tar.gz"
-          target: "/home/${{ secrets.VM_USER }}"
+          source: "docker-compose.yml,.env"
+          target: "/home/${{ secrets.VM_USER }}/dajanggan"
 
       - name: Deploy on VM
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Docker 이미지 로드
-            docker load < /home/${{ secrets.VM_USER }}/spring-boot-app.tar.gz
+            cd /home/${{ secrets.VM_USER }}/dajanggan
             
-            # 기존 컨테이너 중지 및 제거
-            docker stop spring-boot-app || true
-            docker rm spring-boot-app || true
+            # Docker Hub 로그인
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
             
-            # 새 컨테이너 실행
-            docker run -d \
-              --name spring-boot-app \
-              --restart unless-stopped \
-              -p 8080:8080 \
-              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
-              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              spring-boot-app:latest
+            # 최신 이미지 Pull
+            docker-compose pull
             
-            # 이미지 파일 삭제
-            rm /home/${{ secrets.VM_USER }}/spring-boot-app.tar.gz
+            # 컨테이너 재시작 (새 이미지로)
+            docker-compose up -d --force-recreate
+            
+            # 사용하지 않는 이미지 정리
+            docker image prune -af
             
             # 로그 확인
-            sleep 5
-            docker logs spring-boot-app --tail 50
+            echo "=== Backend Logs ==="
+            docker-compose logs --tail=50 backend
+            
+            echo "=== Redis Logs ==="
+            docker-compose logs --tail=20 redis
+            
+            # 헬스체크
+            echo "=== Health Check ==="
+            sleep 10
+            curl -f http://localhost:8080/actuator/health || echo "Health check failed!"
