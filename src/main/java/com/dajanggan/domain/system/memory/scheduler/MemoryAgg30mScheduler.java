@@ -83,7 +83,7 @@ public class MemoryAgg30mScheduler {
         
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
-        // memory_agg 테이블에서 30분간 데이터를 relname별로 집계
+        // memory_agg_1m 테이블에서 30분간 데이터를 relname별로 집계
         String sql = """
             SELECT
                 ? as time_bucket,
@@ -110,7 +110,7 @@ public class MemoryAgg30mScheduler {
                 SUM(delta_blk_write_time) as total_blk_write_time,
                 ROUND(AVG(avg_io_wait_time_ms)::numeric, 2) as avg_io_wait_time_ms,
                 COUNT(*) as record_count
-            FROM memory_agg
+            FROM memory_agg_1m
             WHERE instance_id = ?
               AND collected_at >= ?
               AND collected_at < ?

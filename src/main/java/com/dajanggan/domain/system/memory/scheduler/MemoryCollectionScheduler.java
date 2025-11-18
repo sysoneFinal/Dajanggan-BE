@@ -90,12 +90,39 @@ public class MemoryCollectionScheduler {
         JdbcTemplate jdbcTemplate = dataSourceFactory.createJdbcTemplate(instance, "postgres");
 
         // 3. 데이터 수집
-        List<Map<String, Object>> bufferCacheData = collectFromPgBuffercache(jdbcTemplate);
-        List<Map<String, Object>> statioData = collectFromPgStatio(jdbcTemplate);
-        Map<String, Object> databaseData = collectFromPgStatDatabase(jdbcTemplate);
+        List<Map<String, Object>> bufferCacheData;
+        try {
+            bufferCacheData = collectFromPgBuffercache(jdbcTemplate);
+        } catch (Exception e) {
+            log.warn("pg_buffercache 데이터 수집 실패 (확장 미설치 가능성): instanceId={}, error={}", 
+                    instanceId, e.getMessage());
+            bufferCacheData = new ArrayList<>(); // 빈 리스트로 처리
+        }
+        
+        List<Map<String, Object>> statioData;
+        try {
+            statioData = collectFromPgStatio(jdbcTemplate);
+        } catch (Exception e) {
+            log.warn("pg_statio 데이터 수집 실패: instanceId={}, error={}", instanceId, e.getMessage());
+            statioData = new ArrayList<>();
+        }
+        
+        Map<String, Object> databaseData;
+        try {
+            databaseData = collectFromPgStatDatabase(jdbcTemplate);
+        } catch (Exception e) {
+            log.warn("pg_stat_database 데이터 수집 실패: instanceId={}, error={}", instanceId, e.getMessage());
+            databaseData = new HashMap<>();
+        }
 
         // 4. 데이터 병합 (relname 기준)
         Map<String, Map<String, Object>> mergedData = mergeData(bufferCacheData, statioData);
+        
+        if (mergedData.isEmpty()) {
+            log.warn("수집된 데이터가 없습니다: instanceId={}, bufferCache={}, statio={}", 
+                    instanceId, bufferCacheData.size(), statioData.size());
+            return; // 데이터가 없으면 처리 중단
+        }
 
         // 5. 이전 Raw 데이터 조회
         List<MemoryRaw> previousRawList = memoryMapper.selectPreviousRawByRelname(instanceId);
@@ -142,8 +169,24 @@ public class MemoryCollectionScheduler {
     /**
      * pg_buffercache에서 버퍼 캐시 통계 수집
      * 테이블/인덱스별 버퍼 점유 현황 + usagecount
+     * 
+     * 주의: pg_buffercache 확장이 설치되어 있어야 함
+     * 설치 방법: CREATE EXTENSION IF NOT EXISTS pg_buffercache;
      */
     private List<Map<String, Object>> collectFromPgBuffercache(JdbcTemplate jdbcTemplate) {
+        // pg_buffercache 확장 설치 여부 확인
+        try {
+            String checkSql = "SELECT 1 FROM pg_extension WHERE extname = 'pg_buffercache'";
+            List<Map<String, Object>> checkResult = jdbcTemplate.queryForList(checkSql);
+            if (checkResult.isEmpty()) {
+                log.warn("pg_buffercache 확장이 설치되어 있지 않습니다. 빈 데이터를 반환합니다.");
+                return new ArrayList<>();
+            }
+        } catch (Exception e) {
+            log.warn("pg_buffercache 확장 확인 실패: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+        
         String sql = """
             SELECT 
                 c.relname,
@@ -172,7 +215,12 @@ public class MemoryCollectionScheduler {
             FROM pg_buffercache
             """;
 
-        return jdbcTemplate.queryForList(sql);
+        try {
+            return jdbcTemplate.queryForList(sql);
+        } catch (Exception e) {
+            log.error("pg_buffercache 쿼리 실행 실패: {}", e.getMessage(), e);
+            throw e;
+        }
     }
 
     /**
