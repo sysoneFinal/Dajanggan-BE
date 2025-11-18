@@ -18,20 +18,6 @@ public class QueryAgg5mService {
         this.queryAgg5mRepository = queryAgg5mRepository;
     }
 
-    /** 지표: 요약카드 (단일 DB - Details 페이지) */
-    public QuerySummaryDto findLatestSummary(Map<String, Object> params) {
-        QuerySummaryDto result = queryAgg5mRepository.findLatestSummary(params);
-        log.debug("findLatestSummary 결과: {}", result);
-        // 데이터가 없을 경우 기본값 반환
-        if (result == null) {
-            return QuerySummaryDto.builder()
-                    .totalQueries(0)
-                    .avgExecutionTimeMs(0.0)
-                    .slowQueryCount(0)
-                    .build();
-        }
-        return result;
-    }
 
     /** 상위 슬로우 쿼리 Top 5 */
     public TopSlowQueryDto findTopSlowQueries(Map<String, Object> params) {

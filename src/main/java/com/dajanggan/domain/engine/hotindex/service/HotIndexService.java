@@ -1,6 +1,6 @@
 package com.dajanggan.domain.engine.hotindex.service;
 
-import com.dajanggan.domain.engine.hotindex.dto.HotIndexDto;
+import com.dajanggan.domain.engine.hotindex.dto.*;
 import com.dajanggan.domain.engine.hotindex.repository.HotIndexMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class HotIndexService {
 
     private final HotIndexMapper hotIndexMapper;
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     /**
      * HotIndex 대시보드 데이터 조회
@@ -27,7 +27,7 @@ public class HotIndexService {
      * @param databaseId 데이터베이스 ID
      * @return HotIndex 대시보드 데이터
      */
-    public HotIndexDto.DashboardResponse getHotIndexDashboard(Long instanceId, Long databaseId) {
+    public HotIndexDashboardResponse getHotIndexDashboard(Long instanceId, Long databaseId) {
         log.info("HotIndex 대시보드 조회 시작 - instanceId: {}, databaseId: {}", instanceId, databaseId);
 
         // instanceId와 databaseId가 null이면 예외 발생
@@ -40,17 +40,20 @@ public class HotIndexService {
             throw new IllegalArgumentException("databaseId는 필수 파라미터입니다");
         }
 
-        LocalDateTime endTime = LocalDateTime.now();
-        LocalDateTime startTime = endTime.minusHours(24); // 최근 24시간
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
 
-        return HotIndexDto.DashboardResponse.builder()
+        return HotIndexDashboardResponse.builder()
                 .usageDistribution(getUsageDistribution(instanceId, databaseId))
                 .topUsage(getTopUsage(instanceId, databaseId))
                 .inefficientIndexes(getInefficientIndexes(instanceId, databaseId))
-                .cacheHitRatio(getCacheHitRatio(instanceId, databaseId, startTime, endTime))
+                // 캐시 히트율 (최근 15분)
+                .cacheHitRatio(getCacheHitRatio(instanceId, databaseId, endTime.minusMinutes(15), endTime))
                 .efficiency(getEfficiency(instanceId, databaseId))
-                .accessTrend(getAccessTrend(instanceId, databaseId, startTime, endTime))
-                .scanSpeed(getScanSpeed(instanceId, databaseId, startTime, endTime))
+                // 접근 추이 (최근 10분)
+                .accessTrend(getAccessTrend(instanceId, databaseId, endTime.minusMinutes(10), endTime))
+                // 스캔 속도 (최근 10분)
+                .scanSpeed(getScanSpeed(instanceId, databaseId, endTime.minusMinutes(10), endTime))
                 .recentStats(getRecentStats(instanceId, databaseId))
                 .build();
     }
@@ -58,13 +61,13 @@ public class HotIndexService {
     /**
      * 인덱스 사용 분포 조회
      */
-    private HotIndexDto.UsageDistribution getUsageDistribution(Long instanceId, Long databaseId) {
+    private HotIndexDashboardResponse.UsageDistribution getUsageDistribution(Long instanceId, Long databaseId) {
         Map<String, Object> data = hotIndexMapper.selectUsageDistribution(instanceId, databaseId);
 
         // 데이터가 없을 경우 기본값 반환
         if (data == null || data.isEmpty()) {
             log.warn("UsageDistribution 데이터 없음 - instanceId: {}, databaseId: {}", instanceId, databaseId);
-            return HotIndexDto.UsageDistribution.builder()
+            return HotIndexDashboardResponse.UsageDistribution.builder()
                     .categories(List.of("사용 중", "미사용", "비효율"))
                     .data(List.of(0L, 0L, 0L))
                     .build();
@@ -77,7 +80,7 @@ public class HotIndexService {
                 getLongValue(data.get("inefficient_count"))
         );
 
-        return HotIndexDto.UsageDistribution.builder()
+        return HotIndexDashboardResponse.UsageDistribution.builder()
                 .categories(categories)
                 .data(values)
                 .build();
@@ -86,7 +89,7 @@ public class HotIndexService {
     /**
      * Top 사용 인덱스 조회
      */
-    private HotIndexDto.TopUsage getTopUsage(Long instanceId, Long databaseId) {
+    private HotIndexDashboardResponse.TopUsage getTopUsage(Long instanceId, Long databaseId) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectTopUsageIndexes(instanceId, databaseId);
 
         List<String> categories = new ArrayList<>();
@@ -102,7 +105,7 @@ public class HotIndexService {
             total += scanCount;
         }
 
-        return HotIndexDto.TopUsage.builder()
+        return HotIndexDashboardResponse.TopUsage.builder()
                 .categories(categories)
                 .data(data)
                 .total(total)
@@ -112,7 +115,7 @@ public class HotIndexService {
     /**
      * 비효율 인덱스 조회
      */
-    private HotIndexDto.InefficientIndexes getInefficientIndexes(Long instanceId, Long databaseId) {
+    private HotIndexDashboardResponse.InefficientIndexes getInefficientIndexes(Long instanceId, Long databaseId) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectInefficientIndexes(instanceId, databaseId);
 
         List<String> categories = new ArrayList<>();
@@ -126,7 +129,7 @@ public class HotIndexService {
             data.add(inefficiency);
         }
 
-        return HotIndexDto.InefficientIndexes.builder()
+        return HotIndexDashboardResponse.InefficientIndexes.builder()
                 .categories(categories)
                 .data(data)
                 .total((long) dataList.size())
@@ -136,7 +139,7 @@ public class HotIndexService {
     /**
      * 캐시 히트율 시계열 데이터 조회
      */
-    private HotIndexDto.CacheHitRatio getCacheHitRatio(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotIndexDashboardResponse.CacheHitRatio getCacheHitRatio(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectCacheHitRatioTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -151,7 +154,7 @@ public class HotIndexService {
         Double max = ratios.isEmpty() ? 0.0 : ratios.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         Double min = ratios.isEmpty() ? 0.0 : ratios.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
 
-        return HotIndexDto.CacheHitRatio.builder()
+        return HotIndexDashboardResponse.CacheHitRatio.builder()
                 .categories(categories)
                 .data(ratios)
                 .average(average)
@@ -163,11 +166,11 @@ public class HotIndexService {
     /**
      * 인덱스 효율성 데이터 조회
      */
-    private HotIndexDto.Efficiency getEfficiency(Long instanceId, Long databaseId) {
+    private HotIndexDashboardResponse.Efficiency getEfficiency(Long instanceId, Long databaseId) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectIndexEfficiency(instanceId, databaseId);
 
         List<String> categories = new ArrayList<>();
-        List<HotIndexDto.IndexEfficiency> indexes = new ArrayList<>();
+        List<HotIndexDashboardResponse.IndexEfficiency> indexes = new ArrayList<>();
 
         for (Map<String, Object> row : dataList) {
             String indexName = (String) row.get("index_name");
@@ -175,14 +178,14 @@ public class HotIndexService {
             Double efficiency = getDoubleValue(row.get("efficiency"));
 
             categories.add(indexName);
-            indexes.add(HotIndexDto.IndexEfficiency.builder()
+            indexes.add(HotIndexDashboardResponse.IndexEfficiency.builder()
                     .x(idxScan)
                     .y(efficiency)
                     .name(indexName)
                     .build());
         }
 
-        return HotIndexDto.Efficiency.builder()
+        return HotIndexDashboardResponse.Efficiency.builder()
                 .categories(categories)
                 .indexes(indexes)
                 .build();
@@ -191,7 +194,7 @@ public class HotIndexService {
     /**
      * 인덱스 접근 추이 조회
      */
-    private HotIndexDto.AccessTrend getAccessTrend(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotIndexDashboardResponse.AccessTrend getAccessTrend(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectAccessTrendTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -212,7 +215,7 @@ public class HotIndexService {
             totalWrites += writeCount;
         }
 
-        return HotIndexDto.AccessTrend.builder()
+        return HotIndexDashboardResponse.AccessTrend.builder()
                 .categories(categories)
                 .reads(reads)
                 .writes(writes)
@@ -224,7 +227,7 @@ public class HotIndexService {
     /**
      * 인덱스 스캔 속도 추이 조회
      */
-    private HotIndexDto.ScanSpeed getScanSpeed(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotIndexDashboardResponse.ScanSpeed getScanSpeed(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectScanSpeedTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -239,7 +242,7 @@ public class HotIndexService {
         Double max = speeds.isEmpty() ? 0.0 : speeds.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         Double min = speeds.isEmpty() ? 0.0 : speeds.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
 
-        return HotIndexDto.ScanSpeed.builder()
+        return HotIndexDashboardResponse.ScanSpeed.builder()
                 .categories(categories)
                 .data(speeds)
                 .average(average)
@@ -251,10 +254,10 @@ public class HotIndexService {
     /**
      * 최근 통계 조회
      */
-    private HotIndexDto.RecentStats getRecentStats(Long instanceId, Long databaseId) {
+    private HotIndexDashboardResponse.RecentStats getRecentStats(Long instanceId, Long databaseId) {
         Map<String, Object> data = hotIndexMapper.selectRecentStats(instanceId, databaseId);
 
-        return HotIndexDto.RecentStats.builder()
+        return HotIndexDashboardResponse.RecentStats.builder()
                 .cacheHitRatio(getDoubleValue(data.get("cache_hit_ratio")))
                 .avgScanSpeed(getDoubleValue(data.get("avg_scan_speed")))
                 .totalReads(getLongValue(data.get("total_reads")))
@@ -271,7 +274,7 @@ public class HotIndexService {
      * @param statusList 상태 필터 리스트
      * @return HotIndex 리스트 데이터
      */
-    public HotIndexDto.ListResponse getHotIndexList(Long instanceId, Long databaseId, String timeRange, List<String> statusList) {
+    public HotIndexListResponse getHotIndexList(Long instanceId, Long databaseId, String timeRange, List<String> statusList) {
         log.info("HotIndex 리스트 조회 시작 - instanceId: {}, databaseId: {}, timeRange: {}, statusList: {}",
                 instanceId, databaseId, timeRange, statusList);
 
@@ -286,7 +289,8 @@ public class HotIndexService {
         }
 
         // 시간 범위 계산
-        LocalDateTime endTime = LocalDateTime.now();
+        // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
+        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
         LocalDateTime startTime = calculateStartTime(endTime, timeRange);
 
         // 데이터 조회
@@ -294,11 +298,11 @@ public class HotIndexService {
                 instanceId, databaseId, startTime, endTime, statusList);
 
         // DTO 변환
-        List<HotIndexDto.ListItem> items = dataList.stream()
+        List<HotIndexListItem> items = dataList.stream()
                 .map(this::convertToListItem)
                 .collect(Collectors.toList());
 
-        return HotIndexDto.ListResponse.builder()
+        return HotIndexListResponse.builder()
                 .data(items)
                 .total((long) items.size())
                 .build();
@@ -307,8 +311,8 @@ public class HotIndexService {
     /**
      * Map을 ListItem으로 변환
      */
-    private HotIndexDto.ListItem convertToListItem(Map<String, Object> row) {
-        return HotIndexDto.ListItem.builder()
+    private HotIndexListItem convertToListItem(Map<String, Object> row) {
+        return HotIndexListItem.builder()
                 .id(String.valueOf(row.get("hot_index_raw_id")))
                 .indexName((String) row.get("index_name"))
                 .tableName((String) row.get("table_name"))
@@ -378,11 +382,15 @@ public class HotIndexService {
      * 타임스탬프 포맷팅
      */
     private String formatTimestamp(Object timestamp) {
+        // HH:mm 형식으로 통일 (Mapper에서 이미 포맷팅된 문자열을 반환할 수 있음)
         if (timestamp == null) {
             return null;
         }
+        if (timestamp instanceof String) {
+            return (String) timestamp; // 이미 포맷팅된 문자열
+        }
         if (timestamp instanceof LocalDateTime) {
-            return ((LocalDateTime) timestamp).format(FORMATTER);
+            return ((LocalDateTime) timestamp).format(TIME_FORMATTER);
         }
         return timestamp.toString();
     }

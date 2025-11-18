@@ -12,7 +12,8 @@ spring:
       initialize-schema: always
       platform: postgres
       table-prefix: BATCH_          # Postgres DDL과 일치시키기
-    schema: public                # 테이블을 만들 스키마 지정 (기본 public)
+      schema: public                # 테이블을 만들 스키마 지정 (기본 public)
+
 server:
   port: 8080
 

@@ -35,7 +35,7 @@ public class AgentOsMetricController {
     @PostMapping("/os-metrics")
     public ResponseEntity<String> receiveMetrics(@RequestBody AgentOsMetricRequest request) {
         try {
-            log.debug("Agent 데이터 수신: instanceName={}, metricType={}, timestamp={}", 
+            log.info("========== Agent 데이터 수신: instanceName={}, metricType={}, timestamp={} ==========", 
                     request.getInstanceName(),
                     request.getMetricType(),
                     request.getTimestamp());

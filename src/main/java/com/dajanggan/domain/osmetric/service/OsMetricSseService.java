@@ -23,45 +23,45 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class OsMetricSseService {
-    
+
     private final OsMetricRedisService redisService;
-    
+
     // instanceId별 SSE Emitter 목록 관리
     private final Map<Long, List<SseEmitter>> emitters = new ConcurrentHashMap<>();
-    
+
     private static final Long SSE_TIMEOUT = 60 * 60 * 1000L; // 1시간
-    
+
     /**
      * SSE 연결 생성
-     * 
+     *
      * @param instanceId 인스턴스 ID
      * @return SseEmitter
      */
     public SseEmitter createEmitter(Long instanceId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
-        
+
         // Emitter 목록에 추가
         emitters.computeIfAbsent(instanceId, k -> new CopyOnWriteArrayList<>()).add(emitter);
-        
-        log.info("SSE 연결 생성: instanceId={}, total emitters={}", 
+
+        log.info("SSE 연결 생성: instanceId={}, total emitters={}",
                 instanceId, emitters.get(instanceId).size());
-        
+
         // 연결 종료 시 목록에서 제거
         emitter.onCompletion(() -> {
             emitters.get(instanceId).remove(emitter);
             log.info("SSE 연결 완료: instanceId={}", instanceId);
         });
-        
+
         emitter.onTimeout(() -> {
             emitters.get(instanceId).remove(emitter);
             log.info("SSE 연결 타임아웃: instanceId={}", instanceId);
         });
-        
+
         emitter.onError(e -> {
             emitters.get(instanceId).remove(emitter);
             log.error("SSE 연결 오류: instanceId={}", instanceId, e);
         });
-        
+
         // 초기 연결 확인 메시지 전송
         try {
             emitter.send(SseEmitter.event()
@@ -70,87 +70,168 @@ public class OsMetricSseService {
         } catch (IOException e) {
             log.error("SSE 초기 메시지 전송 실패", e);
         }
-        
+
         return emitter;
     }
-    
+
     /**
      * 특정 인스턴스의 실시간 메트릭 데이터를 모든 연결된 클라이언트에게 전송
-     * 
+     *
      * @param instanceId 인스턴스 ID
      */
     public void broadcastMetrics(Long instanceId) {
         List<SseEmitter> instanceEmitters = emitters.get(instanceId);
-        
+
         if (instanceEmitters == null || instanceEmitters.isEmpty()) {
             return;
         }
-        
+
         try {
-            // Redis에서 각 메트릭 타입별 최신 데이터 조회
-            List<String> metricTypes = List.of("CPU", "MEMORY", "DISK_USAGE", "DISK_READ", "DISK_WRITE");
-            
-            Map<String, Double> metricsMap = metricTypes.stream()
-                    .map(type -> redisService.getLatestMetric(instanceId, type))
-                    .filter(data -> data != null)
-                    .collect(Collectors.toMap(
-                            RedisOsMetricData::getMetricType,
-                            RedisOsMetricData::getValue
-                    ));
-            
-            if (metricsMap.isEmpty()) {
+            // Redis에서 실제 저장된 메트릭 타입 조회 (CPU, MEMORY, DISK)
+            RedisOsMetricData cpuData = redisService.getLatestMetric(instanceId, "CPU");
+            RedisOsMetricData memoryData = redisService.getLatestMetric(instanceId, "MEMORY");
+            RedisOsMetricData diskData = redisService.getLatestMetric(instanceId, "DISK");
+
+            if (cpuData == null && memoryData == null && diskData == null) {
                 log.debug("전송할 메트릭 데이터 없음: instanceId={}", instanceId);
                 return;
             }
-            
-            // SSE 응답 생성
-            SseOsMetricResponse response = SseOsMetricResponse.of(
-                    instanceId,
-                    LocalDateTime.now(),
-                    metricsMap
-            );
-            
+
+            // SSE 응답 생성 (프론트엔드 형식에 맞춤)
+            SseOsMetricResponse response = SseOsMetricResponse.builder()
+                    .instanceId(instanceId)
+                    .collectedAt(LocalDateTime.now())
+                    .eventType("metrics")
+                    .build();
+
+            // CPU 데이터 처리
+            if (cpuData != null && cpuData.getDetails() != null) {
+                Map<String, Object> cpuDetails = cpuData.getDetails();
+
+                // CPU 사용률
+                Object totalUsage = cpuDetails.get("totalUsage");
+                if (totalUsage != null) {
+                    response.setCpu(toDouble(totalUsage));
+                }
+
+                // Load Average 추출
+                Object loadAvgObj = cpuDetails.get("loadAverage");
+                if (loadAvgObj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> loadAvgMap = (Map<String, Object>) loadAvgObj;
+
+                    List<Double> loadAverage = List.of(
+                            toDouble(loadAvgMap.get("one")),
+                            toDouble(loadAvgMap.get("five")),
+                            toDouble(loadAvgMap.get("fifteen"))
+                    );
+                    response.setLoadAverage(loadAverage);
+                }
+            }
+
+            // Memory 데이터 처리
+            if (memoryData != null && memoryData.getDetails() != null) {
+                Object memUsage = memoryData.getDetails().get("usagePercent");
+                if (memUsage != null) {
+                    response.setMemory(toDouble(memUsage));
+                }
+            }
+
+            // Disk 데이터 처리
+            if (diskData != null && diskData.getDetails() != null) {
+                Map<String, Object> diskDetails = diskData.getDetails();
+
+                // Disk 사용률
+                Object filesystem = diskDetails.get("filesystem");
+                if (filesystem instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> fsMap = (Map<String, Object>) filesystem;
+                    Object fsUsage = fsMap.get("usagePercent");
+                    if (fsUsage != null) {
+                        response.setDiskUsage(toDouble(fsUsage));
+                    }
+                }
+
+                // Disk Read/Write 속도
+                Object readSpeed = diskDetails.get("readSpeedMBps");
+                if (readSpeed != null) {
+                    response.setDiskRead(toDouble(readSpeed));
+                }
+
+                Object writeSpeed = diskDetails.get("writeSpeedMBps");
+                if (writeSpeed != null) {
+                    response.setDiskWrite(toDouble(writeSpeed));
+                }
+            }
+
             // 모든 연결된 클라이언트에게 전송
             List<SseEmitter> deadEmitters = new CopyOnWriteArrayList<>();
-            
+
             for (SseEmitter emitter : instanceEmitters) {
                 try {
                     emitter.send(SseEmitter.event()
-                            .name("os-metric")
+                            .name("metrics")
                             .data(response));
-                    
-                    log.debug("SSE 데이터 전송 성공: instanceId={}, metrics={}", 
-                            instanceId, metricsMap.keySet());
-                    
+
+                    log.debug("SSE 데이터 전송 성공: instanceId={}, cpu={}, memory={}, loadAverage={}",
+                            instanceId, response.getCpu(), response.getMemory(), response.getLoadAverage());
+
                 } catch (IOException e) {
                     log.warn("SSE 데이터 전송 실패, Emitter 제거 예정: instanceId={}", instanceId);
                     deadEmitters.add(emitter);
                 }
             }
-            
+
             // 전송 실패한 Emitter 제거
             instanceEmitters.removeAll(deadEmitters);
-            
+
         } catch (Exception e) {
             log.error("SSE 브로드캐스트 중 오류 발생: instanceId={}", instanceId, e);
         }
     }
-    
+
+    /**
+     * Object를 Double로 변환
+     */
+    private Double toDouble(Object obj) {
+        if (obj == null) {
+            return 0.0;
+        }
+        if (obj instanceof Number) {
+            return ((Number) obj).doubleValue();
+        }
+        if (obj instanceof String) {
+            try {
+                return Double.parseDouble((String) obj);
+            } catch (NumberFormatException e) {
+                return 0.0;
+            }
+        }
+        return 0.0;
+    }
+
     /**
      * 모든 인스턴스의 메트릭 브로드캐스트
      */
     public void broadcastAllInstances() {
+        if (emitters.isEmpty()) {
+            log.debug("연결된 SSE 클라이언트가 없음 - 브로드캐스트 스킵");
+            return;
+        }
+        
+        log.info("전체 인스턴스 SSE 브로드캐스트 시작 - 연결된 인스턴스 수: {}", emitters.size());
         emitters.keySet().forEach(this::broadcastMetrics);
+        log.info("전체 인스턴스 SSE 브로드캐스트 완료");
     }
-    
+
     /**
      * 특정 인스턴스의 모든 SSE 연결 종료
-     * 
+     *
      * @param instanceId 인스턴스 ID
      */
     public void closeAllEmitters(Long instanceId) {
         List<SseEmitter> instanceEmitters = emitters.get(instanceId);
-        
+
         if (instanceEmitters != null) {
             instanceEmitters.forEach(SseEmitter::complete);
             emitters.remove(instanceId);

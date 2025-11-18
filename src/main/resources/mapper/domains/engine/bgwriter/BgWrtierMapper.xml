@@ -7,12 +7,11 @@
 
     <!-- Backend Flush 비율 조회 -->
     <select id="selectBackendFlushRatio" resultType="map">
-        -- bgwriter_agg 테이블에서 최근 데이터 조회
         SELECT
             avg_backend_flush_ratio as value,
             total_buffers_clean as buffersClean,
             total_buffers_backend as buffersBackend
-        FROM bgwriter_agg
+        FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
         ORDER BY collected_at DESC
         LIMIT 1
@@ -20,79 +19,141 @@
 
     <!-- Clean Rate 시계열 데이터 조회 -->
     <select id="selectCleanRateTimeSeries" resultType="map">
-        -- 시간대별 clean rate 계산
         SELECT
             TO_CHAR(collected_at, 'HH24:MI') as time_label,
             avg_clean_rate as clean_rate
-        FROM bgwriter_agg
+        FROM
+        <choose>
+            <when test="intervalMinutes == 1">
+                bgwriter_agg_1m
+            </when>
+            <when test="intervalMinutes == 5">
+                bgwriter_agg_5m
+            </when>
+            <when test="intervalMinutes == 30">
+                bgwriter_agg_5m
+            </when>
+            <otherwise>
+                bgwriter_agg_1m
+            </otherwise>
+        </choose>
         WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY collected_at
     </select>
 
     <!-- Buffer Flush 비율 시계열 데이터 조회 -->
     <select id="selectBufferFlushRatioTimeSeries" resultType="map">
-        -- Backend vs Clean 비교 데이터
         SELECT
             TO_CHAR(collected_at, 'HH24:MI') as time_label,
             total_buffers_backend as backend,
             total_buffers_clean as clean
-        FROM bgwriter_agg
+        FROM
+        <choose>
+            <when test="intervalMinutes == 1">
+                bgwriter_agg_1m
+            </when>
+            <when test="intervalMinutes == 5">
+                bgwriter_agg_5m
+            </when>
+            <when test="intervalMinutes == 30">
+                bgwriter_agg_5m
+            </when>
+            <otherwise>
+                bgwriter_agg_1m
+            </otherwise>
+        </choose>
         WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY collected_at
     </select>
 
     <!-- Maxwritten Clean 시계열 데이터 조회 -->
     <select id="selectMaxwrittenCleanTimeSeries" resultType="map">
-        -- Maxwritten clean 발생 횟수
         SELECT
             TO_CHAR(collected_at, 'HH24:MI') as time_label,
             total_maxwritten_clean as maxwritten_clean
-        FROM bgwriter_agg
+        FROM
+        <choose>
+            <when test="intervalMinutes == 1">
+                bgwriter_agg_1m
+            </when>
+            <when test="intervalMinutes == 5">
+                bgwriter_agg_5m
+            </when>
+            <when test="intervalMinutes == 30">
+                bgwriter_agg_5m
+            </when>
+            <otherwise>
+                bgwriter_agg_1m
+            </otherwise>
+        </choose>
         WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY collected_at
     </select>
 
     <!-- BGWriter vs Checkpoint 비교 데이터 조회 -->
     <select id="selectBgwriterVsCheckpointTimeSeries" resultType="map">
-        -- BGWriter와 Checkpoint가 쓴 버퍼 비교
-        -- checkpoint_agg 테이블과 조인 필요
         SELECT
             TO_CHAR(b.collected_at, 'HH24:MI') as time_label,
             b.total_buffers_clean as bgwriter,
             c.total_buffers_checkpoint as checkpoint
-        FROM bgwriter_agg b
-        LEFT JOIN checkpoint_agg c ON b.instance_id = c.instance_id
-            AND DATE_TRUNC('hour', b.collected_at) = DATE_TRUNC('hour', c.collected_at)
+        FROM
+        <choose>
+            <when test="intervalMinutes == 1">
+                bgwriter_agg_1m b
+                LEFT JOIN checkpoint_agg_1m c ON b.instance_id = c.instance_id
+                    AND DATE_TRUNC('minute', b.collected_at) = DATE_TRUNC('minute', c.collected_at)
+            </when>
+            <when test="intervalMinutes == 5">
+                bgwriter_agg_5m b
+                LEFT JOIN checkpoint_agg_5m c ON b.instance_id = c.instance_id
+                    AND DATE_TRUNC('minute', b.collected_at) = DATE_TRUNC('minute', c.collected_at)
+            </when>
+            <otherwise>
+                bgwriter_agg_1m b
+                LEFT JOIN checkpoint_agg_1m c ON b.instance_id = c.instance_id
+                    AND DATE_TRUNC('minute', b.collected_at) = DATE_TRUNC('minute', c.collected_at)
+            </otherwise>
+        </choose>
         WHERE b.instance_id = #{instanceId}
-          AND b.collected_at BETWEEN #{startTime} AND #{endTime}
+          AND b.collected_at >= #{startTime} AND b.collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY b.collected_at
     </select>
 
     <!-- Buffer 재사용률 시계열 데이터 조회 -->
     <select id="selectBufferReuseRateTimeSeries" resultType="map">
-        -- Buffer 재사용률 계산
         SELECT
             TO_CHAR(collected_at, 'HH24:MI') as time_label,
-            -- 재사용률 계산 로직 필요
             100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as reuse_rate
-        FROM bgwriter_agg
+        FROM
+        <choose>
+            <when test="intervalMinutes == 1">
+                bgwriter_agg_1m
+            </when>
+            <when test="intervalMinutes == 5">
+                bgwriter_agg_5m
+            </when>
+            <when test="intervalMinutes == 30">
+                bgwriter_agg_5m
+            </when>
+            <otherwise>
+                bgwriter_agg_1m
+            </otherwise>
+        </choose>
         WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY collected_at
     </select>
 
     <!-- 최근 통계 조회 -->
     <select id="selectRecentStats" resultType="map">
-        -- 최근 5분 평균 통계 조회
         SELECT
             avg_backend_flush_ratio as bgwriterActivityRate,
-            -- 추가 통계 계산 로직 필요
             100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as cleanBufferReuseRate,
             total_backend_fsync as backendFsyncCount
-        FROM bgwriter_agg
+        FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= NOW() - INTERVAL '5 minutes'
         ORDER BY collected_at DESC
@@ -103,7 +164,7 @@
     <select id="selectBgWriterList" resultType="map">
         SELECT
             bgwriter_agg_id as id,
-            TO_CHAR(collected_at, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+            TO_CHAR(collected_at, 'HH24:MI') as timestamp,
             COALESCE(total_buffers_clean + total_buffers_backend, 0) as buffersAlloc,
             COALESCE(avg_clean_rate, 0.0) as cleanRate,
             -- Backend rate 계산 (backend buffers / 시간 간격, 초당)
@@ -117,9 +178,9 @@
             -- avg_cycle_time_ms 컬럼이 없으므로 0으로 처리
             0.0 as avgCycleTime,
             COALESCE(status, '정상') as status
-        FROM bgwriter_agg
+        FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
         <if test="statusList != null and statusList.size() > 0">
           AND status IN
           <foreach collection="statusList" item="status" open="(" separator="," close=")">
@@ -182,9 +243,9 @@
         )
     </insert>
 
-    <!-- Agg 데이터 삽입 -->
-    <insert id="insertAgg" parameterType="com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg">
-        INSERT INTO bgwriter_agg (
+    <!-- 1분 집계 데이터 삽입 -->
+    <insert id="insertAgg1m" parameterType="com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m">
+        INSERT INTO bgwriter_agg_1m (
             instance_id,
             collected_at,
             avg_backend_flush_ratio,
@@ -210,5 +271,56 @@
             NOW()
         )
     </insert>
+
+    <!-- 5분 집계 데이터 삽입 -->
+    <insert id="insertAgg5m" parameterType="com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg5m">
+        INSERT INTO bgwriter_agg_5m (
+            instance_id,
+            collected_at,
+            avg_backend_flush_ratio,
+            avg_clean_rate,
+            total_buffers_clean,
+            total_buffers_backend,
+            total_backend_fsync,
+            total_maxwritten_clean,
+            status,
+            avg_cycle_time_ms,
+            created_at
+        ) VALUES (
+            #{instanceId},
+            #{collectedAt},
+            #{avgBackendFlushRatio},
+            #{avgCleanRate},
+            #{totalBuffersClean},
+            #{totalBuffersBackend},
+            #{totalBackendFsync},
+            #{totalMaxwrittenClean},
+            #{status},
+            #{avgCycleTimeMs},
+            NOW()
+        )
+    </insert>
+
+    <!-- 이전 1분 집계 데이터 조회 (5분 집계 계산용) -->
+    <select id="selectPreviousAgg1m" resultType="com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m">
+        SELECT
+            bgwriter_agg_id,
+            instance_id,
+            collected_at,
+            avg_backend_flush_ratio,
+            avg_clean_rate,
+            total_buffers_clean,
+            total_buffers_backend,
+            total_backend_fsync,
+            total_maxwritten_clean,
+            status,
+            created_at,
+            avg_cycle_time_ms
+        FROM bgwriter_agg_1m
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= #{startTime}
+          AND collected_at &lt; #{endTime}
+        ORDER BY collected_at
+    </select>
 
 </mapper>

@@ -76,6 +76,16 @@ public interface DiskIoMapper {
     );
 
     /**
+     * I/O Latency 시계열 데이터 조회 (LIMIT)
+     */
+    List<Map<String, Object>> selectIoLatencyTimeSeriesWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
+    );
+
+    /**
      * Throughput 시계열 데이터 조회
      */
     List<Map<String, Object>> selectThroughputTimeSeries(
@@ -110,6 +120,16 @@ public interface DiskIoMapper {
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * I/O Latency 시계열 데이터 조회 (5분 집계, 6시간, LIMIT)
+     */
+    List<Map<String, Object>> selectIoLatency5mTimeSeriesWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
     );
 
     /**
@@ -171,6 +191,16 @@ public interface DiskIoMapper {
     );
 
     /**
+     * Checkpoint vs Backend Write 시계열 데이터 조회 (30분 집계, 24시간, LIMIT)
+     */
+    List<Map<String, Object>> selectCheckpointVsBackend30mTimeSeriesWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
+    );
+
+    /**
      * Backend Fsync Rate 시계열 데이터 조회 (30분 집계, 24시간)
      */
     List<Map<String, Object>> selectBackendFsync30mTimeSeries(
@@ -180,12 +210,32 @@ public interface DiskIoMapper {
     );
 
     /**
+     * Backend Fsync Rate 시계열 데이터 조회 (30분 집계, 24시간, LIMIT)
+     */
+    List<Map<String, Object>> selectBackendFsync30mTimeSeriesWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
+    );
+
+    /**
      * Physical vs Cache Read 시계열 데이터 조회 (30분 집계, 24시간)
      */
     List<Map<String, Object>> selectPhysicalVsCache30mTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * Physical vs Cache Read 시계열 데이터 조회 (30분 집계, 24시간, LIMIT)
+     */
+    List<Map<String, Object>> selectPhysicalVsCache30mTimeSeriesWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
     );
 
     // ========================================

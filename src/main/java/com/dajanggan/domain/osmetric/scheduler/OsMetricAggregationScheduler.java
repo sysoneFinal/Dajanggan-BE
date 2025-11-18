@@ -42,7 +42,6 @@ public class OsMetricAggregationScheduler {
     
     /**
      * 1분마다 실행 (매분 0초)
-     * SSE 브로드캐스트는 더 자주 실행 (5초마다)
      */
     @Scheduled(cron = "0 * * * * *")
     public void aggregateMetrics() {
@@ -73,19 +72,6 @@ public class OsMetricAggregationScheduler {
             
         } catch (Exception e) {
             log.error("OS 메트릭 집계 중 오류 발생", e);
-        }
-    }
-    
-    /**
-     * SSE 브로드캐스트 (5초마다)
-     */
-    @Scheduled(fixedDelay = 5000, initialDelay = 1000)
-    public void broadcastMetrics() {
-        try {
-            log.debug("SSE 브로드캐스트 시작");
-            sseService.broadcastAllInstances();
-        } catch (Exception e) {
-            log.error("SSE 브로드캐스트 실패", e);
         }
     }
     
@@ -130,33 +116,12 @@ public class OsMetricAggregationScheduler {
                 rawList.add(raw);
             }
             
-            // Agg 데이터 계산 및 저장
-            double sum = 0.0;
-            double max = Double.MIN_VALUE;
-            double min = Double.MAX_VALUE;
-            int count = 0;
-            
-            for (RedisOsMetricData metric : typeMetrics) {
-                double value = metric.getValue();  // 대표값 추출
-                sum += value;
-                max = Math.max(max, value);
-                min = Math.min(min, value);
-                count++;
-            }
-            
-            if (count > 0) {
-                double avg = sum / count;
-                
-                OsMetricAgg agg = OsMetricAgg.builder()
-                        .instanceId(instanceId)
-                        .collectedAt(collectedAt)
-                        .metricType(metricType)
-                        .avgValue(avg)
-                        .maxValue(max)
-                        .minValue(min)
-                        .sampleCount(count)
-                        .build();
-                aggList.add(agg);
+            // DISK 메트릭은 세분화하여 처리
+            if ("DISK".equals(metricType)) {
+                processDiskMetrics(instanceId, typeMetrics, collectedAt, aggList);
+            } else {
+                // 일반 메트릭 처리 (CPU, MEMORY 등)
+                processNormalMetrics(instanceId, metricType, typeMetrics, collectedAt, aggList);
             }
         }
         
@@ -173,6 +138,204 @@ public class OsMetricAggregationScheduler {
 
         log.info("메트릭 처리 완료: instanceId={}, raw={}, agg={}, samples={}", 
                 instanceId, rawList.size(), aggList.size(), allMetrics.size());
+    }
+    
+    /**
+     * DISK 메트릭을 DISK_READ, DISK_WRITE, DISK_USAGE로 세분화
+     */
+    private void processDiskMetrics(Long instanceId, 
+                                     List<RedisOsMetricData> diskMetrics,
+                                     OffsetDateTime collectedAt,
+                                     List<OsMetricAgg> aggList) {
+        // DISK_USAGE 집계
+        double usageSum = 0.0, usageMax = Double.MIN_VALUE, usageMin = Double.MAX_VALUE;
+        int usageCount = 0;
+        
+        // DISK_READ 집계 (bytes)
+        double readSum = 0.0, readMax = Double.MIN_VALUE, readMin = Double.MAX_VALUE;
+        int readCount = 0;
+        
+        // DISK_WRITE 집계 (bytes)
+        double writeSum = 0.0, writeMax = Double.MIN_VALUE, writeMin = Double.MAX_VALUE;
+        int writeCount = 0;
+        
+        for (RedisOsMetricData metric : diskMetrics) {
+            Map<String, Object> details = metric.getDetails();
+            if (details == null) continue;
+            
+            // 1. DISK_USAGE 처리
+            Double usagePercent = extractDiskUsagePercent(details);
+            if (usagePercent != null) {
+                usageSum += usagePercent;
+                usageMax = Math.max(usageMax, usagePercent);
+                usageMin = Math.min(usageMin, usagePercent);
+                usageCount++;
+            }
+            
+            // 2. DISK_READ 처리 (readBytes)
+            Double readBytes = extractValue(details, "readBytes");
+            if (readBytes != null && readBytes > 0) {
+                readSum += readBytes;
+                readMax = Math.max(readMax, readBytes);
+                readMin = Math.min(readMin, readBytes);
+                readCount++;
+            }
+            
+            // 3. DISK_WRITE 처리 (writeBytes)
+            Double writeBytes = extractValue(details, "writeBytes");
+            if (writeBytes != null && writeBytes > 0) {
+                writeSum += writeBytes;
+                writeMax = Math.max(writeMax, writeBytes);
+                writeMin = Math.min(writeMin, writeBytes);
+                writeCount++;
+            }
+        }
+        
+        // DISK_USAGE Agg 저장
+        if (usageCount > 0) {
+            OsMetricAgg usageAgg = OsMetricAgg.builder()
+                    .instanceId(instanceId)
+                    .collectedAt(collectedAt)
+                    .metricType("DISK_USAGE")
+                    .avgValue(usageSum / usageCount)
+                    .maxValue(usageMax)
+                    .minValue(usageMin)
+                    .sampleCount(usageCount)
+                    .build();
+            aggList.add(usageAgg);
+            log.debug("DISK_USAGE 집계: avg={}, max={}, min={}, count={}", 
+                    usageAgg.getAvgValue(), usageMax, usageMin, usageCount);
+        }
+        
+        // DISK_READ Agg 저장
+        if (readCount > 0) {
+            OsMetricAgg readAgg = OsMetricAgg.builder()
+                    .instanceId(instanceId)
+                    .collectedAt(collectedAt)
+                    .metricType("DISK_READ")
+                    .avgValue(readSum / readCount)
+                    .maxValue(readMax)
+                    .minValue(readMin)
+                    .sampleCount(readCount)
+                    .build();
+            aggList.add(readAgg);
+            log.debug("DISK_READ 집계: avg={}, max={}, min={}, count={}", 
+                    readAgg.getAvgValue(), readMax, readMin, readCount);
+        }
+        
+        // DISK_WRITE Agg 저장
+        if (writeCount > 0) {
+            OsMetricAgg writeAgg = OsMetricAgg.builder()
+                    .instanceId(instanceId)
+                    .collectedAt(collectedAt)
+                    .metricType("DISK_WRITE")
+                    .avgValue(writeSum / writeCount)
+                    .maxValue(writeMax)
+                    .minValue(writeMin)
+                    .sampleCount(writeCount)
+                    .build();
+            aggList.add(writeAgg);
+            log.debug("DISK_WRITE 집계: avg={}, max={}, min={}, count={}", 
+                    writeAgg.getAvgValue(), writeMax, writeMin, writeCount);
+        }
+    }
+    
+    /**
+     * 일반 메트릭 처리 (CPU, MEMORY 등)
+     */
+    private void processNormalMetrics(Long instanceId,
+                                      String metricType,
+                                      List<RedisOsMetricData> typeMetrics,
+                                      OffsetDateTime collectedAt,
+                                      List<OsMetricAgg> aggList) {
+        double sum = 0.0;
+        double max = Double.MIN_VALUE;
+        double min = Double.MAX_VALUE;
+        int count = 0;
+        
+        for (RedisOsMetricData metric : typeMetrics) {
+            double value = metric.getValue();  // 대표값 추출
+            sum += value;
+            max = Math.max(max, value);
+            min = Math.min(min, value);
+            count++;
+        }
+        
+        if (count > 0) {
+            double avg = sum / count;
+            
+            OsMetricAgg agg = OsMetricAgg.builder()
+                    .instanceId(instanceId)
+                    .collectedAt(collectedAt)
+                    .metricType(metricType)
+                    .avgValue(avg)
+                    .maxValue(max)
+                    .minValue(min)
+                    .sampleCount(count)
+                    .build();
+            aggList.add(agg);
+        }
+    }
+    
+    /**
+     * details에서 디스크 사용률 추출
+     */
+    private Double extractDiskUsagePercent(Map<String, Object> details) {
+        try {
+            // usagePercent 필드 직접 확인
+            Object usagePercent = details.get("usagePercent");
+            if (usagePercent != null) {
+                return toDouble(usagePercent);
+            }
+            
+            // filesystem.usagePercent 확인
+            Object filesystem = details.get("filesystem");
+            if (filesystem instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> fsMap = (Map<String, Object>) filesystem;
+                Object fsUsage = fsMap.get("usagePercent");
+                if (fsUsage != null) {
+                    return toDouble(fsUsage);
+                }
+            }
+            
+            return null;
+        } catch (Exception e) {
+            log.warn("디스크 사용률 추출 실패", e);
+            return null;
+        }
+    }
+    
+    /**
+     * details에서 특정 값 추출
+     */
+    private Double extractValue(Map<String, Object> details, String key) {
+        try {
+            Object value = details.get(key);
+            return value != null ? toDouble(value) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    /**
+     * Object를 Double로 변환
+     */
+    private Double toDouble(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof Number) {
+            return ((Number) obj).doubleValue();
+        }
+        if (obj instanceof String) {
+            try {
+                return Double.parseDouble((String) obj);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
     
     /**

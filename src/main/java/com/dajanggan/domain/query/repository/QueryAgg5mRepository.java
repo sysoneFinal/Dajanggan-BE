@@ -11,8 +11,6 @@ import java.util.Map;
 public interface QueryAgg5mRepository {
     /** 5분 집계 데이터 저장 */
     void insertAgg5m(@Param("metrics") List<QueryAgg5mDto> metrics);
-    /** 요약카드 (단일 DB용 - Details 페이지) */
-    QuerySummaryDto findLatestSummary(Map<String, Object> params);
 
     /** 상위 슬로우 쿼리 Top 5 */
     TopSlowQueryDto findTopSlowQueries(Map<String, Object> params);
