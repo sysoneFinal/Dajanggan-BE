@@ -3,13 +3,11 @@ package com.dajanggan.domain.query.service;
 import com.dajanggan.domain.query.dto.QueryMetricsRawDto;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 쿼리 메트릭스 원시 데이터 서비스 인터페이스
  * 비즈니스 로직 정의
- *
- * ✅ 수정사항:
- * - getQueryMetricsByDatabaseIdAndDays 메서드 추가
  *
  * @author 이해든
  */
@@ -36,7 +34,7 @@ public interface QueryMetricsRawService {
     List<QueryMetricsRawDto> getQueryMetricsByDatabaseId(Long databaseId);
 
     /**
-     * ✅ 신규: 데이터베이스 ID와 기간으로 쿼리 메트릭스 조회
+     * 데이터베이스 ID와 기간으로 쿼리 메트릭스 조회
      * @param databaseId 데이터베이스 ID
      * @param days 조회 기간 (일 단위)
      * @return 해당 기간의 쿼리 메트릭스 DTO 목록
@@ -91,4 +89,12 @@ public interface QueryMetricsRawService {
      * @return 해당 데이터베이스의 쿼리 메트릭스 개수
      */
     int getCountByDatabaseId(Long databaseId);
+
+    /**
+     *  ExecutionStatus용 쿼리별 집계 통계
+     * @param databaseId 데이터베이스 ID
+     * @param days 조회 기간 (일 단위)
+     * @return 쿼리별 집계 통계 목록
+     */
+    List<Map<String, Object>> getExecutionStats(Long databaseId, Integer days);
 }
