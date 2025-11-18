@@ -106,7 +106,7 @@ public class OverviewService {
 
         String timeRange = "15m";
 
-        // 🔥 모든 DB에 대해 데이터 조회
+        //  모든 DB에 대해 데이터 조회
         List<Map<String, Object>> allData = new ArrayList<>();
 
         for (JsonNode dbNode : databasesNode) {
