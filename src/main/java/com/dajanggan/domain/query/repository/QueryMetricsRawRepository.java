@@ -66,7 +66,10 @@ public interface QueryMetricsRawRepository {
      * 메모리 사용량 상위 N개 조회
      */
     List<QueryMetricsRaw> findTopByMemoryUsage(@Param("limit") Integer limit);
-
+    /**
+     *  ExecutionStatus용 쿼리별 집계 통계
+     */
+    List<Map<String, Object>> findExecutionStats(Map<String, Object> params);
     /**
      * 쿼리 메트릭스 등록
      */

@@ -184,14 +184,14 @@
         WHERE database_id = #{databaseId}
     </select>
 
-    <!-- 🆕 13. 인스턴스별 쿼리 메트릭스 개수 조회 -->
+    <!-- 13. 인스턴스별 쿼리 메트릭스 개수 조회 -->
     <select id="countByInstanceId" parameterType="long" resultType="int">
         SELECT COUNT(*)
         FROM query_metrics_raw
         WHERE instance_id = #{instanceId}
     </select>
 
-    <!-- ✅ 신규: 데이터베이스 ID와 기간으로 조회 -->
+    <!-- 데이터베이스 ID와 기간으로 조회 -->
     <select id="findByDatabaseIdAndDays" parameterType="map"
             resultType="com.dajanggan.domain.query.domain.QueryMetricsRaw">
         SELECT
@@ -220,5 +220,43 @@
           AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '${days} days'
         ORDER BY collected_at DESC
             LIMIT 10000
+    </select>
+
+    <!-- ExecutionStatus용 쿼리별 집계 통계 -->
+    <select id="findExecutionStats" parameterType="map" resultType="java.util.HashMap">
+        SELECT
+            -- 쿼리 해시를 고유 ID로 사용
+            MD5(query_text) as "queryHash",
+
+            -- 짧은 쿼리문 (중복 제거)
+            MAX(short_query) as "shortQuery",
+
+            -- 전체 쿼리문 (중복 제거, 첫 번째 것 사용)
+            MAX(query_text) as "fullQuery",
+
+            -- 집계 통계
+            COUNT(*) as "executionCount",
+            ROUND(AVG(execution_time_ms)::numeric, 2) as "avgTimeMs",
+            ROUND(SUM(execution_time_ms)::numeric, 2) as "totalTimeMs",
+            COUNT(*) as "callCount",
+
+            -- 쿼리 타입 (중복 제거)
+            MAX(query_type) as "queryType",
+
+            -- 마지막 실행 시간
+            MAX(collected_at) as "lastExecutedAt"
+
+        FROM query_metrics_raw
+        WHERE database_id = #{databaseId}
+          AND created_at >= NOW() - INTERVAL '${days} days'
+
+        -- 쿼리문으로 그룹화 (동일 쿼리 집계)
+        GROUP BY MD5(query_text)
+
+        -- 실행 횟수 기준 정렬 (많이 실행된 순)
+        ORDER BY "executionCount" DESC
+
+            -- 상위 500개만 (너무 많으면 제한)
+            LIMIT 500
     </select>
 </mapper>
