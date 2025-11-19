@@ -226,25 +226,25 @@
     <select id="findExecutionStats" parameterType="map" resultType="java.util.HashMap">
         SELECT
             -- 쿼리 해시를 고유 ID로 사용
-            MD5(query_text) as queryHash,
+            MD5(query_text) as "queryHash",
 
             -- 짧은 쿼리문 (중복 제거)
-            MAX(short_query) as shortQuery,
+            MAX(short_query) as "shortQuery",
 
             -- 전체 쿼리문 (중복 제거, 첫 번째 것 사용)
-            MAX(query_text) as fullQuery,
+            MAX(query_text) as "fullQuery",
 
             -- 집계 통계
-            COUNT(*) as executionCount,
-            ROUND(AVG(execution_time_ms)::numeric, 2) as avgTimeMs,
-            ROUND(SUM(execution_time_ms)::numeric, 2) as totalTimeMs,
-            COUNT(*) as callCount,
+            COUNT(*) as "executionCount",
+            ROUND(AVG(execution_time_ms)::numeric, 2) as "avgTimeMs",
+            ROUND(SUM(execution_time_ms)::numeric, 2) as "totalTimeMs",
+            COUNT(*) as "callCount",
 
             -- 쿼리 타입 (중복 제거)
-            MAX(query_type) as queryType,
+            MAX(query_type) as "queryType",
 
             -- 마지막 실행 시간
-            MAX(collected_at) as lastExecutedAt
+            MAX(collected_at) as "lastExecutedAt"
 
         FROM query_metrics_raw
         WHERE database_id = #{databaseId}
@@ -254,7 +254,7 @@
         GROUP BY MD5(query_text)
 
         -- 실행 횟수 기준 정렬 (많이 실행된 순)
-        ORDER BY executionCount DESC
+        ORDER BY "executionCount" DESC
 
             -- 상위 500개만 (너무 많으면 제한)
             LIMIT 500
