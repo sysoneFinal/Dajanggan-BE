@@ -2,6 +2,8 @@ package com.dajanggan.domain.overview.dto;
 
 import lombok.*;
 
+import java.util.List;
+
 @Getter
 @Builder
 @NoArgsConstructor
@@ -16,4 +18,6 @@ public class MetricDefinition {
     private String level;          // 레벨
     private String unit;           // 단위
     private String description;    // 설명
+    private List<String> availableChart; // 사용 가능한 차트 타입
+    private String defaultChartType; // 기본 차트 타입
 }

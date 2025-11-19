@@ -22,4 +22,7 @@ public interface OverviewRepository {
 
     // 동적 메트릭 데이터 조회
     List<Map<String, Object>> queryMetrics(Map<String, Object> params);
+    
+    // 🔥 디폴트 대시보드 생성 (인스턴스 등록 시 자동 호출)
+    int createDefaultDashboard(DashboardSaveRequest dashboardSaveRequest);
 }

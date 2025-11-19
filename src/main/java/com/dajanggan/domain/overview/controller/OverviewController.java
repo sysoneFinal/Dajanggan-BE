@@ -28,6 +28,14 @@ public class OverviewController {
     public ResponseEntity<DashboardDataResponse> getDashboard(@RequestParam Long instanceId){
         DashboardDataResponse response = overviewService.getDashboardWithData(instanceId);
         
+        // null 체크 추가
+        if (response == null || response.getWidgets() == null) {
+            log.info("대시보드 데이터 없음: instanceId={} -> 빈 응답 반환", instanceId);
+            return ResponseEntity.ok(DashboardDataResponse.builder()
+                    .widgets(java.util.Collections.emptyList())
+                    .build());
+        }
+        
         log.info("대시보드 데이터 조회 완료: instanceId={}, widgetCount={}", 
                 instanceId, response.getWidgets().size());
         
