@@ -345,4 +345,38 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
             throw new RuntimeException("개수 조회 실패", e);
         }
     }
+    /**
+     *  ExecutionStatus용 쿼리별 집계 통계
+     */
+    @Override
+    public List<Map<String, Object>> getExecutionStats(Long databaseId, Integer days) {
+        logger.info("📊 쿼리별 집계 통계 조회 시작 - databaseId: {}, days: {}", databaseId, days);
+
+        if (databaseId == null) {
+            logger.warn("databaseId가 null입니다");
+            throw new IllegalArgumentException("databaseId는 필수입니다");
+        }
+
+        if (days == null || days < 0) {
+            logger.warn("days가 유효하지 않습니다: {}", days);
+            days = 1; // 기본값 1일
+        }
+
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("databaseId", databaseId);
+            params.put("days", days);
+
+            List<Map<String, Object>> result = queryMetricsRawRepository.findExecutionStats(params);
+
+            logger.info("✅ 쿼리별 집계 완료: databaseId = {}, days = {}, 집계된 쿼리 수 = {}",
+                    databaseId, days, result.size());
+
+            return result;
+
+        } catch (Exception e) {
+            logger.error("❌ 쿼리별 집계 통계 조회 중 오류 발생: databaseId = {}, days = {}", databaseId, days, e);
+            throw new RuntimeException("쿼리별 집계 조회 실패", e);
+        }
+    }
 }
