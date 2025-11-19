@@ -1,5 +1,6 @@
 package com.dajanggan.domain.overview.service;
 
+import com.dajanggan.domain.instance.domain.Database; // 🔥 추가
 import com.dajanggan.domain.overview.dto.*;
 import com.dajanggan.domain.overview.repository.MetricRepository;
 import com.dajanggan.domain.overview.repository.OverviewRepository;
@@ -26,12 +27,15 @@ public class OverviewService {
     private final OverviewRepository overviewRepository;
     private final MetricRepository metricRepository;
     private final MetricsQueryService metricsQueryService;
+    private final com.dajanggan.domain.instance.repository.DatabaseRepository databaseRepository; // 🔥 추가
 
     public OverviewService(OverviewRepository overviewRepository, MetricsQueryService metricsQueryService,
-                           MetricRepository metricRepository){
+                           MetricRepository metricRepository,
+                           com.dajanggan.domain.instance.repository.DatabaseRepository databaseRepository){ // 🔥 추가
         this.overviewRepository = overviewRepository;
         this.metricsQueryService = metricsQueryService;
-        this.metricRepository =metricRepository;
+        this.metricRepository = metricRepository;
+        this.databaseRepository = databaseRepository; // 🔥 추가
     }
 
 
@@ -42,9 +46,13 @@ public class OverviewService {
         // 1. 사용자 레이아웃 조회
         DashboardLayoutResponse dashboard = overviewRepository.getUserLayout(instanceId);
         
+        // 🔥 레이아웃이 없으면 빈 리스트로 응답
         if (dashboard == null || dashboard.getUserLayout() == null) {
-            log.error("대시보드를 찾을 수 없음: instanceId={}", instanceId);
-            throw new DajangganException(ExceptionMessage.DASHBOARD_NOT_FOUND);
+            log.info("저장된 대시보드 없음: instanceId={} -> 빈 위젯 리스트 반환", instanceId);
+            return DashboardDataResponse.builder()
+                    .instanceId(instanceId)
+                    .widgets(Collections.emptyList())
+                    .build();
         }
 
         log.info("대시보드 조회 성공: instanceId={}", instanceId);
@@ -89,8 +97,30 @@ public class OverviewService {
 
         // databases 배열 추출
         JsonNode databasesNode = widgetNode.get("databases");
+        
+        // 🔥 databases가 없거나 비어있으면 해당 인스턴스의 모든 DB 조회
         if (databasesNode == null || !databasesNode.isArray() || databasesNode.size() == 0) {
-            throw new IllegalArgumentException("데이터베이스 정보가 없습니다");
+            log.info("databases 정보가 없음 -> 인스턴스의 모든 DB 자동 조회: instanceId={}", instanceId);
+            
+            // 인스턴스의 모든 데이터베이스 조회
+            List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(instanceId);
+            
+            if (databases.isEmpty()) {
+                throw new IllegalArgumentException("해당 인스턴스에 등록된 데이터베이스가 없습니다");
+            }
+            
+            // databases 노드 생성
+            ObjectMapper mapper = new ObjectMapper();
+            ArrayNode dbArray = mapper.createArrayNode();
+            for (Database db : databases) {
+                ObjectNode dbNode = mapper.createObjectNode();
+                dbNode.put("id", db.getDatabaseId());
+                dbNode.put("name", db.getDatabaseName());
+                dbArray.add(dbNode);
+            }
+            databasesNode = dbArray;
+            
+            log.info("자동으로 {} 개의 데이터베이스 추가됨", databases.size());
         }
 
         // metrics 배열 추출
@@ -99,14 +129,30 @@ public class OverviewService {
             throw new IllegalArgumentException("메트릭 정보가 없습니다");
         }
 
+        // options에서 category 추출 (메트릭 이름이 category.columnName 형식이 아닐 경우 사용)
+        JsonNode optionsNode = widgetNode.get("options");
+        String category = null;
+        if (optionsNode != null && optionsNode.has("category")) {
+            category = optionsNode.get("category").asText();
+        }
+
         List<String> metricColumns = new ArrayList<>();
         for (JsonNode metric : metricsNode) {
-            metricColumns.add(metric.asText());
+            String metricName = metric.asText();
+            // 메트릭 이름이 category.columnName 형식이 아니면 options의 category를 사용
+            if (!metricName.contains(".")) {
+                if (category == null || category.isEmpty()) {
+                    throw new DajangganException(ExceptionMessage.INVALID_WIDGET_STRUCTURE);
+                }
+                metricColumns.add(category + "." + metricName);
+            } else {
+                metricColumns.add(metricName);
+            }
         }
 
         String timeRange = "15m";
 
-        // 🔥 모든 DB에 대해 데이터 조회
+        //  모든 DB에 대해 데이터 조회
         List<Map<String, Object>> allData = new ArrayList<>();
 
         for (JsonNode dbNode : databasesNode) {
@@ -168,10 +214,10 @@ public class OverviewService {
                 throw new DajangganException(ExceptionMessage.INVALID_WIDGET_STRUCTURE);
             }
 
-            String category = parts[0];
+            String metricCategory = parts[0];
             String columnName = parts[1];
 
-            MetricDefinition def = metricRepository.findByCategoryAndColumnName(category, columnName)
+            MetricDefinition def = metricRepository.findByCategoryAndColumnName(metricCategory, columnName)
                     .orElseThrow(() -> new DajangganException(ExceptionMessage.METRIC_NOT_FOUND));
 
             log.debug("MetricDefinition: {}", def);
@@ -237,6 +283,72 @@ public class OverviewService {
         int result = overviewRepository.saveDashboardLayout(dashboardSaveRequest);
         if(result < 1 ){
             throw new DajangganException(ExceptionMessage.DB_QUERY_EXECUTION_FAILED);
+        }
+    }
+    
+    /**
+     * 🔥 디폴트 대시보드 생성 (인스턴스 등록 시 자동 호출)
+     * @param instanceId 인스턴스 ID
+     * @param databases 해당 인스턴스의 데이터베이스 목록
+     */
+    @Transactional
+    public void createDefaultDashboard(Long instanceId, List<Database> databases) {
+        try {
+            log.info("디폴트 대시보드 생성 시작: instanceId={}, dbCount={}", instanceId, databases.size());
+            
+            // 디폴트 템플릿 로드
+            String templateJson = loadDefaultDashboardTemplate();
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode template = mapper.readTree(templateJson);
+            
+            // databases 정보를 JSON 배열로 변환 (모든 DB 포함)
+            ArrayNode databasesArray = mapper.createArrayNode();
+            for (Database db : databases) {
+                ObjectNode dbNode = mapper.createObjectNode();
+                dbNode.put("id", db.getDatabaseId());
+                dbNode.put("name", db.getDatabaseName());
+                databasesArray.add(dbNode);
+            }
+            log.info("디폴트 대시보드에 DB 추가: dbCount={}", databases.size());
+            
+            // 각 위젯에 databases 정보 주입
+            JsonNode widgetsNode = template.get("widgets");
+            if (widgetsNode != null && widgetsNode.isArray()) {
+                for (JsonNode widget : widgetsNode) {
+                    ((ObjectNode) widget).set("databases", databasesArray);
+                }
+            }
+            
+            // DashboardSaveRequest로 변환
+            DashboardSaveRequest request = DashboardSaveRequest.builder()
+                    .instanceId(instanceId)
+                    .userLayout(template)
+                    .build();
+            
+            // DB에 저장
+            int result = overviewRepository.createDefaultDashboard(request);
+            log.info("디폴트 대시보드 생성 완료: instanceId={}, result={}", instanceId, result);
+            
+        } catch (Exception e) {
+            log.error("디폴트 대시보드 생성 실패: instanceId={}", instanceId, e);
+            // 디폴트 대시보드 생성 실패해도 인스턴스 등록은 진행
+            // 사용자가 나중에 수동으로 대시보드를 만들 수 있음
+        }
+    }
+    
+    /**
+     * 디폴트 대시보드 템플릿 로드
+     */
+    private String loadDefaultDashboardTemplate() {
+        try {
+            return new String(
+                getClass().getClassLoader()
+                    .getResourceAsStream("default-dashboard-template.json")
+                    .readAllBytes()
+            );
+        } catch (Exception e) {
+            log.error("디폴트 템플릿 로드 실패", e);
+            throw new RuntimeException("디폴트 대시보드 템플릿을 찾을 수 없습니다", e);
         }
     }
 

@@ -31,6 +31,13 @@
             SET user_layout = #{userLayout, jdbcType=OTHER},
                 updated_at = now()
     </insert>
+    
+    <!-- 🔥 디폴트 대시보드 생성 (인스턴스 등록 시 자동 호출) -->
+    <insert id="createDefaultDashboard" parameterType="com.dajanggan.domain.overview.dto.DashboardSaveRequest">
+        INSERT INTO user_dashboard (instance_id, user_layout)
+        VALUES (#{instanceId}, #{userLayout, jdbcType=OTHER})
+        ON CONFLICT (instance_id) DO NOTHING
+    </insert>
 
     <!-- 대시보드 조회 -->
     <select id="getUserLayout"
