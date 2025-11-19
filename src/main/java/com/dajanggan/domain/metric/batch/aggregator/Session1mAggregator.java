@@ -83,7 +83,10 @@ public class Session1mAggregator {
             COUNT(*) FILTER (WHERE state = 'idle') as idle_sessions,
             COUNT(*) FILTER (WHERE state = 'idle in transaction') as idle_in_txn_sessions,
             COUNT(*) FILTER (WHERE state = 'idle in transaction (aborted)') as idle_in_txn_aborted_sessions,
-            COUNT(*) FILTER (WHERE wait_event_type IS NOT NULL) as waiting_sessions,
+            COUNT(*) FILTER (
+                WHERE state NOT IN ('idle', 'idle in transaction (aborted)')
+                  AND wait_event_type IN ('Lock', 'LWLock', 'IO', 'Client')
+            ) AS waiting_sessions,
             
             -- Wait Event 카운트
             COUNT(*) FILTER (WHERE wait_event_type = 'Lock') as lock_wait_count,

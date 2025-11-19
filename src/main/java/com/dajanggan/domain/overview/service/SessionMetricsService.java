@@ -53,8 +53,9 @@ public class SessionMetricsService {
         long avgUsed = ((Number) result.get("avg_used_connections")).longValue();
         int maxConn = ((Number) result.get("max_connections_val")).intValue();
 
-        BigDecimal usagePercent = maxConn > 0 
-                ? BigDecimal.valueOf((double) avgActive / maxConn * 100).setScale(2, RoundingMode.HALF_UP)
+        BigDecimal usagePercent = maxConn > 0
+                ? BigDecimal.valueOf((double) avgUsed / maxConn * 100)  // avgActive → avgUsed로 변경
+                .setScale(2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
         return new SessionStats(avgActive, avgUsed, maxConn, usagePercent);

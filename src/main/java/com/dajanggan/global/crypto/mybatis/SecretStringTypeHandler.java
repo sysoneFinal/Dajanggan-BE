@@ -17,7 +17,6 @@ public class SecretStringTypeHandler extends BaseTypeHandler<String> {
     // 부팅 시 Config에서 호출
     public static void setCrypto(AesGcmService svc) { 
         crypto = svc;
-        log.info("SecretStringTypeHandler: AesGcmService initialized");
     }
 
     @Override
@@ -30,7 +29,6 @@ public class SecretStringTypeHandler extends BaseTypeHandler<String> {
         try {
             String encrypted = crypto.encryptString(parameter);
             ps.setString(i, encrypted);
-            log.debug("Encrypted parameter at index {}", i);
         } catch (Exception e) {
             log.error("Encryption failed: {}", e.getMessage(), e);
             throw new SQLException("Encryption failed", e);
@@ -42,15 +40,13 @@ public class SecretStringTypeHandler extends BaseTypeHandler<String> {
         String v = rs.getString(columnName);
         if (v == null) return null;
         if (crypto == null) {
-            log.error("AesGcmService not initialized during getNullableResult");
             throw new SQLException("AesGcmService not initialized");
         }
         try {
             String decrypted = crypto.decryptToString(v);
-            log.debug("Decrypted column '{}' successfully", columnName);
             return decrypted;
         } catch (Exception e) {
-            log.error("Decryption failed for column '{}': {} - Data: {}", 
+            log.error("Decryption failed for column '{}': {} - Data: {}",
                      columnName, e.getMessage(), v.length() > 50 ? v.substring(0, 50) + "..." : v);
             throw new SQLException("Decryption failed for column: " + columnName, e);
         }
@@ -66,7 +62,6 @@ public class SecretStringTypeHandler extends BaseTypeHandler<String> {
         }
         try {
             String decrypted = crypto.decryptToString(v);
-            log.debug("Decrypted column index {} successfully", columnIndex);
             return decrypted;
         } catch (Exception e) {
             log.error("Decryption failed for column index {}: {} - Data: {}", 
@@ -80,12 +75,10 @@ public class SecretStringTypeHandler extends BaseTypeHandler<String> {
         String v = cs.getString(columnIndex);
         if (v == null) return null;
         if (crypto == null) {
-            log.error("AesGcmService not initialized during getNullableResult");
             throw new SQLException("AesGcmService not initialized");
         }
         try {
             String decrypted = crypto.decryptToString(v);
-            log.debug("Decrypted callable statement column {} successfully", columnIndex);
             return decrypted;
         } catch (Exception e) {
             log.error("Decryption failed for callable statement column {}: {}", 

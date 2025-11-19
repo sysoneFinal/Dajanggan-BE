@@ -5,6 +5,7 @@ import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.dto.*;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
+import com.dajanggan.domain.overview.service.OverviewService; // 🔥 추가
 import com.dajanggan.global.crypto.AesGcmService;
 import com.dajanggan.global.exception.ExceptionMessage;
 import com.dajanggan.global.exception.NotFoundException;
@@ -25,6 +26,7 @@ public class InstanceService {
     private final InstanceRepository instanceRepository;
     private final DatabaseRepository databaseRepository;
     private final AesGcmService aesGcmService;
+    private final OverviewService overviewService; // 🔥 추가
 
     // (cud는 도메인 반환)
     @Transactional
@@ -55,6 +57,7 @@ public class InstanceService {
             log.info("조회된 DB 개수: {}, DB 목록: {}", dbNames.size(), dbNames);
 
             // 4. Database 레코드 생성
+            List<Database> createdDatabases = new ArrayList<>();
             for (String dbName : dbNames) {
                 Database database = new Database();
                 database.setInstanceId(entity.getInstanceId());
@@ -64,6 +67,14 @@ public class InstanceService {
                 log.info("DB 저장 시도: instanceId={}, dbName={}", entity.getInstanceId(), dbName);
                 databaseRepository.insert(database);
                 log.info("DB 저장 완료: databaseId={}", database.getDatabaseId());
+                
+                createdDatabases.add(database);
+            }
+
+            // 🔥 5. 디폴트 대시보드 자동 생성
+            if (!createdDatabases.isEmpty()) {
+                overviewService.createDefaultDashboard(entity.getInstanceId(), createdDatabases);
+                log.info("디폴트 대시보드 생성 완료");
             }
 
             log.info("=== 인스턴스 등록 완료 ===");
