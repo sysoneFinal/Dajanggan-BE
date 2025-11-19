@@ -105,6 +105,19 @@ public class AlarmRuleService {
      */
     @Transactional
     public Long createRule(AlarmRuleDto.CreateRequest request) {
+        // 중복 체크: 동일한 instanceId, databaseId, metricType 조합이 이미 존재하는지 확인
+        int duplicateCount = alarmRuleMapper.countDuplicateRule(
+                request.getInstanceId(),
+                request.getDatabaseId(),
+                request.getMetricType()
+        );
+
+        if (duplicateCount > 0) {
+            log.warn("중복 알림 규칙 생성 시도 - instanceId: {}, databaseId: {}, metricType: {}",
+                    request.getInstanceId(), request.getDatabaseId(), request.getMetricType());
+            throw new IllegalArgumentException("동일한 인스턴스, 데이터베이스, 지표를 가진 알림 규칙이 이미 존재합니다.");
+        }
+
         // levels를 JSON 문자열로 변환
         String levelsJson = null;
         if (request.getLevels() != null) {
@@ -149,7 +162,7 @@ public class AlarmRuleService {
             throw new IllegalArgumentException("알림 규칙을 찾을 수 없습니다: " + request.getAlarmRuleId());
         }
 
-        // ⭐ levels를 JSON 문자열로 변환
+        // levels를 JSON 문자열로 변환
         String levelsJson = null;
         if (request.getLevels() != null) {
             try {
@@ -160,11 +173,12 @@ public class AlarmRuleService {
             }
         }
 
-        // ⭐ updateRuleLevels 호출 (updateRule이 아닌!)
+        // updateRuleLevels 호출 (updateRule이 아닌!)
         AlarmRule rule = AlarmRule.builder()
                 .alarmRuleId(request.getAlarmRuleId())
                 .enabled(request.getEnabled() != null ? request.getEnabled() : existing.getEnabled())
                 .aggregationType(request.getAggregationType() != null ? request.getAggregationType() : existing.getAggregationType())
+                .operator(request.getOperator() != null ? request.getOperator() : existing.getOperator())  // operator 업데이트 지원
                 .levels(levelsJson)
                 .build();
 
