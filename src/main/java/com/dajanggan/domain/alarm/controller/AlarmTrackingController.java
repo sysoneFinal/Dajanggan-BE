@@ -2,6 +2,7 @@ package com.dajanggan.domain.alarm.controller;
 
 import com.dajanggan.domain.alarm.dto.AlarmTrackingDto;
 import com.dajanggan.domain.alarm.service.AlarmTrackingService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @Slf4j
+@Tag(name = "Alarm-Tracking", description = "alarm 트래킹 페이지 관련 API")
 @RestController
 @RequestMapping("/api/alarms/tracking")
 @RequiredArgsConstructor

@@ -2,6 +2,7 @@ package com.dajanggan.domain.vacuum.controller;
 
 import com.dajanggan.domain.vacuum.dto.VacuumRiskDto;
 import com.dajanggan.domain.vacuum.service.VacuumRiskService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -12,6 +13,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 @Slf4j
+@Tag(name = "Vacuum-Risk", description = "vacuum risk 페이지 관련 API")
 @RestController
 @RequestMapping("/api/vacuum/risk")
 @RequiredArgsConstructor

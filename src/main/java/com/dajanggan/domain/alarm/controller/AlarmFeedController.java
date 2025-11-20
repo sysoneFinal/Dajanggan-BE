@@ -2,12 +2,14 @@ package com.dajanggan.domain.alarm.controller;
 
 import com.dajanggan.domain.alarm.dto.AlarmFeedDto;
 import com.dajanggan.domain.alarm.service.AlarmFeedService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
+@Tag(name = "Alarm-Feed", description = "alarm 피드 페이지 관련 API")
 @RestController
 @RequestMapping("/api/alarms/feeds")
 @RequiredArgsConstructor
