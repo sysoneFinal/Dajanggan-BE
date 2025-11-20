@@ -93,8 +93,16 @@ public interface QueryMetricsRawService {
     /**
      *  ExecutionStatus용 쿼리별 집계 통계
      * @param databaseId 데이터베이스 ID
-     * @param days 조회 기간 (일 단위)
+     * @param hours 조회 기간 (일 단위)
      * @return 쿼리별 집계 통계 목록
      */
-    List<Map<String, Object>> getExecutionStats(Long databaseId, Integer days);
+    List<Map<String, Object>> getExecutionStats(Long databaseId, Integer hours);
+
+    /**
+     * 시간대별 쿼리 수 집계
+     * @param databaseId 데이터베이스 ID
+     * @param hours 조회 기간 (시간 단위)
+     * @return 시간대별 쿼리 수 목록
+     */
+    List<Map<String, Object>> getHourlyDistribution(Long databaseId, Integer hours);
 }
