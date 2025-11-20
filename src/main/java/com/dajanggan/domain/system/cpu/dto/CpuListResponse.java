@@ -19,3 +19,5 @@ public class CpuListResponse {
     private Integer total;
 }
 
+
+

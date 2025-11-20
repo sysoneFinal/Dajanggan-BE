@@ -388,7 +388,7 @@
         FROM cpu_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at ASC
+        ORDER BY collected_at DESC
     </select>
 
     <!-- CPU 리스트 조회 (필터링) -->
@@ -418,18 +418,18 @@
     <!-- CPU Agg 5분 데이터 조회 (시간 범위) -->
     <select id="selectCpuAgg5mByTimeRange" resultMap="cpuAgg5mResultMap">
         SELECT *
-        FROM cpu_agg_1m_5m
+        FROM cpu_agg_5m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
+          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
         ORDER BY time_bucket ASC
     </select>
 
     <!-- CPU Agg 5분 데이터 조회 (시간 범위 + LIMIT) -->
     <select id="selectCpuAgg5mByTimeRangeWithLimit" resultMap="cpuAgg5mResultMap">
         SELECT *
-        FROM cpu_agg_1m_5m
+        FROM cpu_agg_5m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
+          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
         ORDER BY time_bucket DESC
             LIMIT #{limit}
     </select>
@@ -447,18 +447,18 @@
     <!-- CPU Agg 30분 데이터 조회 (시간 범위) -->
     <select id="selectCpuAgg30mByTimeRange" resultMap="cpuAgg30mResultMap">
         SELECT *
-        FROM cpu_agg_1m_30m
+        FROM cpu_agg_30m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
+          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
         ORDER BY time_bucket ASC
     </select>
 
     <!-- CPU Agg 30분 데이터 조회 (시간 범위 + LIMIT) -->
     <select id="selectCpuAgg30mByTimeRangeWithLimit" resultMap="cpuAgg30mResultMap">
         SELECT *
-        FROM cpu_agg_1m_30m
+        FROM cpu_agg_30m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
+          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
         ORDER BY time_bucket DESC
             LIMIT #{limit}
     </select>

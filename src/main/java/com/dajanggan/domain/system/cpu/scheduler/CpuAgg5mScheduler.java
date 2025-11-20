@@ -124,7 +124,8 @@ public class CpuAgg5mScheduler {
 
         if (results.isEmpty() || results.get(0).get("record_count") == null 
                 || ((Number) results.get(0).get("record_count")).longValue() == 0) {
-            log.debug("집계할 데이터 없음: instanceId={}, timeBucket={}", instanceId, timeBucket);
+            log.warn("집계할 데이터 없음: instanceId={}, timeBucket={}, startTime={}, endTime={}", 
+                    instanceId, timeBucket, startTime, endTime);
             return;
         }
 
@@ -134,10 +135,10 @@ public class CpuAgg5mScheduler {
         CpuAgg5m agg5m = CpuAgg5m.builder()
                 .instanceId(instanceId)
                 .timeBucket(timeBucket)
-                .avgTotalConnections(getDouble(aggData, "avg_total_connections"))
-                .avgActiveConnections(getDouble(aggData, "avg_active_connections"))
-                .avgIdleConnections(getDouble(aggData, "avg_idle_connections"))
-                .avgIdleInTransaction(getDouble(aggData, "avg_idle_in_transaction"))
+                .avgTotalConnections(getLong(aggData, "avg_total_connections"))
+                .avgActiveConnections(getLong(aggData, "avg_active_connections"))
+                .avgIdleConnections(getLong(aggData, "avg_idle_connections"))
+                .avgIdleInTransaction(getLong(aggData, "avg_idle_in_transaction"))
                 .avgWaitingSessions(getDouble(aggData, "avg_waiting_sessions"))
                 .avgWaitingForLock(getDouble(aggData, "avg_waiting_for_lock"))
                 .avgWaitingForIo(getDouble(aggData, "avg_waiting_for_io"))
@@ -152,18 +153,15 @@ public class CpuAgg5mScheduler {
                 .avgParallelWorker(getDouble(aggData, "avg_parallel_worker"))
                 .avgBackgroundWorker(getDouble(aggData, "avg_background_worker"))
                 .avgLongRunningQueries(getDouble(aggData, "avg_long_running_queries"))
-                .maxQueryDurationSec(getDouble(aggData, "max_query_duration_sec"))
                 .totalXactCommit(getLong(aggData, "total_xact_commit"))
                 .totalXactRollback(getLong(aggData, "total_xact_rollback"))
-                .avgXactCommitRate(getDouble(aggData, "avg_xact_commit_rate"))
-                .avgXactRollbackRate(getDouble(aggData, "avg_xact_rollback_rate"))
                 .recordCount(getLong(aggData, "record_count"))
                 .build();
 
         // CPU 5분 집계 데이터 저장
         cpuMapper.insertAgg5m(agg5m);
         
-        log.debug("CPU 5분 집계 완료: instanceId={}, timeBucket={}, records={}", 
+        log.info("CPU 5분 집계 완료: instanceId={}, timeBucket={}, records={}", 
                 instanceId, timeBucket, agg5m.getRecordCount());
     }
 

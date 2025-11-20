@@ -60,13 +60,11 @@ public class CpuDto {
     public static class Charts {
         private OsCpuUsageTrend10m osCpuUsageTrend10m;                     // 차트1
         private PostgresqlTpsTrend10m postgresqlTpsTrend10m;               // 차트2
-        private PostgresqlActiveConnections10m postgresqlActiveConnections10m; // 차트3
-        private LoadAverageTrend15m loadAverageTrend15m;                 // 차트4
-        private ConnectionStatus1h connectionStatus1h;                 // 차트5
-        private TpsDailyTrend24h tpsDailyTrend24h;                       // 차트6
-        private WaitEventDistribution15m waitEventDistribution15m;       // 차트7
-        private BackendTypeTrend24h backendTypeTrend24h;                 // 차트8
-        private ErrorRateTrend15m errorRateTrend15m;                     // 차트9
+        private LoadAverageTrend15m loadAverageTrend15m;                 // 차트3
+        private ConnectionStatus1h connectionStatus1h;                 // 차트4
+        private WaitEventDistribution15m waitEventDistribution15m;       // 차트5
+        private BackendTypeTrend24h backendTypeTrend24h;                 // 차트6
+        private ErrorRateTrend15m errorRateTrend15m;                     // 차트7
     }
 
     // ========================================
@@ -351,20 +349,7 @@ public class CpuDto {
     }
 
     /**
-     * 차트3: PostgreSQL 활성 연결 (최근 10분)
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class PostgresqlActiveConnections10m {
-        private List<String> categories;
-        private List<Double> osCpuUsage;
-        private List<Integer> activeConnections;
-    }
-
-    /**
-     * 차트4: Load Average 추이 (최근 15분)
+     * 차트3: Load Average 추이 (최근 15분)
      */
     @Data
     @Builder
@@ -379,7 +364,7 @@ public class CpuDto {
     }
 
     /**
-     * 차트5: 연결 상태 분포 (1시간)
+     * 차트4: 연결 상태 분포 (1시간)
      */
     @Data
     @Builder
@@ -393,20 +378,7 @@ public class CpuDto {
     }
 
     /**
-     * 차트6: TPS 일일 추이 (24시간)
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class TpsDailyTrend24h {
-        private List<String> categories;
-        private List<Integer> commitTps;
-        private List<Integer> rollbackTps;
-    }
-
-    /**
-     * 차트7: Wait Event 유형별 분포 (최근 15분)
+     * 차트5: Wait Event 유형별 분포 (최근 15분)
      */
     @Data
     @Builder

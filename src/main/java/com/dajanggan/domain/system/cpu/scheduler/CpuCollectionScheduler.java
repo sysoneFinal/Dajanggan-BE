@@ -1,5 +1,6 @@
 package com.dajanggan.domain.system.cpu.scheduler;
 
+import com.dajanggan.domain.common.util.MetricCollectionUtils;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.system.cpu.domain.CpuAgg;
@@ -38,6 +39,7 @@ public class CpuCollectionScheduler {
     @PostConstruct
     public void init() {
         log.info("========== CpuCollectionScheduler 초기화 완료 ==========");
+        log.info("스케줄러 등록 확인: @Scheduled 메서드가 1분마다 실행됩니다.");
     }
 
     /**
@@ -53,6 +55,11 @@ public class CpuCollectionScheduler {
             
             List<Long> instanceIds = cpuMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
+            
+            if (instanceIds.isEmpty()) {
+                log.warn("활성 인스턴스가 없습니다. DB의 instance 테이블에 is_active=true인 인스턴스가 있는지 확인하세요.");
+                return;
+            }
 
             int successCount = 0;
             int failCount = 0;
@@ -92,28 +99,65 @@ public class CpuCollectionScheduler {
         // 4. pg_stat_database에서 트랜잭션 통계 수집
         Map<String, Object> databaseData = collectFromPgStatDatabase(jdbcTemplate);
 
-        // 5. Raw 데이터 생성 및 저장
+        // 5. 이전 Raw 데이터 조회 (트랜잭션 증분 계산용) - Raw 저장 전에 조회
+        CpuRaw previousRaw = cpuMapper.selectPreviousRaw(instanceId);
+
+        // 6. Raw 데이터 생성 및 저장
         CpuRaw raw = buildCpuRaw(instanceId, collectedAt, activityData, databaseData);
         cpuMapper.insertRaw(raw);
         log.debug("Raw 데이터 저장 완료: instanceId={}", instanceId);
+        
+        // 디버깅: Backend 타입별 카운트 로깅
+        log.info("Raw 데이터 저장 - Backend 타입별 카운트: instanceId={}, client_backend={}, autovacuum_worker={}, parallel_worker={}, background_worker={}",
+                instanceId,
+                raw.getClientBackendCount(),
+                raw.getAutovacuumWorkerCount(),
+                raw.getParallelWorkerCount(),
+                raw.getBackgroundWorkerCount());
 
-        // 6. 이전 Raw 데이터 조회 (트랜잭션 증분 계산용)
-        CpuRaw previousRaw = cpuMapper.selectPreviousRaw(instanceId);
-
-        // 7. Agg 데이터 생성 및 저장
-        CpuAgg agg = buildCpuAgg(instanceId, collectedAt, raw, previousRaw);
-        cpuMapper.insertAgg(agg);
-        log.debug("Agg 데이터 저장 완료: instanceId={}", instanceId);
-
-        log.info("메트릭 처리 완료: instanceId={}, totalConn={}, activeConn={}, tps={}", 
-                instanceId, raw.getTotalConnections(), raw.getActiveConnections(), 
-                agg.getXactCommitRate());
+        // 7. Agg 데이터 생성 및 저장 (이전 데이터가 있을 때만)
+        if (previousRaw != null) {
+            CpuAgg agg = buildCpuAgg(instanceId, collectedAt, raw, previousRaw);
+            cpuMapper.insertAgg(agg);
+            log.debug("Agg 데이터 저장 완료: instanceId={}", instanceId);
+            
+            // 디버깅: Agg 데이터의 Backend 타입별 평균값 로깅
+            log.info("Agg 데이터 저장 - Backend 타입별 평균: instanceId={}, avg_client_backend={}, avg_autovacuum_worker={}, avg_parallel_worker={}, avg_background_worker={}",
+                    instanceId,
+                    agg.getAvgClientBackend(),
+                    agg.getAvgAutovacuumWorker(),
+                    agg.getAvgParallelWorker(),
+                    agg.getAvgBackgroundWorker());
+            
+            log.info("메트릭 처리 완료: instanceId={}, totalConn={}, activeConn={}, tps={}", 
+                    instanceId, raw.getTotalConnections(), raw.getActiveConnections(), 
+                    agg.getXactCommitRate());
+        } else {
+            log.debug("첫 번째 수집: 이전 데이터가 없어 집계 데이터 생성을 스킵합니다. instanceId={}", instanceId);
+            log.info("메트릭 처리 완료: instanceId={}, totalConn={}, activeConn={}", 
+                    instanceId, raw.getTotalConnections(), raw.getActiveConnections());
+        }
     }
 
     /**
      * pg_stat_activity에서 데이터 수집
      */
     private Map<String, Object> collectFromPgStatActivity(JdbcTemplate jdbcTemplate) {
+        // 디버깅: 실제 backend_type 값 확인
+        String debugSql = """
+            SELECT DISTINCT backend_type, COUNT(*) as count
+            FROM pg_stat_activity
+            WHERE pid != pg_backend_pid()
+            GROUP BY backend_type
+            ORDER BY backend_type
+            """;
+        try {
+            List<Map<String, Object>> backendTypes = jdbcTemplate.queryForList(debugSql);
+            log.debug("pg_stat_activity의 backend_type 분포: {}", backendTypes);
+        } catch (Exception e) {
+            log.warn("backend_type 디버깅 쿼리 실패: {}", e.getMessage());
+        }
+        
         String sql = """
             SELECT 
                 -- 전체 연결 통계
@@ -150,7 +194,16 @@ public class CpuCollectionScheduler {
             WHERE pid != pg_backend_pid()
             """;
 
-        return jdbcTemplate.queryForMap(sql);
+        Map<String, Object> result = jdbcTemplate.queryForMap(sql);
+        
+        // 디버깅: Backend 타입별 카운트 로깅
+        log.debug("Backend 타입별 카운트 - client_backend: {}, autovacuum_worker: {}, parallel_worker: {}, background_worker: {}",
+                result.get("client_backend_count"),
+                result.get("autovacuum_worker_count"),
+                result.get("parallel_worker_count"),
+                result.get("background_worker_count"));
+        
+        return result;
     }
 
     /**
@@ -177,29 +230,29 @@ public class CpuCollectionScheduler {
         return CpuRaw.builder()
                 .instanceId(instanceId)
                 .collectedAt(collectedAt)
-                .totalConnections(getLong(activityData, "total_connections"))
-                .activeConnections(getLong(activityData, "active_connections"))
-                .idleConnections(getLong(activityData, "idle_connections"))
-                .idleInTransaction(getLong(activityData, "idle_in_transaction"))
-                .waitingSessions(getLong(activityData, "waiting_sessions"))
-                .waitingForLock(getLong(activityData, "waiting_for_lock"))
-                .waitingForIo(getLong(activityData, "waiting_for_io"))
-                .waitEventClient(getLong(activityData, "wait_event_client"))
-                .waitEventActivity(getLong(activityData, "wait_event_activity"))
-                .waitEventBufferpin(getLong(activityData, "wait_event_bufferpin"))
-                .waitEventLwlock(getLong(activityData, "wait_event_lwlock"))
-                .waitEventTimeout(getLong(activityData, "wait_event_timeout"))
-                .waitEventIpc(getLong(activityData, "wait_event_ipc"))
-                .clientBackendCount(getLong(activityData, "client_backend_count"))
-                .autovacuumWorkerCount(getLong(activityData, "autovacuum_worker_count"))
-                .parallelWorkerCount(getLong(activityData, "parallel_worker_count"))
-                .backgroundWorkerCount(getLong(activityData, "background_worker_count"))
-                .longRunningQueries(getLong(activityData, "long_running_queries"))
-                .maxQueryDurationSec(getDouble(activityData, "max_query_duration_sec"))
+                .totalConnections(MetricCollectionUtils.getLongValue(activityData, "total_connections"))
+                .activeConnections(MetricCollectionUtils.getLongValue(activityData, "active_connections"))
+                .idleConnections(MetricCollectionUtils.getLongValue(activityData, "idle_connections"))
+                .idleInTransaction(MetricCollectionUtils.getLongValue(activityData, "idle_in_transaction"))
+                .waitingSessions(MetricCollectionUtils.getLongValue(activityData, "waiting_sessions"))
+                .waitingForLock(MetricCollectionUtils.getLongValue(activityData, "waiting_for_lock"))
+                .waitingForIo(MetricCollectionUtils.getLongValue(activityData, "waiting_for_io"))
+                .waitEventClient(MetricCollectionUtils.getLongValue(activityData, "wait_event_client"))
+                .waitEventActivity(MetricCollectionUtils.getLongValue(activityData, "wait_event_activity"))
+                .waitEventBufferpin(MetricCollectionUtils.getLongValue(activityData, "wait_event_bufferpin"))
+                .waitEventLwlock(MetricCollectionUtils.getLongValue(activityData, "wait_event_lwlock"))
+                .waitEventTimeout(MetricCollectionUtils.getLongValue(activityData, "wait_event_timeout"))
+                .waitEventIpc(MetricCollectionUtils.getLongValue(activityData, "wait_event_ipc"))
+                .clientBackendCount(MetricCollectionUtils.getLongValue(activityData, "client_backend_count"))
+                .autovacuumWorkerCount(MetricCollectionUtils.getLongValue(activityData, "autovacuum_worker_count"))
+                .parallelWorkerCount(MetricCollectionUtils.getLongValue(activityData, "parallel_worker_count"))
+                .backgroundWorkerCount(MetricCollectionUtils.getLongValue(activityData, "background_worker_count"))
+                .longRunningQueries(MetricCollectionUtils.getLongValue(activityData, "long_running_queries"))
+                .maxQueryDurationSec(MetricCollectionUtils.getDoubleValue(activityData, "max_query_duration_sec"))
                 // pg_stat_database 트랜잭션 통계
-                .databaseName(getString(databaseData, "database_name"))
-                .xactCommit(getLong(databaseData, "xact_commit"))
-                .xactRollback(getLong(databaseData, "xact_rollback"))
+                .databaseName(MetricCollectionUtils.getStringValue(databaseData, "database_name"))
+                .xactCommit(MetricCollectionUtils.getLongValue(databaseData, "xact_commit"))
+                .xactRollback(MetricCollectionUtils.getLongValue(databaseData, "xact_rollback"))
                 .build();
     }
 
@@ -218,8 +271,11 @@ public class CpuCollectionScheduler {
         Double xactRollbackRate = 0.0;
         
         if (previousRaw != null) {
-            deltaXactCommit = raw.getXactCommit() - previousRaw.getXactCommit();
-            deltaXactRollback = raw.getXactRollback() - previousRaw.getXactRollback();
+            // stats_reset 대응을 위한 안전한 증분 계산
+            deltaXactCommit = MetricCollectionUtils.calculateSafeDelta(
+                    raw.getXactCommit(), previousRaw.getXactCommit());
+            deltaXactRollback = MetricCollectionUtils.calculateSafeDelta(
+                    raw.getXactRollback(), previousRaw.getXactRollback());
             
             // 수집 간격(초) 계산 (기본 60초)
             long intervalSeconds = ChronoUnit.SECONDS.between(
@@ -285,48 +341,4 @@ public class CpuCollectionScheduler {
         }
     }
 
-    /**
-     * Map에서 Long 값 추출 (null-safe)
-     */
-    private Long getLong(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return 0L;
-        }
-        if (value instanceof Long) {
-            return (Long) value;
-        }
-        if (value instanceof Integer) {
-            return ((Integer) value).longValue();
-        }
-        return Long.parseLong(value.toString());
-    }
-
-    /**
-     * Map에서 Double 값 추출 (null-safe)
-     */
-    private Double getDouble(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return 0.0;
-        }
-        if (value instanceof Double) {
-            return (Double) value;
-        }
-        if (value instanceof Float) {
-            return ((Float) value).doubleValue();
-        }
-        if (value instanceof Number) {
-            return ((Number) value).doubleValue();
-        }
-        return Double.parseDouble(value.toString());
-    }
-
-    /**
-     * Map에서 String 값 추출 (null-safe)
-     */
-    private String getString(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
-    }
 }
