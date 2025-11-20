@@ -16,7 +16,6 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DiskIoListResponse {
-    private List<HighFsyncItem> highFsyncList;
     private List<LowCacheHitItem> lowCacheHitList;
     private Long totalCount;
 
@@ -24,21 +23,8 @@ public class DiskIoListResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class HighFsyncItem {
-        private OffsetDateTime collectedAt;
-        private Double fsyncRate;
-        private Double bufferHitRatio;
-        private Double avgLatency;
-        private String status;
-        private String backendType;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class LowCacheHitItem {
-        private OffsetDateTime collectedAt;
+        private String collectedAt;
         private Double bufferHitRatio;
         private Long physicalReads;
         private Long cacheHits;
@@ -47,4 +33,5 @@ public class DiskIoListResponse {
         private String databaseName;
     }
 }
+
 

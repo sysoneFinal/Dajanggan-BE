@@ -1,5 +1,6 @@
 package com.dajanggan.domain.system.disk.scheduler;
 
+import com.dajanggan.domain.common.util.MetricCollectionUtils;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.system.disk.domain.DiskIoAgg;
@@ -56,6 +57,11 @@ public class DiskIoCollectionScheduler {
             
             List<Long> instanceIds = diskIoMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
+            
+            if (instanceIds.isEmpty()) {
+                log.warn("활성 인스턴스가 없습니다. DB의 instance 테이블에 is_active=true인 인스턴스가 있는지 확인하세요.");
+                return;
+            }
 
             int successCount = 0;
             int failCount = 0;
@@ -228,23 +234,24 @@ public class DiskIoCollectionScheduler {
         return DiskIoRaw.builder()
                 .instanceId(instanceId)
                 .collectedAt(collectedAt)
-                .backendType(getString(data, "backend_type"))
-                .object(getString(data, "object"))
-                .context(getString(data, "context"))
-                .reads(getLong(data, "reads"))
-                .readTime(getDouble(data, "read_time"))
-                .writes(getLong(data, "writes"))
-                .writeTime(getDouble(data, "write_time"))
-                .writebacks(getLong(data, "writebacks"))
-                .writebackTime(getDouble(data, "writeback_time"))
-                .extendCount(getLong(data, "extends"))
-                .extendTime(getDouble(data, "extend_time"))
-                .opBytes(getLong(data, "op_bytes"))
-                .hits(getLong(data, "hits"))
-                .evictions(getLong(data, "evictions"))
-                .reuses(getLong(data, "reuses"))
-                .fsyncs(getLong(data, "fsyncs"))
-                .fsyncTime(getDouble(data, "fsync_time"))
+                .backendType(MetricCollectionUtils.getStringValue(data, "backend_type"))
+                .object(MetricCollectionUtils.getStringValue(data, "object"))
+                .context(MetricCollectionUtils.getStringValue(data, "context"))
+                .reads(MetricCollectionUtils.getLongValue(data, "reads"))
+                .readTime(MetricCollectionUtils.getDoubleValue(data, "read_time"))
+                .writes(MetricCollectionUtils.getLongValue(data, "writes"))
+                .writeTime(MetricCollectionUtils.getDoubleValue(data, "write_time"))
+                .writebacks(MetricCollectionUtils.getLongValue(data, "writebacks"))
+                .writebackTime(MetricCollectionUtils.getDoubleValue(data, "writeback_time"))
+                // PostgreSQL pg_stat_io에서는 'extends' 컬럼을 사용하지만, Domain에서는 'extendCount' 필드 사용
+                .extendCount(MetricCollectionUtils.getLongValue(data, "extends"))
+                .extendTime(MetricCollectionUtils.getDoubleValue(data, "extend_time"))
+                .opBytes(MetricCollectionUtils.getLongValue(data, "op_bytes"))
+                .hits(MetricCollectionUtils.getLongValue(data, "hits"))
+                .evictions(MetricCollectionUtils.getLongValue(data, "evictions"))
+                .reuses(MetricCollectionUtils.getLongValue(data, "reuses"))
+                .fsyncs(MetricCollectionUtils.getLongValue(data, "fsyncs"))
+                .fsyncTime(MetricCollectionUtils.getDoubleValue(data, "fsync_time"))
                 .statsReset(getOffsetDateTime(data, "stats_reset"))
                 .build();
     }
@@ -258,9 +265,9 @@ public class DiskIoCollectionScheduler {
                 .instanceId(instanceId)
                 .collectedAt(collectedAt)
                 .backendType("database")  // pg_stat_database는 backend_type을 'database'로 설정
-                .databaseName(getString(data, "database_name"))
-                .blksRead(getLong(data, "blks_read"))
-                .blksHit(getLong(data, "blks_hit"))
+                .databaseName(MetricCollectionUtils.getStringValue(data, "database_name"))
+                .blksRead(MetricCollectionUtils.getLongValue(data, "blks_read"))
+                .blksHit(MetricCollectionUtils.getLongValue(data, "blks_hit"))
                 .build();
     }
 
@@ -273,10 +280,10 @@ public class DiskIoCollectionScheduler {
                 .instanceId(instanceId)
                 .collectedAt(collectedAt)
                 .backendType("bgwriter")  // pg_stat_bgwriter는 backend_type을 'bgwriter'로 설정
-                .buffersCheckpoint(getLong(data, "buffers_checkpoint"))
-                .buffersClean(getLong(data, "buffers_clean"))
-                .buffersBackend(getLong(data, "buffers_backend"))
-                .buffersBackendFsync(getLong(data, "buffers_backend_fsync"))
+                .buffersCheckpoint(MetricCollectionUtils.getLongValue(data, "buffers_checkpoint"))
+                .buffersClean(MetricCollectionUtils.getLongValue(data, "buffers_clean"))
+                .buffersBackend(MetricCollectionUtils.getLongValue(data, "buffers_backend"))
+                .buffersBackendFsync(MetricCollectionUtils.getLongValue(data, "buffers_backend_fsync"))
                 .statsReset(getOffsetDateTime(data, "stats_reset"))
                 .build();
     }
@@ -286,27 +293,51 @@ public class DiskIoCollectionScheduler {
      */
     private DiskIoAgg calculateAggregation(DiskIoRaw current, DiskIoRaw previous, 
                                             OffsetDateTime collectedAt) {
-        // 증분 계산 (current - previous)
-        long deltaReads = safeMinus(current.getReads(), previous.getReads());
-        double deltaReadTime = safeMinus(current.getReadTime(), previous.getReadTime());
-        long deltaWrites = safeMinus(current.getWrites(), previous.getWrites());
-        double deltaWriteTime = safeMinus(current.getWriteTime(), previous.getWriteTime());
-        long deltaWritebacks = safeMinus(current.getWritebacks(), previous.getWritebacks());
-        long deltaExtendCount = safeMinus(current.getExtendCount(), previous.getExtendCount());
-        long deltaHits = safeMinus(current.getHits(), previous.getHits());
-        long deltaEvictions = safeMinus(current.getEvictions(), previous.getEvictions());
-        long deltaFsyncs = safeMinus(current.getFsyncs(), previous.getFsyncs());
-        double deltaFsyncTime = safeMinus(current.getFsyncTime(), previous.getFsyncTime());
+        // 증분 계산 (stats_reset 대응을 위한 안전한 계산)
+        long deltaReads = MetricCollectionUtils.calculateSafeDelta(
+                current.getReads(), previous.getReads());
+        double deltaReadTime = MetricCollectionUtils.calculateSafeDelta(
+                current.getReadTime(), previous.getReadTime());
+        long deltaWrites = MetricCollectionUtils.calculateSafeDelta(
+                current.getWrites(), previous.getWrites());
+        double deltaWriteTime = MetricCollectionUtils.calculateSafeDelta(
+                current.getWriteTime(), previous.getWriteTime());
+        long deltaWritebacks = MetricCollectionUtils.calculateSafeDelta(
+                current.getWritebacks(), previous.getWritebacks());
+        long deltaExtendCount = MetricCollectionUtils.calculateSafeDelta(
+                current.getExtendCount(), previous.getExtendCount());
+        long deltaHits = MetricCollectionUtils.calculateSafeDelta(
+                current.getHits(), previous.getHits());
+        long deltaEvictions = MetricCollectionUtils.calculateSafeDelta(
+                current.getEvictions(), previous.getEvictions());
+        long deltaFsyncs = MetricCollectionUtils.calculateSafeDelta(
+                current.getFsyncs(), previous.getFsyncs());
+        double deltaFsyncTime = MetricCollectionUtils.calculateSafeDelta(
+                current.getFsyncTime(), previous.getFsyncTime());
         
         // pg_stat_database 메트릭 증분
-        long deltaBlksRead = safeMinus(current.getBlksRead(), previous.getBlksRead());
-        long deltaBlksHit = safeMinus(current.getBlksHit(), previous.getBlksHit());
+        long deltaBlksRead = MetricCollectionUtils.calculateSafeDelta(
+                current.getBlksRead(), previous.getBlksRead());
+        long deltaBlksHit = MetricCollectionUtils.calculateSafeDelta(
+                current.getBlksHit(), previous.getBlksHit());
+        
+        // 디버깅: 물리 읽기와 캐시 히트 값 확인 (전체 통계용)
+        if ("database".equals(current.getBackendType()) && current.getDatabaseName() != null) {
+            log.debug("Physical Read 계산: instanceId={}, database={}, currentBlksRead={}, previousBlksRead={}, deltaBlksRead={}, currentBlksHit={}, previousBlksHit={}, deltaBlksHit={}",
+                    current.getInstanceId(), current.getDatabaseName(),
+                    current.getBlksRead(), previous.getBlksRead(), deltaBlksRead,
+                    current.getBlksHit(), previous.getBlksHit(), deltaBlksHit);
+        }
         
         // pg_stat_bgwriter 메트릭 증분
-        long deltaBuffersBackendFsync = safeMinus(current.getBuffersBackendFsync(), previous.getBuffersBackendFsync());
-        long deltaBuffersCheckpoint = safeMinus(current.getBuffersCheckpoint(), previous.getBuffersCheckpoint());
-        long deltaBuffersClean = safeMinus(current.getBuffersClean(), previous.getBuffersClean());
-        long deltaBuffersBackend = safeMinus(current.getBuffersBackend(), previous.getBuffersBackend());
+        long deltaBuffersBackendFsync = MetricCollectionUtils.calculateSafeDelta(
+                current.getBuffersBackendFsync(), previous.getBuffersBackendFsync());
+        long deltaBuffersCheckpoint = MetricCollectionUtils.calculateSafeDelta(
+                current.getBuffersCheckpoint(), previous.getBuffersCheckpoint());
+        long deltaBuffersClean = MetricCollectionUtils.calculateSafeDelta(
+                current.getBuffersClean(), previous.getBuffersClean());
+        long deltaBuffersBackend = MetricCollectionUtils.calculateSafeDelta(
+                current.getBuffersBackend(), previous.getBuffersBackend());
 
         // 평균 레이턴시 계산
         double avgReadLatency = deltaReads > 0 ? deltaReadTime / deltaReads : 0.0;
@@ -391,45 +422,7 @@ public class DiskIoCollectionScheduler {
 
     // ========== Helper Methods ==========
 
-    private long safeMinus(Long a, Long b) {
-        if (a == null || b == null) return 0L;
-        long result = a - b;
-        return result < 0 ? 0 : result;
-    }
-
-    private double safeMinus(Double a, Double b) {
-        if (a == null || b == null) return 0.0;
-        double result = a - b;
-        return result < 0 ? 0.0 : result;
-    }
-
-    private String getString(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
-    }
-
-    private Long getLong(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) return 0L;
-        if (value instanceof Long) return (Long) value;
-        if (value instanceof Integer) return ((Integer) value).longValue();
-        return Long.parseLong(value.toString());
-    }
-
-    private Double getDouble(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) return 0.0;
-        if (value instanceof Double) return (Double) value;
-        if (value instanceof Float) return ((Float) value).doubleValue();
-        if (value instanceof Number) return ((Number) value).doubleValue();
-        return Double.parseDouble(value.toString());
-    }
-
     private OffsetDateTime getOffsetDateTime(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) return null;
-        if (value instanceof OffsetDateTime) return (OffsetDateTime) value;
-        // Timestamp 변환 로직 추가 가능
-        return null;
+        return MetricCollectionUtils.getOffsetDateTime(map, key);
     }
 }

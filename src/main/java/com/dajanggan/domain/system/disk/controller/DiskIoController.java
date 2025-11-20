@@ -59,4 +59,29 @@ public class DiskIoController {
 
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * 낮은 Cache Hit Ratio 시간대 리스트 조회
+     * @param instanceId PostgreSQL 인스턴스 ID
+     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
+     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
+     * @return 낮은 Cache Hit Ratio 시간대 리스트
+     */
+    @GetMapping("/list/low-cache-hit")
+    public ResponseEntity<List<DiskIoListResponse.LowCacheHitItem>> getLowCacheHitList(
+            @RequestParam Long instanceId,
+            @RequestParam(defaultValue = "7d") String timeRange,
+            @RequestParam(required = false) String status) {
+        log.debug("낮은 Cache Hit 리스트 조회 요청 - instanceId: {}, timeRange: {}, status: {}",
+                instanceId, timeRange, status);
+
+        List<String> statusList = null;
+        if (status != null && !status.isEmpty()) {
+            statusList = List.of(status.split(","));
+        }
+
+        List<DiskIoListResponse.LowCacheHitItem> response = diskIoService.getLowCacheHitList(instanceId, timeRange, statusList);
+
+        return ResponseEntity.ok(response);
+    }
 }

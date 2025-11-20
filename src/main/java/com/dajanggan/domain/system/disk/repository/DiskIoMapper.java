@@ -275,16 +275,6 @@ public interface DiskIoMapper {
     // ========================================
 
     /**
-     * 높은 Fsync 발생 시간대 Top 20
-     */
-    List<Map<String, Object>> selectHighFsyncTop20(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("statusList") List<String> statusList
-    );
-
-    /**
      * 낮은 Cache Hit Ratio 시간대 Top 20
      */
     List<Map<String, Object>> selectLowCacheHitTop20(
