@@ -2,6 +2,7 @@ package com.dajanggan.domain.alarm.controller;
 
 import com.dajanggan.domain.alarm.dto.AlarmRuleDto;
 import com.dajanggan.domain.alarm.service.AlarmRuleService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -12,6 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
+@Tag(name = "Alarm-Rule", description = "alarm 규칙 페이지 관련 API")
 @RestController
 @RequestMapping("/api/alarms/rules")
 @RequiredArgsConstructor
