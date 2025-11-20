@@ -15,6 +15,7 @@ import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
 import com.dajanggan.global.crypto.AesGcmService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +34,7 @@ import java.util.Map;
  * 알람 시스템 수동 테스트용 컨트롤러
  * 스케줄링 없이 즉시 알람 체크를 실행할 수 있습니다.
  */
+@Tag(name = "Alarm-Test", description = "alarm 테스트 페이지 관련 API")
 @RestController
 @RequestMapping("/api/test/alarm")
 @RequiredArgsConstructor

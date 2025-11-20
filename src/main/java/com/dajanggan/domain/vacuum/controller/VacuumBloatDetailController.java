@@ -2,6 +2,7 @@ package com.dajanggan.domain.vacuum.controller;
 
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDetailDto;
 import com.dajanggan.domain.vacuum.service.VacuumBloatDetailService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @Slf4j
+@Tag(name = "Vacuum-Bloat-Detail", description = "vacuum bloat 상세 페이지 관련 API")
 @RestController
 @RequestMapping("/api/vacuum/bloat/detail")
 @RequiredArgsConstructor
@@ -20,6 +22,8 @@ public class VacuumBloatDetailController {
     /**
      * 전체 대시보드 데이터 조회
      */
+
+    @Tag(name = "Vacuum-bloat-detail-dashboard", description = "Bloat 추이, Dead Tuples 추이, Index Bloat 추이를 조회합니다")
     @GetMapping("/dashboard")
     public ResponseEntity<VacuumBloatDetailDto.Response> getDashboard(
             @RequestParam Long databaseId,
@@ -38,6 +42,7 @@ public class VacuumBloatDetailController {
     /**
      * KPI 데이터만 조회
      */
+    @Tag(name = "Vacuum-bloat-detail-kpi", description = "Bloat, 테이블 크기, 낭비된 공간을 조회합니다")
     @GetMapping("/kpi")
     public ResponseEntity<VacuumBloatDetailDto.Kpi> getKpi(
             @RequestParam Long databaseId,
@@ -56,6 +61,7 @@ public class VacuumBloatDetailController {
     /**
      * 테이블 목록 조회
      */
+    @Tag(name = "Vacuum-bloat-detail-table", description = "인스턴스, 데이터베이스에 속한 테이블을 조회합니다")
     @GetMapping("/tables")
     public ResponseEntity<List<String>> getTableList(
             @RequestParam Long databaseId,
