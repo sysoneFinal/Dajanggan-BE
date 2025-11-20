@@ -301,4 +301,82 @@
         </foreach>
     </insert>
 
+    <!-- 5분 집계를 위한 1분 집계 데이터 조회 -->
+    <select id="selectPreviousAgg1m" resultType="com.dajanggan.domain.engine.hotindex.domain.HotIndexAgg">
+        SELECT
+            hot_index_agg_id,
+            database_id,
+            collected_at,
+            schema_name,
+            table_name,
+            index_name,
+            avg_index_size,
+            total_idx_scan,
+            total_idx_tup_read,
+            total_idx_tup_fetch,
+            total_idx_blks_read,
+            total_idx_blks_hit,
+            avg_idx_efficiency,
+            avg_idx_hit_ratio,
+            idx_scan_per_day,
+            status,
+            index_type,
+            avg_bloat_percent,
+            avg_scan_time_ms,
+            created_at
+        FROM hot_index_agg_1m
+        WHERE database_id = #{databaseId}
+          AND schema_name = #{schemaName}
+          AND table_name = #{tableName}
+          AND index_name = #{indexName}
+          AND collected_at >= #{startTime}
+          AND collected_at <![CDATA[ < ]]> #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 5분 집계 데이터 삽입 -->
+    <insert id="insertAgg5m" parameterType="com.dajanggan.domain.engine.hotindex.domain.HotIndexAgg5m">
+        INSERT INTO hot_index_agg_5m (
+            database_id,
+            collected_at,
+            schema_name,
+            table_name,
+            index_name,
+            avg_index_size,
+            total_idx_scan,
+            total_idx_tup_read,
+            total_idx_tup_fetch,
+            total_idx_blks_read,
+            total_idx_blks_hit,
+            avg_idx_efficiency,
+            avg_idx_hit_ratio,
+            idx_scan_per_day,
+            status,
+            index_type,
+            avg_bloat_percent,
+            avg_scan_time_ms,
+            created_at
+        ) VALUES (
+            #{databaseId},
+            #{collectedAt},
+            #{schemaName},
+            #{tableName},
+            #{indexName},
+            #{avgIndexSize},
+            #{totalIdxScan},
+            #{totalIdxTupRead},
+            #{totalIdxTupFetch},
+            #{totalIdxBlksRead},
+            #{totalIdxBlksHit},
+            #{avgIdxEfficiency},
+            #{avgIdxHitRatio},
+            #{idxScanPerDay},
+            #{status},
+            #{indexType},
+            #{avgBloatPercent},
+            #{avgScanTimeMs},
+            NOW()
+        )
+    </insert>
+
 </mapper>

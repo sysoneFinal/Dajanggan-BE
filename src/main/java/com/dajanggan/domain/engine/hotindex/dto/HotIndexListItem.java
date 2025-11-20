@@ -29,3 +29,5 @@ public class HotIndexListItem {
     private String status;
 }
 
+
+

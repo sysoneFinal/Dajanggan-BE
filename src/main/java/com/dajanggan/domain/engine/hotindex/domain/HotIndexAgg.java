@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 /**
  * HotIndex 집계 데이터 엔티티
@@ -19,7 +19,7 @@ public class HotIndexAgg {
 
     private Long hotIndexAggId;          // PK
     private Long databaseId;             // 데이터베이스 ID
-    private LocalDateTime collectedAt;   // 수집 시각
+    private OffsetDateTime collectedAt;   // 수집 시각
     private String schemaName;           // 스키마명
     private String tableName;            // 테이블명
     private String indexName;            // 인덱스명
@@ -33,7 +33,7 @@ public class HotIndexAgg {
     private Double avgIdxHitRatio;       // 평균 인덱스 캐시 히트율(%)
     private Long idxScanPerDay;          // 일일 인덱스 스캔 횟수
     private String status;               // 상태 (정상, 비효율, 미사용, bloat)
-    private LocalDateTime createdAt;     // 생성 시각
+    private OffsetDateTime createdAt;     // 생성 시각
     private String indexType;            // 인덱스 타입 (btree, hash, gin, gist 등)
     private Double avgBloatPercent;      // 평균 Bloat 비율(%)
     private Double avgScanTimeMs;        // 평균 스캔 시간(ms)

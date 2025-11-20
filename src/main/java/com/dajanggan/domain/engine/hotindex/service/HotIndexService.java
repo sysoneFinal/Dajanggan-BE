@@ -6,7 +6,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +22,7 @@ public class HotIndexService {
 
     private final HotIndexMapper hotIndexMapper;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+    private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     /**
      * HotIndex 대시보드 데이터 조회
@@ -41,7 +44,7 @@ public class HotIndexService {
         }
 
         // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
+        OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
 
         return HotIndexDashboardResponse.builder()
                 .usageDistribution(getUsageDistribution(instanceId, databaseId))
@@ -139,7 +142,7 @@ public class HotIndexService {
     /**
      * 캐시 히트율 시계열 데이터 조회
      */
-    private HotIndexDashboardResponse.CacheHitRatio getCacheHitRatio(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotIndexDashboardResponse.CacheHitRatio getCacheHitRatio(Long instanceId, Long databaseId, OffsetDateTime startTime, OffsetDateTime endTime) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectCacheHitRatioTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -194,7 +197,7 @@ public class HotIndexService {
     /**
      * 인덱스 접근 추이 조회
      */
-    private HotIndexDashboardResponse.AccessTrend getAccessTrend(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotIndexDashboardResponse.AccessTrend getAccessTrend(Long instanceId, Long databaseId, OffsetDateTime startTime, OffsetDateTime endTime) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectAccessTrendTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -227,7 +230,7 @@ public class HotIndexService {
     /**
      * 인덱스 스캔 속도 추이 조회
      */
-    private HotIndexDashboardResponse.ScanSpeed getScanSpeed(Long instanceId, Long databaseId, LocalDateTime startTime, LocalDateTime endTime) {
+    private HotIndexDashboardResponse.ScanSpeed getScanSpeed(Long instanceId, Long databaseId, OffsetDateTime startTime, OffsetDateTime endTime) {
         List<Map<String, Object>> dataList = hotIndexMapper.selectScanSpeedTimeSeries(instanceId, databaseId, startTime, endTime);
 
         List<String> categories = new ArrayList<>();
@@ -290,8 +293,8 @@ public class HotIndexService {
 
         // 시간 범위 계산
         // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-        LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
-        LocalDateTime startTime = calculateStartTime(endTime, timeRange);
+        OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+        OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
 
         // 데이터 조회
         List<Map<String, Object>> dataList = hotIndexMapper.selectHotIndexList(
@@ -333,7 +336,7 @@ public class HotIndexService {
     /**
      * 시작 시간 계산
      */
-    private LocalDateTime calculateStartTime(LocalDateTime endTime, String timeRange) {
+    private OffsetDateTime calculateStartTime(OffsetDateTime endTime, String timeRange) {
         return switch (timeRange) {
             case "1h" -> endTime.minusHours(1);
             case "6h" -> endTime.minusHours(6);
@@ -389,8 +392,8 @@ public class HotIndexService {
         if (timestamp instanceof String) {
             return (String) timestamp; // 이미 포맷팅된 문자열
         }
-        if (timestamp instanceof LocalDateTime) {
-            return ((LocalDateTime) timestamp).format(TIME_FORMATTER);
+        if (timestamp instanceof OffsetDateTime) {
+            return ((OffsetDateTime) timestamp).atZoneSameInstant(KOREA_ZONE).format(TIME_FORMATTER);
         }
         return timestamp.toString();
     }

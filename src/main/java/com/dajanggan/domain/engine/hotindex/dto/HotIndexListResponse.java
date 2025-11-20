@@ -19,3 +19,5 @@ public class HotIndexListResponse {
     private Long total;
 }
 
+
+
