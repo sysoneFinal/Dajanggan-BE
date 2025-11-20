@@ -7,18 +7,30 @@
 
     <!-- 요청형 체크포인트 비율 조회 -->
     <select id="selectRequestRatio" resultType="map">
+        WITH checkpoint_delta AS (
+            SELECT
+                cr.collected_at,
+                cr.checkpoints_timed,
+                cr.checkpoints_req,
+                CASE
+                    WHEN LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_timed - LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_timed,
+                CASE
+                    WHEN LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_req - LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_req
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '24 hours'
+            AND cr.collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+        )
         SELECT
-            CASE
-                WHEN (total_checkpoints_timed + total_checkpoints_req) > 0
-                    THEN ROUND(100.0 * total_checkpoints_req / (total_checkpoints_timed + total_checkpoints_req), 2)
-                ELSE 0.0
-                END AS value,
-            total_checkpoints_req AS requestedCount,
-            total_checkpoints_timed AS timedCount
-        FROM checkpoint_agg_1m
-        WHERE instance_id = #{instanceId}
-        ORDER BY collected_at DESC
-            LIMIT 1
+            ROUND(CAST(100.0 * COALESCE(SUM(delta_req), 0) / NULLIF(COALESCE(SUM(delta_timed), 0) + COALESCE(SUM(delta_req), 0), 0) AS NUMERIC), 2) AS value,
+            COALESCE(SUM(delta_req), 0) AS requestedcount,
+            COALESCE(SUM(delta_timed), 0) AS timedcount
+        FROM checkpoint_delta
+        WHERE delta_timed > 0 OR delta_req > 0
     </select>
 
     <!-- Interval Table Choose Fragment -->
@@ -42,83 +54,320 @@
 
     <!-- 평균 쓰기 시간 시계열 데이터 조회 -->
     <select id="selectAvgWriteTimeTimeSeries" resultType="map">
+        WITH checkpoint_with_delta AS (
+            SELECT
+                cr.collected_at,
+                cr.checkpoint_write_time,
+                CASE
+                    WHEN LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0.0
+                    ELSE GREATEST(cr.checkpoint_write_time - LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0) / 1000.0
+                END AS delta_write_time,
+                CASE
+                    WHEN LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_timed - LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_timed,
+                CASE
+                    WHEN LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_req - LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_req
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= #{startTime} AND cr.collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        time_bucketed AS (
+            SELECT
+                <choose>
+                    <when test="intervalMinutes == 1">
+                        date_trunc('minute', collected_at) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 5">
+                        date_trunc('minute', collected_at) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int % 5) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 30">
+                        date_trunc('hour', collected_at) + INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int / 30 * 30) AS time_bucket
+                    </when>
+                    <otherwise>
+                        date_trunc('hour', collected_at) AS time_bucket
+                    </otherwise>
+                </choose>,
+                CASE
+                    WHEN SUM(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN 1 ELSE 0 END) > 0
+                    THEN AVG(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN delta_write_time ELSE NULL END) * 1000.0
+                    ELSE 0.0
+                END AS avg_write_time
+            FROM checkpoint_with_delta
+            GROUP BY time_bucket
+            ORDER BY time_bucket
+        )
         SELECT
-        TO_CHAR(collected_at, 'HH24:MI') AS time_label,
-        COALESCE(avg_write_time, 0.0) AS avg_write_time
-        FROM
-        <include refid="intervalTable"/>
-        WHERE instance_id = #{instanceId}
-        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at
+            TO_CHAR(time_bucket AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul', 'HH24:MI') AS time_label,
+            COALESCE(avg_write_time, 0.0) AS avg_write_time
+        FROM time_bucketed
+        ORDER BY time_bucket
     </select>
 
     <!-- 체크포인트 발생 횟수 시계열 데이터 조회 -->
     <select id="selectOccurrenceTimeSeries" resultType="map">
+        WITH checkpoint_with_delta AS (
+            SELECT
+                cr.collected_at,
+                CASE
+                    WHEN LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_timed - LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_timed,
+                CASE
+                    WHEN LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_req - LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_req
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= #{startTime} AND cr.collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        time_bucketed AS (
+            SELECT
+                <choose>
+                    <when test="intervalMinutes == 1">
+                        date_trunc('minute', collected_at) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 5">
+                        date_trunc('minute', collected_at) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int % 5) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 30">
+                        date_trunc('hour', collected_at) + INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int / 30 * 30) AS time_bucket
+                    </when>
+                    <otherwise>
+                        date_trunc('hour', collected_at) AS time_bucket
+                    </otherwise>
+                </choose>,
+                SUM(GREATEST(delta_timed, 0)) AS timed,
+                SUM(GREATEST(delta_req, 0)) AS requested
+            FROM checkpoint_with_delta
+            GROUP BY time_bucket
+            ORDER BY time_bucket
+        )
         SELECT
-        TO_CHAR(collected_at, 'HH24:MI') AS time_label,
-        COALESCE(total_checkpoints_req, 0) AS requested,
-        COALESCE(total_checkpoints_timed, 0) AS timed
-        FROM
-        <include refid="intervalTable"/>
-        WHERE instance_id = #{instanceId}
-        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at
+            TO_CHAR(time_bucket AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul', 'HH24:MI') AS time_label,
+            COALESCE(requested, 0) AS requested,
+            COALESCE(timed, 0) AS timed
+        FROM time_bucketed
+        ORDER BY time_bucket
     </select>
 
     <!-- WAL 생성량 시계열 데이터 조회 -->
     <select id="selectWalGenerationTimeSeries" resultType="map">
+        WITH wal_with_delta AS (
+            SELECT
+                cr.collected_at,
+                cr.wal_bytes,
+                -- 이전 값과의 차이 계산 (delta)
+                CASE
+                    WHEN LAG(cr.wal_bytes) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE GREATEST(cr.wal_bytes - LAG(cr.wal_bytes) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0)
+                END AS delta_wal_bytes
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= #{startTime} AND cr.collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        time_bucketed AS (
+            SELECT
+                <choose>
+                    <when test="intervalMinutes == 1">
+                        date_trunc('minute', collected_at) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 5">
+                        date_trunc('minute', collected_at) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int % 5) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 30">
+                        date_trunc('hour', collected_at) + INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int / 30 * 30) AS time_bucket
+                    </when>
+                    <otherwise>
+                        date_trunc('hour', collected_at) AS time_bucket
+                    </otherwise>
+                </choose>,
+                SUM(delta_wal_bytes) AS wal_bytes
+            FROM wal_with_delta
+            GROUP BY time_bucket
+            ORDER BY time_bucket
+        )
         SELECT
-        TO_CHAR(collected_at, 'HH24:MI') AS time_label,
-        COALESCE(total_wal_bytes, 0) AS wal_bytes
-        FROM
-        <include refid="intervalTable"/>
-        WHERE instance_id = #{instanceId}
-        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at
+            TO_CHAR(time_bucket AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul', 'HH24:MI') AS time_label,
+            COALESCE(wal_bytes, 0) AS wal_bytes
+        FROM time_bucketed
+        ORDER BY time_bucket
     </select>
 
     <!-- 처리 시간 시계열 데이터 조회 -->
     <select id="selectProcessTimeTimeSeries" resultType="map">
+        WITH checkpoint_with_delta AS (
+            SELECT
+                cr.collected_at,
+                cr.checkpoint_write_time,
+                cr.checkpoint_sync_time,
+                CASE
+                    WHEN LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0.0
+                    ELSE GREATEST(cr.checkpoint_write_time - LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0) / 1000.0
+                END AS delta_write_time,
+                CASE
+                    WHEN LAG(cr.checkpoint_sync_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0.0
+                    ELSE GREATEST(cr.checkpoint_sync_time - LAG(cr.checkpoint_sync_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0) / 1000.0
+                END AS delta_sync_time,
+                CASE
+                    WHEN LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_timed - LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_timed,
+                CASE
+                    WHEN LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_req - LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_req
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= #{startTime} AND cr.collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        time_bucketed AS (
+            SELECT
+                <choose>
+                    <when test="intervalMinutes == 1">
+                        date_trunc('minute', collected_at) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 5">
+                        date_trunc('minute', collected_at) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int % 5) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 30">
+                        date_trunc('hour', collected_at) + INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int / 30 * 30) AS time_bucket
+                    </when>
+                    <otherwise>
+                        date_trunc('hour', collected_at) AS time_bucket
+                    </otherwise>
+                </choose>,
+                CASE
+                    WHEN SUM(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN 1 ELSE 0 END) > 0
+                    THEN AVG(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN delta_write_time ELSE NULL END) * 1000.0
+                    ELSE 0.0
+                END AS write_time,
+                CASE
+                    WHEN SUM(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN 1 ELSE 0 END) > 0
+                    THEN AVG(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN delta_sync_time ELSE NULL END) * 1000.0
+                    ELSE 0.0
+                END AS sync_time
+            FROM checkpoint_with_delta
+            GROUP BY time_bucket
+            ORDER BY time_bucket
+        )
         SELECT
-        TO_CHAR(collected_at, 'HH24:MI') AS time_label,
-        COALESCE(avg_sync_time, 0.0) AS sync_time,
-        COALESCE(avg_write_time, 0.0) AS write_time
-        FROM
-        <include refid="intervalTable"/>
-        WHERE instance_id = #{instanceId}
-        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at
+            TO_CHAR(time_bucket AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul', 'HH24:MI') AS time_label,
+            COALESCE(sync_time, 0.0) AS sync_time,
+            COALESCE(write_time, 0.0) AS write_time
+        FROM time_bucketed
+        ORDER BY time_bucket
     </select>
 
     <!-- 버퍼 처리량 시계열 데이터 조회 -->
     <select id="selectBufferTimeSeries" resultType="map">
+        WITH checkpoint_with_delta AS (
+            SELECT
+                cr.collected_at,
+                cr.buffers_checkpoint,
+                cr.checkpoint_write_time,
+                CASE
+                    WHEN LAG(cr.buffers_checkpoint) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE GREATEST(cr.buffers_checkpoint - LAG(cr.buffers_checkpoint) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0)
+                END AS delta_buffers,
+                CASE
+                    WHEN LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0.0
+                    ELSE GREATEST(cr.checkpoint_write_time - LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0) / 1000.0
+                END AS delta_write_time,
+                CASE
+                    WHEN LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_timed - LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_timed,
+                CASE
+                    WHEN LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_req - LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_req
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= #{startTime} AND cr.collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        time_bucketed AS (
+            SELECT
+                <choose>
+                    <when test="intervalMinutes == 1">
+                        date_trunc('minute', collected_at) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 5">
+                        date_trunc('minute', collected_at) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int % 5) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 30">
+                        date_trunc('hour', collected_at) + INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int / 30 * 30) AS time_bucket
+                    </when>
+                    <otherwise>
+                        date_trunc('hour', collected_at) AS time_bucket
+                    </otherwise>
+                </choose>,
+                SUM(GREATEST(delta_buffers, 0)) AS total_delta_buffers,
+                SUM(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN GREATEST(delta_write_time, 0) ELSE 0 END) AS total_delta_time
+            FROM checkpoint_with_delta
+            GROUP BY time_bucket
+            ORDER BY time_bucket
+        )
         SELECT
-        TO_CHAR(collected_at, 'HH24:MI') AS time_label,
-        CASE
-        WHEN avg_total_time > 0
-        THEN ROUND((total_buffers_checkpoint / avg_total_time)::NUMERIC, 2)
-        ELSE 0.0
-        END AS buffers_per_sec
-        FROM
-        <include refid="intervalTable"/>
-        WHERE instance_id = #{instanceId}
-        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at
+            TO_CHAR(time_bucket AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul', 'HH24:MI') AS time_label,
+            CASE
+                WHEN total_delta_time > 0
+                THEN ROUND(CAST(total_delta_buffers / total_delta_time AS NUMERIC), 2)
+                ELSE 0.0
+            END AS buffers_per_sec
+        FROM time_bucketed
+        ORDER BY time_bucket
     </select>
 
     <!-- 체크포인트 간격 시계열 데이터 조회 -->
     <select id="selectCheckpointIntervalTimeSeries" resultType="map">
+        WITH checkpoint_with_interval AS (
+            SELECT
+                cr.collected_at,
+                CASE
+                    WHEN LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_timed - LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_timed,
+                CASE
+                    WHEN LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_req - LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_req,
+                COALESCE(
+                    EXTRACT(EPOCH FROM (cr.collected_at - LAG(cr.collected_at) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at))) / 60.0,
+                    0.0
+                ) AS interval_minutes
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= #{startTime} AND cr.collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        time_bucketed AS (
+            SELECT
+                <choose>
+                    <when test="intervalMinutes == 1">
+                        date_trunc('minute', collected_at) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 5">
+                        date_trunc('minute', collected_at) - INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int % 5) AS time_bucket
+                    </when>
+                    <when test="intervalMinutes == 30">
+                        date_trunc('hour', collected_at) + INTERVAL '1 minute' * (EXTRACT(MINUTE FROM collected_at)::int / 30 * 30) AS time_bucket
+                    </when>
+                    <otherwise>
+                        date_trunc('hour', collected_at) AS time_bucket
+                    </otherwise>
+                </choose>,
+                AVG(CASE WHEN delta_timed > 0 OR delta_req > 0 THEN interval_minutes ELSE NULL END) AS interval_minutes
+            FROM checkpoint_with_interval
+            GROUP BY time_bucket
+            ORDER BY time_bucket
+        )
         SELECT
-        TO_CHAR(collected_at, 'HH24:MI') AS time_label,
-        COALESCE(
-        EXTRACT(EPOCH FROM (collected_at - LAG(collected_at) OVER (ORDER BY collected_at))) / 60.0,
-        0.0
-        ) AS interval_minutes
-        FROM
-        <include refid="intervalTable"/>
-        WHERE instance_id = #{instanceId}
-        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at
+            TO_CHAR(time_bucket AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul', 'HH24:MI') AS time_label,
+            COALESCE(interval_minutes, 0.0) AS interval_minutes
+        FROM time_bucketed
+        ORDER BY time_bucket
     </select>
 
     <!-- 최근 통계 조회 -->
@@ -129,48 +378,138 @@
             COALESCE(AVG(total_wal_bytes / 1048576.0), 0.0) AS checkpointDistance,
             CASE
                 WHEN COUNT(*) > 1
-                    THEN EXTRACT(EPOCH FROM (MAX(collected_at) - MIN(collected_at))) / 60.0 / (COUNT(*) - 1)
+                    THEN EXTRACT(EPOCH FROM (MAX(collected_at) - MIN(collected_at))) / NULLIF(60.0 * (COUNT(*) - 1), 0)
                 ELSE 0.0
                 END AS checkpointInterval,
             CASE
                 WHEN AVG(avg_total_time) > 0
-                    THEN AVG(total_wal_bytes / avg_total_time / 1048576.0)
+                    THEN AVG(total_wal_bytes / NULLIF(avg_total_time, 0) / 1048576.0)
                 ELSE 0.0
                 END AS avgWalGenerationSpeed
         FROM checkpoint_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= NOW() - INTERVAL '24 hours'
+          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '24 hours'
+          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
     </select>
 
     <!-- Checkpoint 리스트 데이터 조회 -->
     <select id="selectCheckpointList" resultType="map">
+        WITH checkpoint_with_delta AS (
+            SELECT
+                cr.checkpoint_raw_id AS id,
+                cr.collected_at,
+                cr.checkpoint_type AS type,
+                cr.checkpoint_write_time,
+                cr.checkpoint_sync_time,
+                cr.wal_bytes,
+                cr.checkpoint_distance,
+                cr.buffers_checkpoint,
+                cr.buffers_backend,
+                cr.avg_buffers_per_sec,
+                cr.wal_files_added,
+                cr.wal_files_removed,
+                -- 이전 값과의 차이 계산 (delta)
+                CASE
+                    WHEN LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0.0
+                    ELSE cr.checkpoint_write_time - LAG(cr.checkpoint_write_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_write_time,
+                CASE
+                    WHEN LAG(cr.checkpoint_sync_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0.0
+                    ELSE cr.checkpoint_sync_time - LAG(cr.checkpoint_sync_time) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_sync_time,
+                -- 체크포인트 발생 여부 확인
+                CASE
+                    WHEN LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_timed - LAG(cr.checkpoints_timed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_timed,
+                CASE
+                    WHEN LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE cr.checkpoints_req - LAG(cr.checkpoints_req) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at)
+                END AS delta_req,
+                -- 체크포인트 간격 계산 (분 단위): 이전 체크포인트와의 시간 차이
+                COALESCE(
+                    EXTRACT(EPOCH FROM (cr.collected_at - LAG(cr.collected_at) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at))) / 60.0,
+                    0.0
+                ) AS checkpoint_interval_minutes,
+                -- WAL 제거 delta 계산
+                CASE
+                    WHEN LAG(cr.wal_files_removed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE GREATEST(cr.wal_files_removed - LAG(cr.wal_files_removed) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0)
+                END AS delta_wal_files_removed,
+                -- 버퍼 delta 계산
+                CASE
+                    WHEN LAG(cr.buffers_checkpoint) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at) IS NULL THEN 0
+                    ELSE GREATEST(cr.buffers_checkpoint - LAG(cr.buffers_checkpoint) OVER (PARTITION BY cr.instance_id ORDER BY cr.collected_at), 0)
+                END AS delta_buffers_checkpoint
+            FROM checkpoint_raw cr
+            WHERE cr.instance_id = #{instanceId}
+            AND cr.collected_at >= #{startTime} AND cr.collected_at <![CDATA[ <= ]]> #{endTime}
+        )
         SELECT
-        checkpoint_raw_id AS id,
-        TO_CHAR(collected_at, 'HH24:MI') AS timestamp,
-        checkpoint_type AS type,
-        COALESCE(checkpoint_write_time, 0.0) AS writeTime,
-        COALESCE(checkpoint_sync_time, 0.0) AS syncTime,
-        COALESCE(checkpoint_write_time + checkpoint_sync_time, 0.0) AS totalTime,
-        CONCAT(ROUND(wal_bytes / 1048576.0, 2), ' MB') AS walGenerated,
-        COALESCE(wal_files_added, 0) AS walFilesAdded,
-        COALESCE(wal_files_removed, 0) AS walFilesRemoved,
-        CONCAT(ROUND(checkpoint_distance / 1048576.0, 2), ' MB') AS checkpointDistance,
-        COALESCE(buffers_checkpoint, 0) AS buffersWritten,
-        COALESCE(buffers_backend, 0) AS buffersBackend,
-        COALESCE(avg_buffers_per_sec, 0.0) AS avgBuffersPerSec,
-        CASE
-        WHEN checkpoint_write_time + checkpoint_sync_time > 30 THEN '위험'
-        WHEN checkpoint_write_time + checkpoint_sync_time > 15 THEN '주의'
-        ELSE '정상'
-        END AS status
-        FROM checkpoint_raw
-        WHERE instance_id = #{instanceId}
-        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+            id,
+            TO_CHAR(collected_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS') AS timestamp,
+            CASE
+                WHEN delta_req > 0 THEN 'requested'
+                WHEN delta_timed > 0 THEN 'timed'
+                ELSE 'unknown'
+            END AS type,
+            -- 체크포인트 간격 (분 단위, 소수점 2자리)
+            CASE
+                WHEN checkpoint_interval_minutes > 0 THEN ROUND(CAST(checkpoint_interval_minutes AS NUMERIC), 2)
+                ELSE 0.0
+            END AS checkpointDistance,
+            -- delta 값을 초 단위로 변환 (밀리초 -> 초)
+            -- 체크포인트가 발생한 경우 delta를 계산 (음수 방지)
+            CASE
+                WHEN (delta_timed > 0 OR delta_req > 0) AND delta_write_time >= 0
+                    THEN ROUND(CAST(GREATEST(delta_write_time, 0) / 1000.0 AS NUMERIC), 2)
+                ELSE 0.0
+            END AS writeTime,
+            CASE
+                WHEN (delta_timed > 0 OR delta_req > 0) AND delta_sync_time >= 0
+                    THEN ROUND(CAST(GREATEST(delta_sync_time, 0) / 1000.0 AS NUMERIC), 2)
+                ELSE 0.0
+            END AS syncTime,
+            CASE
+                WHEN (delta_timed > 0 OR delta_req > 0) AND (delta_write_time >= 0 OR delta_sync_time >= 0)
+                    THEN ROUND(CAST((GREATEST(delta_write_time, 0) + GREATEST(delta_sync_time, 0)) / 1000.0 AS NUMERIC), 2)
+                ELSE 0.0
+            END AS totalTime,
+            CONCAT(ROUND(CAST(wal_bytes / 1048576.0 AS NUMERIC), 2), ' MB') AS walGenerated,
+            COALESCE(wal_files_added, 0) AS walFilesAdded,
+            -- WAL 제거는 delta 계산
+            delta_wal_files_removed AS walFilesRemoved,
+            COALESCE(buffers_checkpoint, 0) AS buffersWritten,
+            COALESCE(buffers_backend, 0) AS buffersBackend,
+            -- 평균 버퍼 처리량: delta 버퍼 / delta 시간 (초당)
+            CASE
+                WHEN (delta_timed > 0 OR delta_req > 0) AND delta_write_time > 0 AND delta_buffers_checkpoint > 0
+                    THEN ROUND(CAST(delta_buffers_checkpoint * 1000.0 / delta_write_time AS NUMERIC), 2)
+                ELSE 0.0
+            END AS avgBuffersPerSec,
+            -- 상태 판정: delta 총 시간 기준
+            CASE
+                WHEN (delta_timed > 0 OR delta_req > 0) AND (delta_write_time + delta_sync_time) / 1000.0 > 30 THEN '위험'
+                WHEN (delta_timed > 0 OR delta_req > 0) AND (delta_write_time + delta_sync_time) / 1000.0 > 15 THEN '주의'
+                ELSE '정상'
+            END AS status
+        FROM checkpoint_with_delta
+        WHERE (delta_timed > 0 OR delta_req > 0)  -- 체크포인트가 발생한 경우만 표시
+        <if test="typeList != null and typeList.size() > 0">
+            AND CASE
+                WHEN delta_req > 0 THEN 'requested'
+                WHEN delta_timed > 0 THEN 'timed'
+                ELSE 'unknown'
+            END IN
+            <foreach collection="typeList" item="type" open="(" separator="," close=")">
+                #{type}
+            </foreach>
+        </if>
         <if test="statusList != null and statusList.size() > 0">
             AND CASE
-            WHEN checkpoint_write_time + checkpoint_sync_time > 30 THEN '위험'
-            WHEN checkpoint_write_time + checkpoint_sync_time > 15 THEN '주의'
-            ELSE '정상'
+                WHEN (delta_timed > 0 OR delta_req > 0) AND (delta_write_time + delta_sync_time) / 1000.0 > 30 THEN '위험'
+                WHEN (delta_timed > 0 OR delta_req > 0) AND (delta_write_time + delta_sync_time) / 1000.0 > 15 THEN '주의'
+                ELSE '정상'
             END IN
             <foreach collection="statusList" item="status" open="(" separator="," close=")">
                 #{status}
@@ -331,8 +670,8 @@
         FROM checkpoint_agg_1m
         WHERE instance_id = #{instanceId}
         AND collected_at >= #{startTime}
-        AND collected_at <![CDATA[ < ]]> #{endTime}
-        ORDER BY collected_at
+        AND collected_at <![CDATA[ <= ]]> #{endTime}
+        ORDER BY collected_at ASC
     </select>
 
 </mapper>

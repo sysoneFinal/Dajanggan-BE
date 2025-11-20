@@ -6,7 +6,7 @@ import com.dajanggan.domain.engine.checkpoint.domain.CheckpointRaw;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -32,8 +32,8 @@ public interface CheckpointMapper {
      */
     List<Map<String, Object>> selectAvgWriteTimeTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") int intervalMinutes
     );
 
@@ -47,8 +47,8 @@ public interface CheckpointMapper {
      */
     List<Map<String, Object>> selectOccurrenceTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") int intervalMinutes
     );
 
@@ -62,8 +62,8 @@ public interface CheckpointMapper {
      */
     List<Map<String, Object>> selectWalGenerationTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") int intervalMinutes
     );
 
@@ -77,8 +77,8 @@ public interface CheckpointMapper {
      */
     List<Map<String, Object>> selectProcessTimeTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") int intervalMinutes
     );
 
@@ -92,8 +92,8 @@ public interface CheckpointMapper {
      */
     List<Map<String, Object>> selectBufferTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") int intervalMinutes
     );
 
@@ -107,8 +107,8 @@ public interface CheckpointMapper {
      */
     List<Map<String, Object>> selectCheckpointIntervalTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") int intervalMinutes
     );
 
@@ -130,9 +130,10 @@ public interface CheckpointMapper {
      */
     List<Map<String, Object>> selectCheckpointList(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("statusList") List<String> statusList,
+            @Param("typeList") List<String> typeList,
             @Param("intervalMinutes") int intervalMinutes
     );
 
@@ -160,8 +161,8 @@ public interface CheckpointMapper {
      */
     List<CheckpointAgg1m> selectPreviousAgg1m(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
     );
 
     /**

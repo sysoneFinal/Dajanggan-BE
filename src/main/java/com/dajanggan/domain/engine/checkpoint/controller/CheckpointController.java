@@ -43,9 +43,10 @@ public class CheckpointController {
     public ResponseEntity<CheckpointListResponse> getCheckpointList(
             @RequestParam(required = false) Long instanceId,
             @RequestParam(defaultValue = "7d") String timeRange,
-            @RequestParam(required = false) String status) {
-        log.debug("Checkpoint 리스트 조회 요청 - instanceId: {}, timeRange: {}, status: {}", 
-                instanceId, timeRange, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String type) {
+        log.debug("Checkpoint 리스트 조회 요청 - instanceId: {}, timeRange: {}, status: {}, type: {}", 
+                instanceId, timeRange, status, type);
         
         // status 파라미터를 List로 변환
         List<String> statusList = null;
@@ -53,7 +54,13 @@ public class CheckpointController {
             statusList = List.of(status.split(","));
         }
         
-        CheckpointListResponse response = checkpointService.getCheckpointList(instanceId, timeRange, statusList);
+        // type 파라미터를 List로 변환
+        List<String> typeList = null;
+        if (type != null && !type.isEmpty()) {
+            typeList = List.of(type.split(","));
+        }
+        
+        CheckpointListResponse response = checkpointService.getCheckpointList(instanceId, timeRange, statusList, typeList);
         
         return ResponseEntity.ok(response);
     }
