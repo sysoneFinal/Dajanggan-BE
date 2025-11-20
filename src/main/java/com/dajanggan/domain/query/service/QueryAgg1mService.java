@@ -15,6 +15,8 @@ import java.util.Map;
  *
  * ✅ 수정사항:
  * - timeRange 한글 인코딩 수정
+ * - TPS 계산 수정: DML 쿼리만 (INSERT + UPDATE + DELETE)
+ * - QPS 계산: 전체 쿼리
  *
  * @author 이해든
  */
@@ -94,10 +96,10 @@ public class QueryAgg1mService {
                         .insertCount(0)
                         .updateCount(0)
                         .deleteCount(0)
-                        .timeRange("최근 5분")  // ✅ 수정
+                        .timeRange("최근 5분 평균 기준")  // ✅ 수정
                         .build();
             } else {
-                result.setTimeRange("최근 5분");  // ✅ 수정
+                result.setTimeRange("최근 5분 평균 기준");  // ✅ 수정
                 log.info("✅ 요약 데이터 조회 완료 - TPS: {}, QPS: {}, 평균 시간: {}ms",
                         result.getCurrentTps(), result.getCurrentQps(), result.getAvgExecutionTimeMs());
             }
@@ -126,6 +128,7 @@ public class QueryAgg1mService {
     /**
      * 📊 트렌드 데이터 조회 (최근 N시간)
      * - QueryOverview TPS/QPS 차트용
+     * - ✅ TPS = DML 쿼리만, QPS = 전체 쿼리
      */
     public QueryOverviewTrendDto findTrendData(Long instanceId, Long databaseId, Integer hours) {
         log.info("📈 트렌드 데이터 조회 시작 - instanceId: {}, databaseId: {}, hours: {}",
@@ -164,8 +167,13 @@ public class QueryAgg1mService {
             int count = 0;
 
             for (QueryAgg1mDto dto : rawData) {
-                // TPS/QPS = 1분간 쿼리수 / 60초
-                Integer tps = dto.getTotalQueries() != null ? dto.getTotalQueries() / 60 : 0;
+                // ✅ TPS 계산 수정: DML 쿼리만 (INSERT + UPDATE + DELETE) / 60초
+                Integer dmlQueries = (dto.getInsertQueries() != null ? dto.getInsertQueries() : 0)
+                        + (dto.getUpdateQueries() != null ? dto.getUpdateQueries() : 0)
+                        + (dto.getDeleteQueries() != null ? dto.getDeleteQueries() : 0);
+                Integer tps = dmlQueries / 60;
+
+                // ✅ QPS 계산: 전체 쿼리 / 60초
                 Integer qps = dto.getTotalQueries() != null ? dto.getTotalQueries() / 60 : 0;
 
                 trendData.add(QueryOverviewTrendDto.TrendDataPoint.builder()

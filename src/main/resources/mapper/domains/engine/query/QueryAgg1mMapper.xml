@@ -98,6 +98,7 @@
     </select>
 
     <!-- 🆕 요약 데이터 조회 (최근 5분 집계) - QueryOverview 요약 카드용 -->
+    <!-- ✅ TPS = DML 쿼리만, QPS = 전체 쿼리 -->
     <select id="findRecentSummary" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QuerySummaryDto">
         SELECT
             instance_id AS instanceId,
@@ -108,9 +109,12 @@
             CAST(AVG(avg_execution_time_ms) AS NUMERIC(10,2)) AS avgExecutionTimeMs,
             CAST(COALESCE(SUM(slow_query_count), 0) AS INTEGER) AS slowQueryCount,
 
-            -- 새로운 필드 (agg1m 추가)
-            CAST(COALESCE(SUM(total_queries), 0) / 300.0 AS INTEGER) AS currentTps,
+            -- ✅ TPS 계산 수정: DML 쿼리만 (INSERT + UPDATE + DELETE) / 300초
+            CAST(COALESCE(SUM(insert_queries + update_queries + delete_queries), 0) / 300.0 AS INTEGER) AS currentTps,
+
+            -- ✅ QPS 계산: 전체 쿼리 / 300초
             CAST(COALESCE(SUM(total_queries), 0) / 300.0 AS INTEGER) AS currentQps,
+
             CAST(COALESCE(SUM(total_queries), 0) AS INTEGER) AS activeSessions,
 
             -- 쿼리 타입별 합계
@@ -119,12 +123,12 @@
             CAST(COALESCE(SUM(update_queries), 0) AS INTEGER) AS updateCount,
             CAST(COALESCE(SUM(delete_queries), 0) AS INTEGER) AS deleteCount,
 
-            -- 🆕 리소스 사용률 (Raw 테이블에서 직접 가져오기 - 최근 1분 평균)
-        <!-- agg_1m에서 바로 조회 -->
-        AVG(current_cpu_usage_percent) AS currentCpuUsagePercent,
-        AVG(current_memory_usage_percent) AS currentMemoryUsagePercent,
-        AVG(current_disk_io_usage_percent) AS currentDiskIoUsagePercent,
-        -- 시간 정보
+            -- 🆕 리소스 사용률
+            AVG(current_cpu_usage_percent) AS currentCpuUsagePercent,
+            AVG(current_memory_usage_percent) AS currentMemoryUsagePercent,
+            AVG(current_disk_io_usage_percent) AS currentDiskIoUsagePercent,
+
+            -- 시간 정보
             MAX(created_at) AS createdAt,
             '최근 5분 기준' AS timeRange
 
@@ -138,26 +142,26 @@
     <!-- 🆕 트렌드 데이터 조회 (최근 N시간) - QueryOverview TPS/QPS 차트용 -->
     <select id="findTrendData" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QueryAgg1mDto">
         SELECT
-        instance_id AS instanceId,
-        database_id AS databaseId,
-        collected_at AS collectedAt,
-        total_queries AS totalQueries,
-        select_queries AS selectQueries,
-        insert_queries AS insertQueries,
-        update_queries AS updateQueries,
-        delete_queries AS deleteQueries,
-        other_queries AS otherQueries,
-        avg_execution_time_ms AS avgExecutionTimeMs,
-        max_execution_time_ms AS maxExecutionTimeMs,
-        avg_planning_time_ms AS avgPlanningTimeMs,
-        total_io_blocks AS totalIoBlocks,
-        avg_io_blocks AS avgIoBlocks,
-        slow_query_count AS slowQueryCount,
-        created_at AS createdAt
+            instance_id AS instanceId,
+            database_id AS databaseId,
+            collected_at AS collectedAt,
+            total_queries AS totalQueries,
+            select_queries AS selectQueries,
+            insert_queries AS insertQueries,
+            update_queries AS updateQueries,
+            delete_queries AS deleteQueries,
+            other_queries AS otherQueries,
+            avg_execution_time_ms AS avgExecutionTimeMs,
+            max_execution_time_ms AS maxExecutionTimeMs,
+            avg_planning_time_ms AS avgPlanningTimeMs,
+            total_io_blocks AS totalIoBlocks,
+            avg_io_blocks AS avgIoBlocks,
+            slow_query_count AS slowQueryCount,
+            created_at AS createdAt
         FROM query_metrics_agg_1m
         WHERE instance_id = #{instanceId}
-        AND database_id = #{databaseId}
-        AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '${hours} hours'  <!-- #{hours} → ${hours} -->
+          AND database_id = #{databaseId}
+          AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '${hours} hours'
         ORDER BY collected_at ASC
     </select>
 
@@ -212,4 +216,5 @@
 
         LIMIT #{limit}
     </select>
+
 </mapper>
