@@ -132,4 +132,17 @@
         </foreach>
     </insert>
 
+    <!-- 이전 수집 시점의 last_vacuum/last_autovacuum 값 조회 -->
+    <select id="findPreviousVacuumTimes" resultType="java.util.HashMap">
+        SELECT DISTINCT ON (table_name)
+            table_name,
+            last_vacuum,
+            last_autovacuum
+        FROM vacuum_raw_metrics
+        WHERE database_id = #{databaseId, jdbcType=BIGINT}
+          AND table_name IS NOT NULL
+          AND (last_vacuum IS NOT NULL OR last_autovacuum IS NOT NULL)
+        ORDER BY table_name, collected_at DESC
+    </select>
+
 </mapper>

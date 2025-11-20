@@ -2,12 +2,14 @@ package com.dajanggan.domain.vacuum.controller;
 
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDto;
 import com.dajanggan.domain.vacuum.service.VacuumBloatService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
+@Tag(name = "Vacuum-bloat", description = "vacuum bloat 페이지 관련 API")
 @RestController
 @RequestMapping("/api/vacuum/bloat")
 @RequiredArgsConstructor

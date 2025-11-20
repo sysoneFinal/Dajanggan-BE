@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -28,7 +27,7 @@ public class VacuumDetailService {
     /**
      * Vacuum 세션 상세 정보 조회
      */
-    public VacuumDetailDto.Response getVacuumDetail(Long databaseId, String tableName) {
+    public VacuumDetailDto.Response getVacuumDetail(Long databaseId, String tableName, String executedAt) {
         log.info("Vacuum Detail 조회 시작 - databaseId: {}, tableName: {}",
                 databaseId, tableName);
 
