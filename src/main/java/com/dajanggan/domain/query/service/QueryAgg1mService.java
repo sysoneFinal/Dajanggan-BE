@@ -13,8 +13,6 @@ import java.util.Map;
 /**
  * 1분 집계 데이터 Service
  *
- * ✅ 수정사항:
- * - timeRange 한글 인코딩 수정
  * - TPS 계산 수정: DML 쿼리만 (INSERT + UPDATE + DELETE)
  * - QPS 계산: 전체 쿼리
  *
