@@ -9,6 +9,7 @@ import com.dajanggan.domain.alarm.domain.AlarmTracking;
 import com.dajanggan.domain.alarm.domain.AlarmFeed;
 import com.dajanggan.domain.alarm.dto.AlarmTrackingDto;
 import com.dajanggan.domain.alarm.config.MetricConfig;
+import com.dajanggan.domain.alarm.service.SlackNotificationService;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
@@ -16,6 +17,7 @@ import com.dajanggan.domain.instance.repository.DatabaseRepository;
 import com.dajanggan.global.crypto.AesGcmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -45,6 +47,7 @@ public class AlarmTestController {
     private final AlarmFeedMapper alarmFeedMapper;
     private final AesGcmService aesGcmService;
     private final MetricConfig metricConfig;
+    private final SlackNotificationService slackNotificationService;
 
     /**
      * 특정 지표에 대해 즉시 알람 체크 실행
@@ -614,5 +617,17 @@ public class AlarmTestController {
         } catch (SQLException e) {
             log.error("관련 객체 저장 실패: {}", metricType, e);
         }
+    }
+
+    @PostMapping("/slack-test")
+    public ResponseEntity<String> testSlackNotification() {
+        slackNotificationService.sendAlarmNotification(
+                "테스트 알람",
+                "WARNING",
+                "이것은 Slack 연동 테스트 메시지입니다.",
+                "test-instance",
+                "test-database"
+        );
+        return ResponseEntity.ok("Slack 테스트 알림 전송됨");
     }
 }

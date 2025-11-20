@@ -5,6 +5,10 @@ import com.dajanggan.domain.alarm.domain.*;
 import com.dajanggan.domain.alarm.repository.AlarmFeedMapper;
 import com.dajanggan.domain.alarm.repository.AlarmRuleMapper;
 import com.dajanggan.domain.alarm.repository.AlarmTrackingMapper;
+import com.dajanggan.domain.instance.domain.Database;
+import com.dajanggan.domain.instance.domain.Instance;
+import com.dajanggan.domain.instance.repository.DatabaseRepository;
+import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +36,32 @@ public class GenericAlarmCollector {
     private final AlarmFeedMapper alarmFeedMapper;
     private final MetricConfig metricConfig;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final SlackNotificationService slackNotificationService;
+
+    // GenericAlarmCollector에 추가
+    private final InstanceRepository instanceRepository;
+    private final DatabaseRepository databaseRepository;
+
+    private String getInstanceName(Long instanceId) {
+        if (instanceId == null) return "Unknown";
+        try {
+            return instanceRepository.findById(instanceId)
+                    .map(Instance::getInstanceName)
+                    .orElse("Instance-" + instanceId);
+        } catch (Exception e) {
+            return "Instance-" + instanceId;
+        }
+    }
+
+    private String getDatabaseName(Long databaseId) {
+        if (databaseId == null) return "Unknown";
+        try {
+            Database database = databaseRepository.findById(databaseId);
+            return database != null ? database.getDatabaseName() : "Database-" + databaseId;
+        } catch (Exception e) {
+            return "Database-" + databaseId;
+        }
+    }
 
     /**
      * 범용 알람 체크 - 모든 지표에 사용 가능
@@ -440,6 +470,27 @@ public class GenericAlarmCollector {
 
             // 4) 관련 객체 저장 (feed 기준)
             saveRelatedObjects(conn, feedId, rule.getAlarmRuleId(), metricType);
+
+            // 5) Slack 알림 전송
+            String instanceName = getInstanceName(tracking.getInstanceId());
+            String databaseName = getDatabaseName(tracking.getDatabaseId());
+            BigDecimal threshold = getThresholdValue(parseJsonLevels(rule.getLevels()), level.toLowerCase());
+
+            String description = String.format(
+                    "%s가 임계치를 초과했습니다.\n• 현재값: %s\n• 임계치: %s\n• 발생 횟수: %d회",
+                    metricType,
+                    currentValue,
+                    threshold,
+                    tracking.getConsecutiveCount()
+            );
+
+            slackNotificationService.sendAlarmNotification(
+                    metricType + " 임계치 초과",
+                    level,
+                    description,
+                    instanceName,
+                    databaseName
+            );
 
             log.warn("{} ruleId={}, trackingId={}, feedId={}, metric={}, level={}",
                     logMessage, rule.getAlarmRuleId(), tracking.getAlarmTrackingId(), feedId, metricType, level);
