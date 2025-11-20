@@ -88,6 +88,9 @@
         SET levels = CAST(#{levels} AS JSONB),
             aggregation_type = #{aggregationType},
             enabled = #{enabled},
+            <if test="operator != null">
+                operator = #{operator},
+            </if>
             updated_at = NOW()
         WHERE alarm_rule_id = #{alarmRuleId}
     </update>
@@ -155,4 +158,13 @@
         DELETE FROM alarm_tracking
         WHERE alarm_tracking_id = #{alarmTrackingId}
     </delete>
+
+    <!-- 중복 규칙 체크: 동일한 instanceId, databaseId, metricType 조합이 존재하는지 확인 -->
+    <select id="countDuplicateRule" resultType="int">
+        SELECT COUNT(*)
+        FROM alarm_rule
+        WHERE instance_id = #{instanceId}
+          AND database_id = #{databaseId}
+          AND metric_type = #{metricType}
+    </select>
 </mapper>

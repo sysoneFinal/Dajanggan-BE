@@ -345,4 +345,72 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
             throw new RuntimeException("개수 조회 실패", e);
         }
     }
+    /**
+     * ExecutionStatus용 쿼리별 집계 통계
+     */
+    @Override
+    public List<Map<String, Object>> getExecutionStats(Long databaseId, Integer hours) {
+        logger.info("📊 쿼리별 집계 통계 조회 시작 - databaseId: {}, hours: {}", databaseId, hours);
+
+        if (databaseId == null) {
+            logger.warn("databaseId가 null입니다");
+            throw new IllegalArgumentException("databaseId는 필수입니다");
+        }
+
+        if (hours == null || hours < 0) {
+            logger.warn("hours가 유효하지 않습니다: {}", hours);
+            hours = 1; // 기본값 1시간
+        }
+
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("databaseId", databaseId);
+            params.put("hours", hours);  // ✅ days → hours
+
+            List<Map<String, Object>> result = queryMetricsRawRepository.findExecutionStats(params);
+
+            logger.info("✅ 쿼리별 집계 완료: databaseId = {}, hours = {}, 집계된 쿼리 수 = {}",
+                    databaseId, hours, result.size());
+
+            return result;
+
+        } catch (Exception e) {
+            logger.error("❌ 쿼리별 집계 통계 조회 중 오류 발생: databaseId = {}, hours = {}", databaseId, hours, e);
+            throw new RuntimeException("쿼리별 집계 조회 실패", e);
+        }
+    }
+    /**
+     * 시간대별 쿼리 수 분포 조회
+     */
+    @Override
+    public List<Map<String, Object>> getHourlyDistribution(Long databaseId, Integer hours) {
+        logger.info("📊 시간대별 쿼리 수 집계 조회 시작 - databaseId: {}, hours: {}", databaseId, hours);
+
+        if (databaseId == null) {
+            logger.warn("databaseId가 null입니다");
+            throw new IllegalArgumentException("databaseId는 필수입니다");
+        }
+
+        if (hours == null || hours < 0) {
+            logger.warn("hours가 유효하지 않습니다: {}", hours);
+            hours = 5; // 기본값 5시간
+        }
+
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("databaseId", databaseId);
+            params.put("hours", hours);
+
+            List<Map<String, Object>> result = queryMetricsRawRepository.findHourlyDistribution(params);
+
+            logger.info("✅ 시간대별 분포 조회 완료: databaseId = {}, hours = {}, 시간대 수 = {}",
+                    databaseId, hours, result.size());
+
+            return result;
+
+        } catch (Exception e) {
+            logger.error("❌ 시간대별 분포 조회 중 오류 발생: databaseId = {}, hours = {}", databaseId, hours, e);
+            throw new RuntimeException("시간대별 분포 조회 실패", e);
+        }
+    }
 }

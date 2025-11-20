@@ -53,6 +53,7 @@ public class AlarmRuleDto {
         private Long databaseId;
         private String metricType;
         private String aggregationType;
+        private String operator;  // optional: gt, gte, lt, lte, eq (없으면 자동 설정)
         private Levels levels;
     }
 
@@ -63,6 +64,7 @@ public class AlarmRuleDto {
         private Long alarmRuleId;
         private Boolean enabled;
         private String aggregationType;
+        private String operator;  // optional: gt, gte, lt, lte, eq
         private Levels levels;
     }
 

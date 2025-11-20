@@ -16,8 +16,11 @@ public interface VacuumHistoryMapper {
             @Param("end") OffsetDateTime end
     );
 
-    Integer getVacuumFrequency(
+    void insertVacuumHistory(@Param("history") VacuumHistoryDto.Entity history);
+
+    List<VacuumHistoryDto.Entity> getVacuumHistoryFromTable(
             @Param("databaseId") Long databaseId,
-            @Param("hours") int hours
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end
     );
 }

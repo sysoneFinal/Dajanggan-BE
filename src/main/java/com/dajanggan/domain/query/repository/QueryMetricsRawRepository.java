@@ -66,7 +66,10 @@ public interface QueryMetricsRawRepository {
      * 메모리 사용량 상위 N개 조회
      */
     List<QueryMetricsRaw> findTopByMemoryUsage(@Param("limit") Integer limit);
-
+    /**
+     *  ExecutionStatus용 쿼리별 집계 통계
+     */
+    List<Map<String, Object>> findExecutionStats(Map<String, Object> params);
     /**
      * 쿼리 메트릭스 등록
      */
@@ -91,4 +94,10 @@ public interface QueryMetricsRawRepository {
      * 데이터베이스별 쿼리 메트릭스 개수 조회
      */
     int countByDatabaseId(@Param("databaseId") Long databaseId);
+    /**
+     * 시간대별 쿼리 수 분포 조회
+     * @param params databaseId, hours 포함
+     * @return 시간대별 쿼리 수 목록
+     */
+    List<Map<String, Object>> findHourlyDistribution(Map<String, Object> params);
 }

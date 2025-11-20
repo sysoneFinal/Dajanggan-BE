@@ -100,7 +100,6 @@ public class QueryMetricsRawController {
     }
 
     /**
-     * ✅ 수정: 데이터베이스 ID로 쿼리 메트릭스 목록 조회 (기간 제한 추가)
      * GET /api/query-metrics/database/{databaseId}?days=1
      */
     @GetMapping("/database/{databaseId}")
@@ -139,7 +138,7 @@ public class QueryMetricsRawController {
     }
 
     /**
-     * 🆕 최근 N분 데이터 조회 (실시간 모니터링용)
+     * 최근 N분 데이터 조회 (실시간 모니터링용)
      * GET /api/query-metrics/recent?databaseId={databaseId}&minutes={minutes}
      */
     @GetMapping("/recent")
@@ -284,6 +283,63 @@ public class QueryMetricsRawController {
         response.put("totalCount", count);
         response.put("message", "조회 성공");
 
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     *  ExecutionStatus용 쿼리별 집계 통계 조회
+     * GET /api/query-metrics/execution-stats?databaseId={databaseId}&days={days}
+     */
+    @GetMapping("/execution-stats")
+    @Operation(summary = "실행 통계 집계",
+            description = "ExecutionStatus 페이지용 쿼리별 집계 데이터 (쿼리문별 실행횟수, 평균시간, 총시간)")
+    public ResponseEntity<Map<String, Object>> getExecutionStats(
+            @Parameter(description = "데이터베이스 ID", required = true)
+            @RequestParam Long databaseId,
+            @Parameter(description = "조회 기간 (시간 단위, 기본값: 1시간)")
+            @RequestParam(defaultValue = "1") Integer hours) {
+
+        log.info("GET /api/query-metrics/execution-stats - databaseId: {}, hours: {}", databaseId, hours);
+
+        List<Map<String, Object>> data = queryMetricsRawService.getExecutionStats(databaseId, hours);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("data", data);
+        response.put("count", data.size());
+        response.put("databaseId", databaseId);
+        response.put("hours", hours);
+        response.put("message", "조회 성공");
+
+        log.info("✅ 쿼리별 집계 조회 완료: databaseId={}, hours={}, count={}", databaseId, hours, data.size());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 시간대별 쿼리 수 분포
+     * GET /api/query-metrics/hourly-distribution?databaseId={databaseId}&hours={hours}
+     */
+    @GetMapping("/hourly-distribution")
+    @Operation(summary = "시간대별 쿼리 수 분포",
+            description = "시간대별 쿼리 수를 집계합니다 (기본: 최근 5시간)")
+    public ResponseEntity<Map<String, Object>> getHourlyDistribution(
+            @Parameter(description = "데이터베이스 ID", required = true)
+            @RequestParam Long databaseId,
+            @Parameter(description = "조회 기간 (시간 단위, 기본값: 5시간)")
+            @RequestParam(defaultValue = "5") Integer hours) {
+
+        log.info("GET /api/query-metrics/hourly-distribution - databaseId: {}, hours: {}", databaseId, hours);
+
+        List<Map<String, Object>> data = queryMetricsRawService.getHourlyDistribution(databaseId, hours);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("data", data);
+        response.put("count", data.size());
+        response.put("hours", hours);
+        response.put("message", "조회 성공");
+
+        log.info("✅ 시간대별 분포 조회 완료: databaseId={}, hours={}, count={}", databaseId, hours, data.size());
         return ResponseEntity.ok(response);
     }
 }

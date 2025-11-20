@@ -136,9 +136,17 @@ public class AlarmFeedService {
 
     /**
      * 알림 삭제
+     * 외래키 제약 조건을 피하기 위해 관련된 데이터를 먼저 삭제
      */
     @Transactional
     public void deleteAlarm(Long alarmFeedId) {
+        // 1. 먼저 관련된 메트릭 히스토리 삭제
+        alarmFeedMapper.deleteMetricHistoryByFeedId(alarmFeedId);
+        
+        // 2. 관련된 관련 객체 삭제
+        alarmFeedMapper.deleteRelatedObjectsByFeedId(alarmFeedId);
+        
+        // 3. 알람 피드 삭제
         int deleted = alarmFeedMapper.deleteAlarm(alarmFeedId);
         if (deleted == 0) {
             throw new IllegalArgumentException("알림을 찾을 수 없습니다: " + alarmFeedId);

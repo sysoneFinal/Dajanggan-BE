@@ -28,7 +28,7 @@
             AND at.instance_id = #{instanceId}
         </if>
         <if test="status != null">
-            AND at.status = #{status}
+            AND at.status = #{status}::alert_status
         </if>
         ORDER BY at.last_checked_at DESC
     </select>
