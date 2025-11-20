@@ -49,6 +49,10 @@ dependencies {
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // slack
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+
     // Actuator (Health Check)
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 

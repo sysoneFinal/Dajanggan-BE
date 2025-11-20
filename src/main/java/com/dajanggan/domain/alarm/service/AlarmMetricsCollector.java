@@ -1,6 +1,5 @@
 package com.dajanggan.domain.alarm.service;
 
-import com.dajanggan.domain.alarm.service.GenericAlarmCollector;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
@@ -78,17 +77,28 @@ public class AlarmMetricsCollector {
                         instance.getPort(),
                         db.getDatabaseName());
 
-                // 모든 지표를 동일한 방식으로 처리
+                // MetricConfig에 정의된 모든 지표 체크
+                // Vacuum 관련 지표
+                checkMetricSafely(conn, instance, db, "autovacuum_worker_utilization");
+                checkMetricSafely(conn, instance, db, "blockers_per_hour");
+                checkMetricSafely(conn, instance, db, "transaction_age");
+                checkMetricSafely(conn, instance, db, "block_duration");
+                checkMetricSafely(conn, instance, db, "wraparound_progress");
+                checkMetricSafely(conn, instance, db, "total_table_bloat");
+                checkMetricSafely(conn, instance, db, "bloat_percent");
                 checkMetricSafely(conn, instance, db, "dead_tuples");
-                checkMetricSafely(conn, instance, db, "bloat_size");
-                checkMetricSafely(conn, instance, db, "unused_indexes");
-                checkMetricSafely(conn, instance, db, "connection_count");
+                checkMetricSafely(conn, instance, db, "table_size");
+                
+                // 세션 관련 지표
                 checkMetricSafely(conn, instance, db, "long_running_queries");
-                checkMetricSafely(conn, instance, db, "cache_hit_ratio");
-                checkMetricSafely(conn, instance, db, "sequential_scans");
+                checkMetricSafely(conn, instance, db, "lock_waits");
                 checkMetricSafely(conn, instance, db, "long_idle_sessions");
                 checkMetricSafely(conn, instance, db, "blocking_sessions");
-                // ... 더 추가 가능
+                
+                // 쿼리 관련 지표 (집계 테이블 사용)
+                checkMetricSafely(conn, instance, db, "slow_query_spike");
+                checkMetricSafely(conn, instance, db, "avg_execution_spike");
+                checkMetricSafely(conn, instance, db, "qps_spike");
 
                 checkedCount++;
 

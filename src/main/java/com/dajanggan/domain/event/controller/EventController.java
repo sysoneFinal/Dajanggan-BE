@@ -34,7 +34,7 @@ public class EventController {
 
         result.put("databases", eventService.getDistinctDatabases(instanceId));
         result.put("categories", eventService.getDistinctCategories(instanceId));
-        result.put("levels", List.of("INFO", "WARN", "ERROR"));
+        result.put("levels", List.of("INFO", "WARN", "CRITICAL"));
 
         return ResponseEntity.ok(result);
     }

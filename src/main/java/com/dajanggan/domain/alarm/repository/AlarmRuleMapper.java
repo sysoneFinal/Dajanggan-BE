@@ -42,4 +42,11 @@ public interface AlarmRuleMapper {
             @Param("databaseId") Long databaseId,
             @Param("metricType") String metricType
     );
+
+    // 중복 규칙 체크: 동일한 instanceId, databaseId, metricType 조합이 존재하는지 확인
+    int countDuplicateRule(
+            @Param("instanceId") Long instanceId,
+            @Param("databaseId") Long databaseId,
+            @Param("metricType") String metricType
+    );
 }

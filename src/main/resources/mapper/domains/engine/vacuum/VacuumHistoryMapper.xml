@@ -4,37 +4,60 @@
 
 <mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumHistoryMapper">
 
-    <!-- Vacuum History 목록 조회 -->
-    <select id="getVacuumHistoryList" resultType="com.dajanggan.domain.vacuum.dto.VacuumHistoryDto$Raw">
+    <insert id="insertVacuumHistory">
+        INSERT INTO vacuum_history (
+            database_id, instance_id, table_name, schema_name,
+            vacuum_type, executed_at, duration_seconds,
+            dead_tuples_before, bloat_ratio_before, status
+        ) VALUES (
+                     #{history.databaseId}, #{history.instanceId},
+                     #{history.tableName}, #{history.schemaName},
+                     #{history.vacuumType}, #{history.executedAt}, #{history.durationSeconds},
+                     #{history.deadTuplesBefore}, #{history.bloatRatioBefore}, #{history.status}
+                 )
+    </insert>
+
+    <select id="getVacuumHistoryList" resultType="com.dajanggan.domain.vacuum.dto.VacuumHistoryDto$Entity">
         SELECT
-        v.database_id AS databaseId,
-        v.table_name AS tableName,
-        MAX(CASE WHEN v.session_trigger = 'manual' THEN v.collected_at END) AS lastVacuum,
-        MAX(CASE WHEN v.session_trigger = 'autovacuum' THEN v.collected_at END) AS lastAutovacuum,
-        AVG(v.n_dead_tup) AS deadTuples,
-        AVG(v.n_mod_since_analyze) AS modSinceAnalyze,
-        AVG(v.bloat_ratio) AS bloatRatio,
-        COUNT(CASE WHEN v.session_trigger = 'manual'
-        AND v.collected_at >= NOW() - INTERVAL '24 hours' THEN 1 END) AS vacuumCount24h,
-        COUNT(CASE WHEN v.session_trigger = 'autovacuum'
-        AND v.collected_at >= NOW() - INTERVAL '24 hours' THEN 1 END) AS autovacuumCount24h
-        FROM vacuum_raw_metrics v
-        WHERE v.collected_at BETWEEN #{start} AND #{end}
+        history_id as historyId,
+        database_id as databaseId,
+        instance_id as instanceId,
+        table_name as tableName,
+        schema_name as schemaName,
+        vacuum_type as vacuumType,
+        executed_at as executedAt,
+        duration_seconds as durationSeconds,
+        dead_tuples_before as deadTuplesBefore,
+        bloat_ratio_before as bloatRatioBefore,
+        status
+        FROM vacuum_history
+        WHERE executed_at BETWEEN #{start} AND #{end}
         <if test="databaseId != null">
-            AND v.database_id = #{databaseId, jdbcType=BIGINT}
+            AND database_id = #{databaseId}
         </if>
-        GROUP BY v.database_id, v.table_name
-        ORDER BY MAX(v.collected_at) DESC
-        LIMIT 100
+        ORDER BY executed_at DESC
     </select>
 
-    <!-- Vacuum 실행 빈도 계산 -->
-    <select id="getVacuumFrequency" resultType="java.lang.Integer">
-        SELECT COUNT(*)
-        FROM vacuum_raw_metrics
-        WHERE database_id = #{databaseId, jdbcType=BIGINT}
-          AND collected_at >= NOW() - INTERVAL '${hours} hours'
-          AND session_trigger IN ('manual', 'autovacuum')
+    <!-- VacuumHistoryMapper.xml -->
+    <select id="getVacuumHistoryFromTable" resultType="com.dajanggan.domain.vacuum.dto.VacuumHistoryDto$Entity">
+        SELECT
+        history_id as historyId,
+        database_id as databaseId,
+        instance_id as instanceId,
+        table_name as tableName,
+        schema_name as schemaName,
+        vacuum_type as vacuumType,
+        executed_at as executedAt,
+        duration_seconds as durationSeconds,
+        dead_tuples_before as deadTuplesBefore,
+        bloat_ratio_before as bloatRatioBefore,
+        status
+        FROM vacuum_history
+        WHERE executed_at BETWEEN #{start} AND #{end}
+        <if test="databaseId != null">
+            AND database_id = #{databaseId}
+        </if>
+        ORDER BY executed_at DESC
     </select>
 
 </mapper>

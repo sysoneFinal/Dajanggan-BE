@@ -39,7 +39,7 @@ public class DiskMetricsService {
                 COALESCE(ROUND(AVG(cache_hit_ratio)::numeric, 2), 0) as avg_cache_hit_ratio,
                 COALESCE(ROUND(AVG(avg_read_latency_ms)::numeric, 2), 0) as avg_read_latency,
                 COALESCE(ROUND(AVG(avg_write_latency_ms)::numeric, 2), 0) as avg_write_latency
-            FROM disk_io_agg
+            FROM disk_io_agg_1m
             WHERE instance_id = :instanceId
               AND collected_at BETWEEN :from AND :to
         """;

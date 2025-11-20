@@ -80,3 +80,8 @@ management:
       enabled: true
     db:
       enabled: true
+
+slack:
+  webhook:
+    url: ${SLACK_WEBHOOK_URL}
+  enabled: false

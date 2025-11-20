@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 
 public class VacuumHistoryDto {
 
@@ -42,13 +43,30 @@ public class VacuumHistoryDto {
     @AllArgsConstructor
     public static class Response {
         private String table;
-        private String lastVacuum;
-        private String lastAutovacuum;
+        private String executedAt;
+        private String vacuumType;      // "vacuum" or "autovacuum"
+        private Integer durationSeconds;
         private String deadTuples;
-        private String modSinceAnalyze;
         private String bloatRatio;
-        private String tableSize;
-        private String frequency;
-        private String status;  // "주의" or "정상"
+        private String status;          // "정상" or "주의"
+    }
+
+    // VacuumHistoryDto.java에 추가
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Entity {
+        private Long historyId;
+        private Long databaseId;
+        private Long instanceId;
+        private String tableName;
+        private String schemaName;
+        private String vacuumType;
+        private OffsetDateTime executedAt;
+        private Integer durationSeconds;
+        private Long deadTuplesBefore;
+        private Double bloatRatioBefore;
+        private String status;
     }
 }
