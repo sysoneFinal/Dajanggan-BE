@@ -13,8 +13,13 @@ import org.springframework.stereotype.Service;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Vacuum 메트릭 수집기 (Database 단위)
@@ -59,8 +64,20 @@ public class VacuumMetricsCollector {
                 return;
             }
 
+            // 완료된 vacuum 세션 감지 및 저장
+            List<VacuumRawMetricDto> completedSessions = detectCompletedVacuumSessions(
+                    database, vacuumMetrics);
+            
+            if (!completedSessions.isEmpty()) {
+                log.info("🧹 [VACUUM] 완료된 vacuum 세션 {} 건 감지", completedSessions.size());
+                vacuumMetrics.addAll(completedSessions);
+            }
+
             vacuumRawRepository.insertVacuumMetrics(vacuumMetrics);
-            log.info("🧹 [VACUUM] ✅ {} 건 저장 완료", vacuumMetrics.size());
+            log.info("🧹 [VACUUM] ✅ {} 건 저장 완료 (실행 중: {}, 완료: {})", 
+                    vacuumMetrics.size(), 
+                    vacuumMetrics.size() - completedSessions.size(),
+                    completedSessions.size());
 
         } catch (Exception e) {
             log.error("🧹 [VACUUM] ❌ 수집 실패: {}", e.getMessage(), e);
@@ -114,7 +131,7 @@ table_stats AS (
         pg_total_relation_size(st.relid) AS relsize_total_bytes
     FROM pg_stat_all_tables st
     WHERE st.schemaname NOT IN ('pg_catalog', 'information_schema')
-      AND st.n_dead_tup > 0
+      AND (st.n_dead_tup > 0 OR st.last_vacuum IS NOT NULL OR st.last_autovacuum IS NOT NULL)
 ),
 xmin_horizon AS (
     SELECT
@@ -249,6 +266,115 @@ LIMIT 1000
         return jdbc.query(sql, new VacuumRawMetricRowMapper(database, instance, collectedAt));
     }
 
+    /**
+     * 완료된 vacuum 세션 감지
+     * 이전 수집 시점의 last_vacuum/last_autovacuum과 비교하여 변경된 경우 완료된 세션으로 기록
+     */
+    private List<VacuumRawMetricDto> detectCompletedVacuumSessions(
+            Database database,
+            List<VacuumRawMetricDto> currentMetrics) {
+        
+        List<VacuumRawMetricDto> completedSessions = new ArrayList<>();
+        
+        try {
+            // 이전 수집 시점의 last_vacuum/last_autovacuum 값 조회
+            List<Map<String, Object>> previousTimes = 
+                    vacuumRawRepository.findPreviousVacuumTimes(database.getDatabaseId());
+            
+            // 테이블별로 이전 값 맵 생성
+            Map<String, Map<String, Object>> previousMap = previousTimes.stream()
+                    .collect(Collectors.toMap(
+                            m -> (String) m.get("table_name"),
+                            m -> m,
+                            (v1, v2) -> v1
+                    ));
+            
+            // 현재 수집된 데이터와 비교
+            for (VacuumRawMetricDto current : currentMetrics) {
+                if (current.getTableName() == null) continue;
+                
+                Map<String, Object> previous = previousMap.get(current.getTableName());
+                if (previous == null) continue; // 이전 데이터가 없으면 스킵
+                
+                Timestamp prevLastVacuumTs = (Timestamp) previous.get("last_vacuum");
+                Timestamp prevLastAutovacuumTs = (Timestamp) previous.get("last_autovacuum");
+                OffsetDateTime prevLastVacuum = prevLastVacuumTs != null ? 
+                        prevLastVacuumTs.toInstant().atOffset(ZoneOffset.UTC) : null;
+                OffsetDateTime prevLastAutovacuum = prevLastAutovacuumTs != null ? 
+                        prevLastAutovacuumTs.toInstant().atOffset(ZoneOffset.UTC) : null;
+                
+                OffsetDateTime currLastVacuum = current.getLastVacuum();
+                OffsetDateTime currLastAutovacuum = current.getLastAutovacuum();
+                
+                // last_autovacuum이 변경되었는지 확인
+                if (currLastAutovacuum != null && 
+                    (prevLastAutovacuum == null || 
+                     currLastAutovacuum.isAfter(prevLastAutovacuum))) {
+                    // 완료된 autovacuum 세션 기록
+                    VacuumRawMetricDto completed = createCompletedSessionDto(current, true, currLastAutovacuum);
+                    completedSessions.add(completed);
+                    log.debug("🧹 [VACUUM] 완료된 autovacuum 감지: table={}, completed_at={}", 
+                            current.getTableName(), currLastAutovacuum);
+                }
+                
+                // last_vacuum이 변경되었는지 확인 (autovacuum보다 최신인 경우만)
+                if (currLastVacuum != null && 
+                    (prevLastVacuum == null || currLastVacuum.isAfter(prevLastVacuum)) &&
+                    (currLastAutovacuum == null || currLastVacuum.isAfter(currLastAutovacuum))) {
+                    // 완료된 manual vacuum 세션 기록
+                    VacuumRawMetricDto completed = createCompletedSessionDto(current, false, currLastVacuum);
+                    completedSessions.add(completed);
+                    log.debug("🧹 [VACUUM] 완료된 manual vacuum 감지: table={}, completed_at={}", 
+                            current.getTableName(), currLastVacuum);
+                }
+            }
+        } catch (Exception e) {
+            log.error("🧹 [VACUUM] 완료된 세션 감지 중 오류 발생", e);
+        }
+        
+        return completedSessions;
+    }
+
+    /**
+     * 완료된 vacuum 세션 DTO 생성
+     */
+    private VacuumRawMetricDto createCompletedSessionDto(
+            VacuumRawMetricDto base,
+            boolean isAutovacuum,
+            OffsetDateTime completedAt) {
+        
+        VacuumRawMetricDto dto = new VacuumRawMetricDto();
+        
+        // 기본 정보 복사
+        dto.setDatabaseId(base.getDatabaseId());
+        dto.setInstanceId(base.getInstanceId());
+        dto.setCollectedAt(base.getCollectedAt());
+        dto.setTableName(base.getTableName());
+        dto.setSchemaName(base.getSchemaName());
+        
+        // 완료된 세션 정보
+        dto.setSessionPhase("completed");
+        dto.setSessionProgress(100.0);
+        dto.setAutovacuum(isAutovacuum);
+        dto.setSessionTrigger(isAutovacuum ? "autovacuum" : "manual");
+        dto.setSessionStartedAt(completedAt);
+        dto.setElapsedSeconds(null); // 완료 시간은 알 수 없음
+        
+        // 현재 상태 정보 복사
+        dto.setNDeadTup(base.getNDeadTup());
+        dto.setNLiveTup(base.getNLiveTup());
+        dto.setNModSinceAnalyze(base.getNModSinceAnalyze());
+        dto.setRelsizeTotalBytes(base.getRelsizeTotalBytes());
+        dto.setBloatBytes(base.getBloatBytes());
+        dto.setBloatRatio(base.getBloatRatio());
+        dto.setLastVacuum(base.getLastVacuum());
+        dto.setLastAutovacuum(base.getLastAutovacuum());
+        
+        dto.setCreatedAt(OffsetDateTime.now());
+        
+        return dto;
+    }
+
     private static class VacuumRawMetricRowMapper implements RowMapper<VacuumRawMetricDto> {
         private final Database database;
         private final Instance instance;
@@ -295,6 +421,17 @@ LIMIT 1000
             dto.setNLiveTup(rs.getLong("n_live_tup"));
             dto.setNModSinceAnalyze((Long) rs.getObject("n_mod_since_analyze"));
 
+            // ✅ last_vacuum과 last_autovacuum을 항상 DTO에 설정
+            var lastAutovacuum = rs.getTimestamp("last_autovacuum");
+            var lastVacuum = rs.getTimestamp("last_vacuum");
+            
+            if (lastVacuum != null) {
+                dto.setLastVacuum(lastVacuum.toInstant().atOffset(collectedAt.getOffset()));
+            }
+            if (lastAutovacuum != null) {
+                dto.setLastAutovacuum(lastAutovacuum.toInstant().atOffset(collectedAt.getOffset()));
+            }
+
             // ✅ 실행 중인 세션 여부 확인
             boolean isRunning = sessionPhase != null && !"not_running".equals(sessionPhase);
 
@@ -310,9 +447,6 @@ LIMIT 1000
                 dto.setElapsedSeconds(elapsedSeconds);
             } else {
                 // 실행 중이 아니면 마지막 vacuum 정보 기록
-                var lastAutovacuum = rs.getTimestamp("last_autovacuum");
-                var lastVacuum = rs.getTimestamp("last_vacuum");
-
                 if (lastAutovacuum != null && (lastVacuum == null || lastAutovacuum.after(lastVacuum))) {
                     dto.setAutovacuum(true);
                     dto.setSessionTrigger("autovacuum");

@@ -9,8 +9,8 @@
         SELECT
         v.database_id AS databaseId,
         v.table_name AS tableName,
-        MAX(CASE WHEN v.session_trigger = 'manual' THEN v.collected_at END) AS lastVacuum,
-        MAX(CASE WHEN v.session_trigger = 'autovacuum' THEN v.collected_at END) AS lastAutovacuum,
+        MAX(v.last_vacuum) AS lastVacuum,
+        MAX(v.last_autovacuum) AS lastAutovacuum,
         AVG(v.n_dead_tup) AS deadTuples,
         AVG(v.n_mod_since_analyze) AS modSinceAnalyze,
         AVG(v.bloat_ratio) AS bloatRatio,
@@ -23,8 +23,10 @@
         <if test="databaseId != null">
             AND v.database_id = #{databaseId, jdbcType=BIGINT}
         </if>
+        -- 완료된 세션이나 실행 중인 세션 또는 일반 메트릭 포함
+        AND (v.session_phase = 'completed' OR v.session_phase != 'not_running' OR v.session_phase IS NULL)
         GROUP BY v.database_id, v.table_name
-        ORDER BY MAX(v.collected_at) DESC
+        ORDER BY GREATEST(MAX(v.last_vacuum), MAX(v.last_autovacuum)) DESC NULLS LAST
         LIMIT 100
     </select>
 
