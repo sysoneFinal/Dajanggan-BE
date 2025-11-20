@@ -15,24 +15,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MemoryListResponse {
-    private List<HighBufferUsageItem> highBufferUsageList;
     private List<LowCacheHitItem> lowCacheHitList;
     private Long totalCount;
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class HighBufferUsageItem {
-        private Long rankNum;
-        private String tableName;
-        private String relkind;
-        private Long bufferCount;
-        private Double bufferUsagePercent;
-        private Double dirtyRatio;
-        private Double cacheHitRatio;
-        private String status;
-    }
 
     @Data
     @Builder
@@ -48,4 +32,5 @@ public class MemoryListResponse {
         private String status;
     }
 }
+
 

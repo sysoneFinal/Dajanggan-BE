@@ -84,10 +84,11 @@ public class MemoryAgg5mScheduler {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
         // memory_agg_1m 테이블에서 5분간 데이터를 relname별로 집계
+        // timeBucket과 instanceId는 SELECT 절에서 리터럴로 사용하므로 파라미터 바인딩 불필요
         String sql = """
             SELECT
-                ? as time_bucket,
-                ? as instance_id,
+                CAST(? AS TIMESTAMP) as time_bucket,
+                ?::bigint as instance_id,
                 COALESCE(relname, '') as relname,
                 relkind,
                 ROUND(AVG(avg_buffers)::numeric, 0) as avg_buffers,
@@ -117,13 +118,17 @@ public class MemoryAgg5mScheduler {
             GROUP BY COALESCE(relname, ''), relkind, database_name
             """;
 
+        // 파라미터 순서: timeBucket, instanceId (SELECT 절), instanceId (WHERE 절), startTime, endTime
         List<Map<String, Object>> results = jdbcTemplate.queryForList(
                 sql, timeBucket, instanceId, instanceId, startTime, endTime);
 
         if (results.isEmpty()) {
-            log.debug("집계할 데이터 없음: instanceId={}, timeBucket={}", instanceId, timeBucket);
+            log.warn("집계할 데이터 없음: instanceId={}, timeBucket={}, startTime={}, endTime={}. memory_agg_1m 테이블에 해당 시간 범위의 데이터가 없습니다.", 
+                    instanceId, timeBucket, startTime, endTime);
             return;
         }
+        
+        log.info("집계 데이터 조회 완료: instanceId={}, timeBucket={}, count={}", instanceId, timeBucket, results.size());
 
         // relname별로 집계 데이터 저장
         for (Map<String, Object> aggData : results) {

@@ -174,14 +174,12 @@ public class MemorySseService {
         MemoryDashboardResponse.OsMemoryUsageWidget osMemoryUsage = memoryService.getOsMemoryUsageWidget(instanceId);
         MemoryDashboardResponse.SwapUsageWidget swapUsage = memoryService.getSwapUsageWidget(instanceId);
         MemoryDashboardResponse.SharedBufferHitWidget sharedBufferHit = memoryService.getSharedBufferHitWidget(instanceId);
-        MemoryDashboardResponse.BufferUsageWidget bufferUsage = memoryService.getBufferUsageWidget(instanceId);
         MemoryDashboardResponse.TempFileUsageWidget tempFileUsage = memoryService.getTempFileUsageWidget(instanceId);
 
         return RealtimeMemoryMetrics.builder()
                 .osMemoryUsage(osMemoryUsage)
                 .swapUsage(swapUsage)
                 .sharedBufferHit(sharedBufferHit)
-                .bufferUsage(bufferUsage)
                 .tempFileUsage(tempFileUsage)
                 .build();
     }

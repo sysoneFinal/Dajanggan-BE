@@ -71,12 +71,11 @@ public interface MemoryMapper {
     /**
      * Shared Buffer Hit Ratio Widget
      */
-    Map<String, Object> selectSharedBufferHitWidget(@Param("instanceId") Long instanceId);
-
-    /**
-     * Buffer Usage Widget
-     */
-    Map<String, Object> selectBufferUsageWidget(@Param("instanceId") Long instanceId);
+    Map<String, Object> selectSharedBufferHitWidget(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
+    );
 
     /**
      * Temp File Usage Widget
@@ -92,41 +91,12 @@ public interface MemoryMapper {
      */
 
     /**
-     * Buffer Cache Hit Ratio Chart 1h
+     * Buffer Cache Hit Chart 1h
      */
     List<Map<String, Object>> selectBufferCacheHitChart1h(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Buffer Cache Hit Ratio Chart 1h (LIMIT)
-     */
-    List<Map<String, Object>> selectBufferCacheHitChart1hWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
-    );
-
-    /**
-     * Buffer Utilization Chart 1h
-     */
-    List<Map<String, Object>> selectBufferUtilizationChart1h(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Buffer Utilization Chart 1h (LIMIT)
-     */
-    List<Map<String, Object>> selectBufferUtilizationChart1hWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
     );
 
     // ========================================
@@ -183,55 +153,36 @@ public interface MemoryMapper {
      * Swap Usage Trend Chart 24h (OS Metric Agg - Service에서 처리)
      */
 
+    // ========================================
+    // 리스트 조회 (1개 섹션)
+    // ========================================
+
     /**
-     * Buffer Reuse Score Chart 24h
+     * memory_agg_1m 테이블 전체 레코드 수 확인 (디버깅용)
      */
-    List<Map<String, Object>> selectBufferReuseScoreChart24h(
+    Long countMemoryAgg1mByInstance(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
     );
 
     /**
-     * Buffer Reuse Score Chart 24h (LIMIT)
+     * memory_agg_1m 테이블에서 relname IS NOT NULL인 레코드 수 확인 (디버깅용)
      */
-    List<Map<String, Object>> selectBufferReuseScoreChart24hWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
-    );
-
-    /**
-     * Top Tables by Buffer Chart 24h
-     */
-    List<Map<String, Object>> selectTopTablesByBufferChart24h(
+    Long countMemoryAgg1mByInstanceWithRelname(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
     );
 
-    // ========================================
-    // 리스트 조회 (2개 섹션)
-    // ========================================
-
     /**
-     * 섹션 1: 높은 버퍼 사용 테이블 Top 20
-     */
-    List<Map<String, Object>> selectHighBufferUsageTop20(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("statusList") List<String> statusList
-    );
-
-    /**
-     * 섹션 2: 낮은 캐시 히트율 테이블 Top 20
+     * 섹션 1: 낮은 캐시 히트율 테이블 Top 20
      */
     List<Map<String, Object>> selectLowCacheHitTop20(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime,
-            @Param("statusList") List<String> statusList
+            @Param("statusList") List<String> statusList,
+            @Param("typeList") List<String> typeList
     );
 }
