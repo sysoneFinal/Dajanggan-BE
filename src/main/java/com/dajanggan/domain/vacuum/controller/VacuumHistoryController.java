@@ -22,6 +22,7 @@ public class VacuumHistoryController {
 
     private final VacuumHistoryService vacuumHistoryService;
 
+    @Tag(name = "Vacuum-History-history", description = "vacuum history 테이블을 조회합니다")
     @GetMapping("/history")
     public ResponseEntity<List<VacuumHistoryDto.Response>> getHistory(
             @RequestParam(required = false) Long databaseId,  // databaseId 추가
