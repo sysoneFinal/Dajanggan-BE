@@ -5,6 +5,10 @@ import com.dajanggan.domain.alarm.domain.*;
 import com.dajanggan.domain.alarm.repository.AlarmFeedMapper;
 import com.dajanggan.domain.alarm.repository.AlarmRuleMapper;
 import com.dajanggan.domain.alarm.repository.AlarmTrackingMapper;
+import com.dajanggan.domain.instance.domain.Database;
+import com.dajanggan.domain.instance.domain.Instance;
+import com.dajanggan.domain.instance.repository.DatabaseRepository;
+import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +36,32 @@ public class GenericAlarmCollector {
     private final AlarmFeedMapper alarmFeedMapper;
     private final MetricConfig metricConfig;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final SlackNotificationService slackNotificationService;
+
+    // GenericAlarmCollector에 추가
+    private final InstanceRepository instanceRepository;
+    private final DatabaseRepository databaseRepository;
+
+    private String getInstanceName(Long instanceId) {
+        if (instanceId == null) return "Unknown";
+        try {
+            return instanceRepository.findById(instanceId)
+                    .map(Instance::getInstanceName)
+                    .orElse("Instance-" + instanceId);
+        } catch (Exception e) {
+            return "Instance-" + instanceId;
+        }
+    }
+
+    private String getDatabaseName(Long databaseId) {
+        if (databaseId == null) return "Unknown";
+        try {
+            Database database = databaseRepository.findById(databaseId);
+            return database != null ? database.getDatabaseName() : "Database-" + databaseId;
+        } catch (Exception e) {
+            return "Database-" + databaseId;
+        }
+    }
 
     /**
      * 범용 알람 체크 - 모든 지표에 사용 가능
@@ -44,28 +74,39 @@ public class GenericAlarmCollector {
             String metricType
     ) {
         try {
-            // 1. 현재 지표 값 수집
-            BigDecimal currentValue = collectMetricValue(conn, metricType);
-            if (currentValue == null) {
-                log.warn("지표 수집 실패: {}", metricType);
-                return;
-            }
-
-            log.debug("[{}] Current value: {}", metricType, currentValue);
-
-            // 2. 해당 지표의 활성화된 알람 규칙 조회
+            // 1. 해당 지표의 활성화된 알람 규칙 조회
             List<AlarmRule> rules = alarmRuleMapper.findActiveRules(
                     instanceId, databaseId, metricType
             );
 
+            log.info("🔍 활성화된 알람 규칙 조회: metricType={}, instanceId={}, databaseId={}, 규칙 개수={}", 
+                    metricType, instanceId, databaseId, rules != null ? rules.size() : 0);
+
             if (rules == null || rules.isEmpty()) {
-                log.debug("활성화된 알람 규칙 없음: {}", metricType);
+                log.info("⚠️ 활성화된 알람 규칙 없음: metricType={}, instanceId={}, databaseId={}", 
+                        metricType, instanceId, databaseId);
                 return;
             }
 
-            // 3. 각 규칙별로 처리
+            // 2. 각 규칙별로 처리 (집계 타입에 따라 다른 값 수집)
             for (AlarmRule rule : rules) {
+                log.info("📋 규칙 처리 시작: ruleId={}, metricType={}, aggregationType={}, operator={}", 
+                        rule.getAlarmRuleId(), rule.getMetricType(), rule.getAggregationType(), rule.getOperator());
                 try {
+                    // 규칙별 집계 타입에 맞는 지표 값 수집
+                    BigDecimal currentValue = collectMetricValue(
+                            conn, metricType, instanceId, databaseId, rule.getAggregationType()
+                    );
+                    
+                    if (currentValue == null) {
+                        log.warn("지표 수집 실패: metricType={}, aggregationType={}", 
+                                metricType, rule.getAggregationType());
+                        continue;
+                    }
+
+                    log.info("📊 지표 체크: metricType={}, aggregationType={}, currentValue={}, operator={}, ruleId={}", 
+                            metricType, rule.getAggregationType(), currentValue, rule.getOperator(), rule.getAlarmRuleId());
+
                     // 각 규칙 처리는 트랜잭션으로 처리
                     processAlarmRule(conn, rule, currentValue, instanceId, databaseId, metricType);
                 } catch (Exception e) {
@@ -81,21 +122,100 @@ public class GenericAlarmCollector {
 
     /**
      * 지표 값 수집 (범용)
+     * - 집계 타입에 따라 다른 쿼리 사용
+     * - latest_avg: 실시간 값
+     * - avg_5m: 5분 집계 테이블 평균
+     * - avg_15m: 1분 집계 테이블에서 15분 평균
+     * - p95_15m: 1분 집계 테이블에서 15분 95퍼센트
      */
-    private BigDecimal collectMetricValue(Connection conn, String metricType) {
+    private BigDecimal collectMetricValue(Connection conn, String metricType, Long instanceId, Long databaseId, String aggregationType) {
+        log.debug("📥 지표 수집 시작: metricType={}, aggregationType={}, instanceId={}, databaseId={}", 
+                metricType, aggregationType, instanceId, databaseId);
+        
+        // aggregationType이 null이거나 latest_avg면 실시간 값 사용
+        if (aggregationType == null || "latest_avg".equals(aggregationType)) {
+            BigDecimal value = collectLatestValue(conn, metricType, instanceId, databaseId);
+            log.debug("📥 실시간 값 수집 결과: metricType={}, value={}", metricType, value);
+            return value;
+        }
+
+        // 집계 타입에 따라 집계 테이블에서 조회
+        String sql = metricConfig.getAggregatedMetricQuery(metricType, aggregationType);
+        if (sql == null) {
+            log.warn("집계 타입에 대한 쿼리가 없음: metricType={}, aggregationType={}, 실시간 값 사용", 
+                    metricType, aggregationType);
+            return collectLatestValue(conn, metricType, instanceId, databaseId);
+        }
+        
+        log.debug("📥 집계 쿼리 실행: metricType={}, aggregationType={}, sql={}", metricType, aggregationType, sql);
+
+        try (var pstmt = conn.prepareStatement(sql)) {
+            pstmt.setLong(1, instanceId);
+            pstmt.setLong(2, databaseId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    BigDecimal value = rs.getBigDecimal(1);
+                    log.debug("📥 집계 값 수집 결과: metricType={}, aggregationType={}, value={}", 
+                            metricType, aggregationType, value);
+                    return value;
+                } else {
+                    log.warn("📥 집계 쿼리 결과 없음: metricType={}, aggregationType={}", metricType, aggregationType);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("집계 지표 수집 쿼리 실행 실패: metricType={}, aggregationType={}", 
+                    metricType, aggregationType, e);
+        }
+
+        return null;
+    }
+
+    /**
+     * 실시간 지표 값 수집 (latest_avg)
+     */
+    private BigDecimal collectLatestValue(Connection conn, String metricType, Long instanceId, Long databaseId) {
         String sql = metricConfig.getMetricQuery(metricType);
         if (sql == null) {
-            log.error("알 수 없는 지표 타입: {}", metricType);
+            log.error("❌ 알 수 없는 지표 타입: {}", metricType);
             return null;
         }
 
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            if (rs.next()) {
-                return rs.getBigDecimal(1);
+        log.debug("📥 실시간 쿼리 실행: metricType={}, sql={}", metricType, sql);
+
+        // 집계 테이블 기반 지표는 PreparedStatement 사용
+        boolean needsParams = sql.contains("?");
+        
+        try {
+            if (needsParams) {
+                // 집계 테이블 기반 지표 (slow_query_spike, avg_execution_spike, qps_spike)
+                try (var pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setLong(1, instanceId);
+                    pstmt.setLong(2, databaseId);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        if (rs.next()) {
+                            BigDecimal value = rs.getBigDecimal(1);
+                            log.debug("📥 실시간 값 수집 성공: metricType={}, value={}", metricType, value);
+                            return value;
+                        } else {
+                            log.warn("📥 실시간 쿼리 결과 없음: metricType={}", metricType);
+                        }
+                    }
+                }
+            } else {
+                // 일반 지표 (pg_stat_* 기반)
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery(sql)) {
+                    if (rs.next()) {
+                        BigDecimal value = rs.getBigDecimal(1);
+                        log.debug("📥 실시간 값 수집 성공: metricType={}, value={}", metricType, value);
+                        return value;
+                    } else {
+                        log.warn("📥 실시간 쿼리 결과 없음: metricType={}", metricType);
+                    }
+                }
             }
         } catch (SQLException e) {
-            log.error("지표 수집 쿼리 실행 실패: {}", metricType, e);
+            log.error("❌ 지표 수집 쿼리 실행 실패: metricType={}, sql={}", metricType, sql, e);
         }
 
         return null;
@@ -124,6 +244,7 @@ public class GenericAlarmCollector {
         if (triggeredLevel != null) {
             // 임계치 감지된 상태
             String previousLevel = tracking != null ? tracking.getCurrentLevel() : null;
+            boolean levelChanged = previousLevel != null && !previousLevel.equals(triggeredLevel);
 
             if (tracking == null) {
                 // 트래킹이 없으면 새로 생성
@@ -142,25 +263,37 @@ public class GenericAlarmCollector {
 
             // 트래킹 연속 카운트/값 업데이트
             if (tracking != null) {
+                OffsetDateTime now = OffsetDateTime.now();
+                int windowMin = getWindowMin(rule.getLevels(), triggeredLevel);
+                OffsetDateTime windowStart = now.minusMinutes(windowMin);
+                
                 // 레벨이 변경되었으면 카운트 리셋
-                if (previousLevel != null && !previousLevel.equals(triggeredLevel)) {
+                if (levelChanged) {
                     log.info("📊 알람 레벨 변경 감지: {} -> {}", previousLevel, triggeredLevel);
                     tracking.setConsecutiveCount(1);
-                    tracking.setFirstTriggeredAt(OffsetDateTime.now());
+                    tracking.setFirstTriggeredAt(now);
                 } else {
-                    tracking.setConsecutiveCount(tracking.getConsecutiveCount() + 1);
+                    // 윈도우가 지나갔으면 카운트 리셋 (윈도우 기반 체크)
+                    if (tracking.getFirstTriggeredAt().isBefore(windowStart)) {
+                        log.debug("윈도우가 지나가서 카운트 리셋: firstTriggered={}, windowStart={}, window={}분", 
+                                tracking.getFirstTriggeredAt(), windowStart, windowMin);
+                        tracking.setConsecutiveCount(1);
+                        tracking.setFirstTriggeredAt(now);
+                    } else {
+                        // 윈도우 내에서 연속 발생
+                        tracking.setConsecutiveCount(tracking.getConsecutiveCount() + 1);
+                    }
                 }
 
                 tracking.setCurrentValue(currentValue);
                 tracking.setCurrentLevel(triggeredLevel);
-                tracking.setLastCheckedAt(OffsetDateTime.now());
+                tracking.setLastCheckedAt(now);
                 alarmTrackingMapper.updateTracking(tracking);
             }
 
             // 모든 레벨에서 발생 조건 확인 (NOTICE, WARNING, CRITICAL)
-            boolean levelChanged = previousLevel != null && !previousLevel.equals(triggeredLevel);
-
-            if (shouldFireAlarm(rule, tracking, triggeredLevel) || levelChanged) {
+            // 레벨 변경 시 무조건 알람 발생, 같은 레벨에서 처음 조건 만족 시에도 알람 발생
+            if (shouldFireAlarm(rule, tracking, triggeredLevel, previousLevel) || levelChanged) {
                 // 알람 발생 또는 레벨 변경
                 fireAlarm(conn, rule, tracking, currentValue, triggeredLevel, metricType, levelChanged);
             }
@@ -217,13 +350,25 @@ public class GenericAlarmCollector {
             BigDecimal noticeThreshold = getThresholdValue(levels, "notice");
 
             String operator = rule.getOperator(); // gt, gte, lt, lte, eq
+            
+            // 디버깅: 임계치와 비교 결과 로그
+            log.debug("🔍 임계치 체크: currentValue={}, operator={}, notice={}, warning={}, critical={}", 
+                    currentValue, operator, noticeThreshold, warningThreshold, criticalThreshold);
 
             if (criticalThreshold != null && compareValue(currentValue, criticalThreshold, operator)) {
+                log.info("🚨 CRITICAL 임계치 초과: currentValue={} {} threshold={}", 
+                        currentValue, operator, criticalThreshold);
                 return "CRITICAL";
             } else if (warningThreshold != null && compareValue(currentValue, warningThreshold, operator)) {
+                log.info("⚠️ WARNING 임계치 초과: currentValue={} {} threshold={}", 
+                        currentValue, operator, warningThreshold);
                 return "WARNING";
             } else if (noticeThreshold != null && compareValue(currentValue, noticeThreshold, operator)) {
+                log.info("ℹ️ NOTICE 임계치 초과: currentValue={} {} threshold={}", 
+                        currentValue, operator, noticeThreshold);
                 return "NOTICE";
+            } else {
+                log.debug("✅ 임계치 미달: currentValue={} {} 모든 임계치", currentValue, operator);
             }
 
         } catch (Exception e) {
@@ -326,6 +471,27 @@ public class GenericAlarmCollector {
             // 4) 관련 객체 저장 (feed 기준)
             saveRelatedObjects(conn, feedId, rule.getAlarmRuleId(), metricType);
 
+            // 5) Slack 알림 전송
+            String instanceName = getInstanceName(tracking.getInstanceId());
+            String databaseName = getDatabaseName(tracking.getDatabaseId());
+            BigDecimal threshold = getThresholdValue(parseJsonLevels(rule.getLevels()), level.toLowerCase());
+
+            String description = String.format(
+                    "%s가 임계치를 초과했습니다.\n• 현재값: %s\n• 임계치: %s\n• 발생 횟수: %d회",
+                    metricType,
+                    currentValue,
+                    threshold,
+                    tracking.getConsecutiveCount()
+            );
+
+            slackNotificationService.sendAlarmNotification(
+                    metricType + " 임계치 초과",
+                    level,
+                    description,
+                    instanceName,
+                    databaseName
+            );
+
             log.warn("{} ruleId={}, trackingId={}, feedId={}, metric={}, level={}",
                     logMessage, rule.getAlarmRuleId(), tracking.getAlarmTrackingId(), feedId, metricType, level);
 
@@ -365,35 +531,57 @@ public class GenericAlarmCollector {
 
     /**
      * 알람 발생 조건 체크
+     * - 윈도우 기반: 최근 windowMin 분 내에 occurCount번 발생해야 함
+     * - 지속 시간: minDurationMin 분 이상 지속되어야 함
+     * - 레벨 변경 시 무조건 알람 발생 (levelChanged로 처리)
+     * - 같은 레벨에서 처음 조건 만족 시 알람 발생
      */
-    private boolean shouldFireAlarm(AlarmRule rule, AlarmTracking tracking, String level) {
+    private boolean shouldFireAlarm(AlarmRule rule, AlarmTracking tracking, String level, String previousLevel) {
         try {
             // 해당 레벨의 발생 조건 확인
             int requiredCount = getOccurCount(rule.getLevels(), level);
             int requiredDuration = getMinDuration(rule.getLevels(), level);
+            int windowMin = getWindowMin(rule.getLevels(), level);
 
-            // 1. 연속 발생 횟수 체크
+            OffsetDateTime now = OffsetDateTime.now();
+            OffsetDateTime firstTriggered = tracking.getFirstTriggeredAt();
+            OffsetDateTime windowStart = now.minusMinutes(windowMin);
+            
+            // 1. 윈도우 기반 발생 횟수 체크
+            // processAlarmRule에서 이미 윈도우가 지나갔을 때 리셋하므로,
+            // 여기서는 윈도우 내에 있는지와 발생 횟수만 확인
+            if (firstTriggered.isBefore(windowStart)) {
+                log.debug("윈도우가 지나감: firstTriggered={}, windowStart={}, window={}분", 
+                        firstTriggered, windowStart, windowMin);
+                return false;
+            }
+            
+            // 윈도우 내에서 발생 횟수 체크
             if (tracking.getConsecutiveCount() < requiredCount) {
-                log.debug("발생 횟수 부족: {}/{}", tracking.getConsecutiveCount(), requiredCount);
+                log.debug("윈도우 내 발생 횟수 부족: {}/{} (윈도우: {}분)", 
+                        tracking.getConsecutiveCount(), requiredCount, windowMin);
                 return false;
             }
 
             // 2. 최소 지속 시간 체크
-            long durationMinutes = java.time.Duration.between(
-                    tracking.getFirstTriggeredAt(),
-                    OffsetDateTime.now()
-            ).toMinutes();
-
+            long durationMinutes = java.time.Duration.between(firstTriggered, now).toMinutes();
             if (durationMinutes < requiredDuration) {
-                log.debug("지속 시간 부족: {}분/{}", durationMinutes, requiredDuration);
+                log.debug("지속 시간 부족: {}분/{}분", durationMinutes, requiredDuration);
                 return false;
             }
 
-            // 3. 이미 발생한 알람인지 체크 (같은 레벨)
-            if ("FIRED".equals(tracking.getStatus()) && level.equals(tracking.getCurrentLevel())) {
+            // 3. 이미 발생한 알람인지 체크
+            // - 레벨이 변경되었으면 무조건 알람 발생 (levelChanged로 처리되므로 여기서는 false 반환하지 않음)
+            // - 같은 레벨에서 이미 FIRED 상태이고, 이전 레벨과 현재 레벨이 같으면 알람을 다시 발생시키지 않음
+            // - 같은 레벨에서 처음 조건을 만족하면 알람 발생
+            if ("FIRED".equals(tracking.getStatus()) && previousLevel != null && level.equals(previousLevel)) {
+                // 같은 레벨에서 이미 FIRED 상태면 알람을 다시 발생시키지 않음
+                log.debug("같은 레벨에서 이미 알람 발생: level={}, previousLevel={}, status=FIRED", level, previousLevel);
                 return false;
             }
 
+            log.debug("✅ 알람 발생 조건 충족: level={}, count={}/{}, duration={}분/{}분, window={}분", 
+                    level, tracking.getConsecutiveCount(), requiredCount, durationMinutes, requiredDuration, windowMin);
             return true;
 
         } catch (Exception e) {
@@ -498,5 +686,18 @@ public class GenericAlarmCollector {
             log.error("최소 지속 시간 추출 실패: level={}", level, e);
         }
         return 5;
+    }
+
+    private int getWindowMin(String levelsJson, String level) {
+        try {
+            Map<String, Map<String, Object>> levels = parseJsonLevels(levelsJson);
+            Map<String, Object> levelConfig = levels.get(level.toLowerCase());
+            if (levelConfig != null && levelConfig.containsKey("windowMin")) {
+                return ((Number) levelConfig.get("windowMin")).intValue();
+            }
+        } catch (Exception e) {
+            log.error("윈도우 시간 추출 실패: level={}", level, e);
+        }
+        return 15; // 기본값: 15분
     }
 }

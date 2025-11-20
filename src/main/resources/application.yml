@@ -19,6 +19,8 @@ spring:
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD}
 
+
+
 mybatis:
 
   # crypto 설정
@@ -64,3 +66,8 @@ app:
     pbkdf2-iter: 200000
     salt-len: 16
     iv-len: 12
+
+slack:
+  webhook:
+    url: ${SLACK_WEBHOOK_URL}
+  enabled: false

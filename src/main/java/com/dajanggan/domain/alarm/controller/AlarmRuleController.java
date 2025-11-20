@@ -71,6 +71,13 @@ public class AlarmRuleController {
             response.put("message", "알림 규칙이 생성되었습니다.");
 
             return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.warn("규칙 생성 실패 (중복 또는 유효성 검사): {}", e.getMessage());
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("message", e.getMessage());
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
         } catch (Exception e) {
             log.error("규칙 생성 실패: {}", e.getMessage(), e);
 

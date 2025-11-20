@@ -94,6 +94,18 @@
         WHERE alarm_feed_id = #{alarmFeedId}
     </update>
 
+    <!-- 알람 메트릭 히스토리 삭제 (알람 삭제 전에 호출) -->
+    <delete id="deleteMetricHistoryByFeedId">
+        DELETE FROM alarm_metric_history
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </delete>
+
+    <!-- 알람 관련 객체 삭제 (알람 삭제 전에 호출) -->
+    <delete id="deleteRelatedObjectsByFeedId">
+        DELETE FROM alarm_related_objects
+        WHERE alarm_feed_id = #{alarmFeedId}
+    </delete>
+
     <!-- 알림 삭제 -->
     <delete id="deleteAlarm">
         DELETE FROM alarm_feed

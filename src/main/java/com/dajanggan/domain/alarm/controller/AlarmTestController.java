@@ -5,18 +5,26 @@ import com.dajanggan.domain.alarm.repository.AlarmRuleMapper;
 import com.dajanggan.domain.alarm.repository.AlarmTrackingMapper;
 import com.dajanggan.domain.alarm.repository.AlarmFeedMapper;
 import com.dajanggan.domain.alarm.domain.AlarmRule;
+import com.dajanggan.domain.alarm.domain.AlarmTracking;
+import com.dajanggan.domain.alarm.domain.AlarmFeed;
 import com.dajanggan.domain.alarm.dto.AlarmTrackingDto;
+import com.dajanggan.domain.alarm.config.MetricConfig;
+import com.dajanggan.domain.alarm.service.SlackNotificationService;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
+import com.dajanggan.global.crypto.AesGcmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +45,9 @@ public class AlarmTestController {
     private final AlarmRuleMapper alarmRuleMapper;
     private final AlarmTrackingMapper alarmTrackingMapper;
     private final AlarmFeedMapper alarmFeedMapper;
+    private final AesGcmService aesGcmService;
+    private final MetricConfig metricConfig;
+    private final SlackNotificationService slackNotificationService;
 
     /**
      * 특정 지표에 대해 즉시 알람 체크 실행
@@ -52,8 +63,9 @@ public class AlarmTestController {
         Map<String, Object> result = new HashMap<>();
 
         try {
-            // Instance 조회
-            Instance instance = instanceRepository.findById(instanceId)
+            // Instance 조회 (secretRef 포함)
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(instanceId)).stream()
+                    .findFirst()
                     .orElseThrow(() -> new RuntimeException("Instance not found: " + instanceId));
 
             log.info("📋 Instance 정보:");
@@ -115,7 +127,9 @@ public class AlarmTestController {
         Map<String, Object> result = new HashMap<>();
 
         try {
-            Instance instance = instanceRepository.findById(instanceId)
+            // Instance 조회 (secretRef 포함)
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(instanceId)).stream()
+                    .findFirst()
                     .orElseThrow(() -> new RuntimeException("Instance not found"));
 
             List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(instanceId);
@@ -304,7 +318,7 @@ public class AlarmTestController {
         // ✅ trim()으로 공백 제거
         String host = instance.getHost() != null ? instance.getHost().trim() : "";
         String userName = instance.getUserName() != null ? instance.getUserName().trim() : "";
-        String password = instance.getSecretRef() != null ? instance.getSecretRef().trim() : "";
+        String password = aesGcmService.decryptToString(instance.getSecretRef());
         String dbName = databaseName != null ? databaseName.trim() : "";
 
         String url = String.format("jdbc:postgresql://%s:%d/%s",
@@ -342,7 +356,9 @@ public class AlarmTestController {
         Map<String, Object> result = new HashMap<>();
 
         try {
-            Instance instance = instanceRepository.findById(instanceId)
+            // Instance 조회 (secretRef 포함)
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(instanceId)).stream()
+                    .findFirst()
                     .orElseThrow(() -> new RuntimeException("Instance not found"));
 
             List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(instanceId);
@@ -393,5 +409,225 @@ public class AlarmTestController {
         }
 
         return result;
+    }
+
+    /**
+     * 인위적으로 알람 발생시키기 (테스트용)
+     * 
+     * POST /api/test/alarm/trigger-manual
+     * 
+     * Body:
+     * {
+     *   "alarmRuleId": 1,
+     *   "severityLevel": "CRITICAL",
+     *   "currentValue": 1200000
+     * }
+     */
+    @PostMapping("/trigger-manual")
+    public Map<String, Object> triggerManualAlarm(
+            @RequestParam Long alarmRuleId,
+            @RequestParam(defaultValue = "CRITICAL") String severityLevel,
+            @RequestParam(defaultValue = "1000000") BigDecimal currentValue
+    ) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            // 규칙 조회
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            if (!rule.getEnabled()) {
+                result.put("success", false);
+                result.put("error", "알람 규칙이 비활성화되어 있습니다.");
+                return result;
+            }
+
+            OffsetDateTime now = OffsetDateTime.now();
+
+            // 1. 트래킹 생성 또는 업데이트
+            AlarmTracking tracking = alarmTrackingMapper.findByRuleId(alarmRuleId).orElse(null);
+            
+            if (tracking == null) {
+                // 새 트래킹 생성
+                tracking = AlarmTracking.builder()
+                        .alarmRuleId(alarmRuleId)
+                        .instanceId(rule.getInstanceId())
+                        .databaseId(rule.getDatabaseId())
+                        .firstTriggeredAt(now)
+                        .lastCheckedAt(now)
+                        .consecutiveCount(1)
+                        .currentValue(currentValue)
+                        .currentLevel(severityLevel)
+                        .status("FIRED")
+                        .build();
+                alarmTrackingMapper.insertTracking(tracking);
+                log.info("✅ 새 트래킹 생성: ruleId={}, trackingId={}", alarmRuleId, tracking.getAlarmTrackingId());
+            } else {
+                // 기존 트래킹 업데이트
+                tracking.setLastCheckedAt(now);
+                tracking.setConsecutiveCount(tracking.getConsecutiveCount() + 1);
+                tracking.setCurrentValue(currentValue);
+                tracking.setCurrentLevel(severityLevel);
+                tracking.setStatus("FIRED");
+                alarmTrackingMapper.updateTracking(tracking);
+                log.info("✅ 트래킹 업데이트: ruleId={}, trackingId={}", alarmRuleId, tracking.getAlarmTrackingId());
+            }
+
+            // 2. 알람 피드 생성
+            AlarmFeed feed = AlarmFeed.builder()
+                    .alarmRuleId(alarmRuleId)
+                    .alarmTrackingId(tracking.getAlarmTrackingId())
+                    .instanceId(rule.getInstanceId())
+                    .databaseId(rule.getDatabaseId())
+                    .alarmTitle(rule.getMetricType() + " 임계치 초과 (" + severityLevel + ") [수동 발생]")
+                    .severityLevel(severityLevel)
+                    .metricType(rule.getMetricType())
+                    .currentValue(currentValue)
+                    .thresholdValue(BigDecimal.valueOf(1000000)) // 임시값
+                    .message(String.format("%s가 임계치를 초과했습니다 (현재: %s) [수동 발생]", 
+                            rule.getMetricType(), currentValue))
+                    .occurredAt(now)
+                    .isResolved(false)
+                    .isRead(false)
+                    .acknowledged(false)
+                    .build();
+
+            alarmFeedMapper.insertAlarmFeed(feed);
+
+            Long feedId = feed.getAlarmFeedId();
+            if (feedId == null) {
+                result.put("success", false);
+                result.put("error", "알람 피드 생성 실패");
+                return result;
+            }
+
+            // 3. 지표 히스토리 저장 (차트용)
+            alarmFeedMapper.insertMetricHistory(
+                    feedId,
+                    currentValue,
+                    now
+            );
+
+            // 4. 관련 객체 저장 (DB 연결 필요)
+            try {
+                Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                        .findFirst()
+                        .orElse(null);
+                
+                if (instance != null) {
+                    List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+                    String databaseName = databases.stream()
+                            .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                            .findFirst()
+                            .map(Database::getDatabaseName)
+                            .orElse(null);
+                    
+                    if (databaseName != null) {
+                        try (Connection conn = createConnection(instance, databaseName)) {
+                            saveRelatedObjects(conn, feedId, alarmRuleId, rule.getMetricType());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("관련 객체 저장 실패 (무시): {}", e.getMessage());
+            }
+
+            result.put("success", true);
+            result.put("message", "알람이 수동으로 발생되었습니다.");
+            result.put("trackingId", tracking.getAlarmTrackingId());
+            result.put("feedId", feedId);
+            result.put("severityLevel", severityLevel);
+            result.put("currentValue", currentValue);
+
+            log.info("🚨 수동 알람 발생: ruleId={}, trackingId={}, feedId={}, level={}", 
+                    alarmRuleId, tracking.getAlarmTrackingId(), feedId, severityLevel);
+
+        } catch (Exception e) {
+            log.error("수동 알람 발생 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 모든 알람 피드 조회 (해결된 것 포함)
+     * 
+     * GET /api/test/alarm/all-feeds?instanceId=1
+     */
+    @GetMapping("/all-feeds")
+    public Map<String, Object> getAllAlarmFeeds(
+            @RequestParam Long instanceId,
+            @RequestParam(required = false) Long databaseId,
+            @RequestParam(required = false) String severityLevel
+    ) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            // 해결 여부와 관계없이 모든 피드 조회
+            var feeds = alarmFeedMapper.selectAlarmList(
+                    instanceId,
+                    databaseId,
+                    severityLevel,
+                    null  // null이면 모든 피드 조회
+            );
+
+            result.put("success", true);
+            result.put("feeds", feeds);
+            result.put("count", feeds.size());
+
+        } catch (Exception e) {
+            log.error("알람 피드 조회 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 관련 객체 저장 (GenericAlarmCollector와 동일한 로직)
+     */
+    private void saveRelatedObjects(Connection conn, Long alarmFeedId, Long alarmRuleId, String metricType) {
+        String sql = metricConfig.getRelatedObjectsQuery(metricType);
+        if (sql == null) {
+            log.debug("관련 객체 쿼리 없음: {}", metricType);
+            return;
+        }
+
+        try (var stmt = conn.createStatement();
+             var rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                alarmFeedMapper.insertRelatedObject(
+                        alarmFeedId,
+                        alarmRuleId,
+                        rs.getString("object_type"),
+                        rs.getString("object_name"),
+                        rs.getBigDecimal("metric_value"),
+                        rs.getString("status")
+                );
+            }
+
+        } catch (SQLException e) {
+            log.error("관련 객체 저장 실패: {}", metricType, e);
+        }
+    }
+
+    @PostMapping("/slack-test")
+    public ResponseEntity<String> testSlackNotification() {
+        slackNotificationService.sendAlarmNotification(
+                "테스트 알람",
+                "WARNING",
+                "이것은 Slack 연동 테스트 메시지입니다.",
+                "test-instance",
+                "test-database"
+        );
+        return ResponseEntity.ok("Slack 테스트 알림 전송됨");
     }
 }
