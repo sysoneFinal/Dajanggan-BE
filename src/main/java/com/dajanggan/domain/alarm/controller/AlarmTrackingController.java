@@ -22,6 +22,7 @@ public class AlarmTrackingController {
     /**
      * 트래킹 상태 목록 조회
      */
+    @Tag(name = "Alarm-Tracking-view", description = "알람 트래킹 상태를 조회합니다")
     @GetMapping
     public ResponseEntity<List<AlarmTrackingDto.TrackingStatus>> getTrackingStatus(
             @RequestParam(required = false) Long instanceId,

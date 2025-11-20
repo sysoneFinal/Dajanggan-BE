@@ -39,6 +39,8 @@ public class AlarmFeedController {
     /**
      * 알림 상세 조회
      */
+
+    @Tag(name = "Alarm-Feed-detail", description = "알람 피드 아이디 별 alarm 상세 조회합니다")
     @GetMapping("/{alarmFeedId}")
     public ResponseEntity<AlarmFeedDto.DetailResponse> getAlarmDetail(
             @PathVariable Long alarmFeedId
@@ -53,6 +55,7 @@ public class AlarmFeedController {
     /**
      * 알림 읽음 처리
      */
+    @Tag(name = "Alarm-Feed-read", description = "알람 피드의 읽음을 처리합니다")
     @PatchMapping("/{alarmFeedId}/read")
     public ResponseEntity<Void> markAsRead(@PathVariable Long alarmFeedId) {
         log.info("알림 읽음 처리 - alarmFeedId: {}", alarmFeedId);
@@ -61,22 +64,10 @@ public class AlarmFeedController {
 
         return ResponseEntity.ok().build();
     }
-
-    /**
-     * 알림 확인 처리 (Acknowledge)
-     */
-    @PatchMapping("/{alarmFeedId}/acknowledge")
-    public ResponseEntity<Void> acknowledgeAlarm(@PathVariable Long alarmFeedId) {
-        log.info("알림 확인 처리 - alarmFeedId: {}", alarmFeedId);
-
-        alarmFeedService.acknowledgeAlarm(alarmFeedId);
-
-        return ResponseEntity.ok().build();
-    }
-
     /**
      * 알림 삭제
      */
+    @Tag(name = "Alarm-Feed-delete", description = "알람을 삭제합니다")
     @DeleteMapping("/{alarmFeedId}")
     public ResponseEntity<Void> deleteAlarm(@PathVariable Long alarmFeedId) {
         log.info("알림 삭제 - alarmFeedId: {}", alarmFeedId);
@@ -89,6 +80,7 @@ public class AlarmFeedController {
     /**
      * 미확인 알림 개수 조회
      */
+    @Tag(name = "Alarm-Feed-unread-count", description = "알람 미확인 개수를 조회합니다")
     @GetMapping("/unread/count")
     public ResponseEntity<Integer> getUnreadCount(@RequestParam Long instanceId) {
         log.info("미확인 알림 개수 조회 - instanceId: {}", instanceId);

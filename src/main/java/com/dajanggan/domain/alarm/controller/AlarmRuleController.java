@@ -24,6 +24,8 @@ public class AlarmRuleController {
     /**
      * 알림 규칙 목록 조회
      */
+
+    @Tag(name = "Alarm-Rule-list", description = "알람 규칙 목록을 조회합니다")
     @GetMapping
     public ResponseEntity<AlarmRuleDto.ListResponse> getRuleList(
             @RequestParam(required = false) Long instanceId,
@@ -43,6 +45,7 @@ public class AlarmRuleController {
     /**
      * 알림 규칙 상세 조회
      */
+    @Tag(name = "Alarm-Rule-list-detail", description = "알람 규칙 목록의 상세 내용을 조회합니다")
     @GetMapping("/{alarmRuleId}")
     public ResponseEntity<AlarmRuleDto.DetailResponse> getRuleDetail(
             @PathVariable Long alarmRuleId
@@ -61,6 +64,7 @@ public class AlarmRuleController {
     /**
      * 알림 규칙 생성
      */
+    @Tag(name = "Alarm-Rule-create", description = "알람 규칙을 생성합니다")
     @PostMapping
     public ResponseEntity<Map<String, Object>> createRule(@RequestBody AlarmRuleDto.CreateRequest request) {
         log.info("알림 규칙 생성 - request: {}", request);
@@ -93,6 +97,7 @@ public class AlarmRuleController {
     /**
      * 알림 규칙 수정
      */
+    @Tag(name = "Alarm-Rule-edit", description = "알람 규칙을 수정합니다")
     @PutMapping("/{alarmRuleId}")
     public ResponseEntity<Map<String, String>> updateRule(
             @PathVariable Long alarmRuleId,
@@ -128,6 +133,7 @@ public class AlarmRuleController {
     /**
      * 알림 규칙 삭제
      */
+    @Tag(name = "Alarm-Rule-delete", description = "알람 규칙을 삭제합니다")
     @DeleteMapping("/{alarmRuleId}")
     public ResponseEntity<Map<String, String>> deleteRule(@PathVariable Long alarmRuleId) {
         log.info("알림 규칙 삭제 - alarmRuleId: {}", alarmRuleId);
@@ -159,6 +165,7 @@ public class AlarmRuleController {
     /**
      * 알림 규칙 활성화/비활성화
      */
+    @Tag(name = "Alarm-Rule-enable", description = "알람 규칙을 활성화를 설정합니다")
     @PatchMapping("/{alarmRuleId}/enabled")
     public ResponseEntity<Map<String, String>> toggleRuleEnabled(
             @PathVariable Long alarmRuleId,
