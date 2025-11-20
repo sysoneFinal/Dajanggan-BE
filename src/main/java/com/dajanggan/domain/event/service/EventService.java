@@ -62,7 +62,7 @@ public class EventService {
     /**
      * 이벤트 저장
      * - 별도 트랜잭션으로 처리하여 모니터링 로직과 분리
-     * - 저장 실패 시에도 모니터링이 계속 진행되도록 예외를 먹음
+     * - 저장 실패 시에도 모니터링이 계속 진행되도록 예외
      */
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
