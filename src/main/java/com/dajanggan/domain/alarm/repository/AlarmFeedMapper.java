@@ -42,6 +42,12 @@ public interface AlarmFeedMapper {
     // 알림 삭제
     int deleteAlarm(@Param("alarmFeedId") Long alarmFeedId);
 
+    // 알람 메트릭 히스토리 삭제 (알람 삭제 전에 호출)
+    int deleteMetricHistoryByFeedId(@Param("alarmFeedId") Long alarmFeedId);
+
+    // 알람 관련 객체 삭제 (알람 삭제 전에 호출)
+    int deleteRelatedObjectsByFeedId(@Param("alarmFeedId") Long alarmFeedId);
+
     // 미확인 알림 개수
     int countUnreadAlarms(@Param("instanceId") Long instanceId);
 

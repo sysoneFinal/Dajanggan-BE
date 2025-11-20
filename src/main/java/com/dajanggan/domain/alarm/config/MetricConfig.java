@@ -91,6 +91,100 @@ public class MetricConfig {
     }
 
     /**
+     * 집계 타입별 지표 쿼리
+     * - avg_5m: 5분 집계 테이블에서 평균
+     * - avg_15m: 1분 집계 테이블에서 15분 평균
+     * - p95_15m: 1분 집계 테이블에서 15분 95퍼센타일
+     */
+    public String getAggregatedMetricQuery(String metricType, String aggregationType) {
+        // 집계 테이블 컬럼 매핑
+        String columnName = getAggregationColumn(metricType);
+        if (columnName == null) {
+            return null; // 집계 테이블에 없는 지표
+        }
+
+        return switch (aggregationType) {
+            case "avg_5m" -> {
+                String tableName = getAggregationTable(metricType, "5m");
+                if (tableName == null) {
+                    yield null;
+                }
+                yield String.format(
+                    "SELECT AVG(%s)::NUMERIC FROM %s " +
+                    "WHERE instance_id = ? AND database_id = ? " +
+                    "AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '5 minutes'",
+                    columnName, tableName
+                );
+            }
+            case "avg_15m" -> {
+                String tableName = getAggregationTable(metricType, "1m");
+                if (tableName == null) {
+                    yield null;
+                }
+                yield String.format(
+                    "SELECT AVG(%s)::NUMERIC FROM %s " +
+                    "WHERE instance_id = ? AND database_id = ? " +
+                    "AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '15 minutes'",
+                    columnName, tableName
+                );
+            }
+            case "p95_15m" -> {
+                String tableName = getAggregationTable(metricType, "1m");
+                if (tableName == null) {
+                    yield null;
+                }
+                yield String.format(
+                    "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY %s)::NUMERIC " +
+                    "FROM %s " +
+                    "WHERE instance_id = ? AND database_id = ? " +
+                    "AND collected_at >= CURRENT_TIMESTAMP - INTERVAL '15 minutes' " +
+                    "AND %s IS NOT NULL",
+                    columnName, tableName, columnName
+                );
+            }
+            default -> null;
+        };
+    }
+
+    /**
+     * 지표 타입에 따른 집계 테이블 컬럼명 반환
+     */
+    private String getAggregationColumn(String metricType) {
+        return switch (metricType) {
+            // Vacuum 관련 - 집계 테이블에 있는 지표들
+            case "dead_tuples" -> "total_dead_tuples";
+            case "bloat_percent" -> "avg_bloat_ratio";
+            case "total_table_bloat" -> "total_bloat_bytes";
+            case "autovacuum_worker_utilization" -> "worker_utilization_pct";
+            
+            // 쿼리 관련 - 이미 집계 테이블 사용
+            case "slow_query_spike", "avg_execution_spike", "qps_spike" -> null; // 이미 집계 테이블 쿼리 사용
+            
+            // 세션 관련 - 집계 테이블 확인 필요
+            // case "long_running_queries" -> ... (session_metrics_agg 테이블 확인 필요)
+            
+            default -> null; // 집계 테이블에 없는 지표
+        };
+    }
+
+    /**
+     * 지표 타입과 집계 주기에 따른 집계 테이블명 반환
+     */
+    private String getAggregationTable(String metricType, String interval) {
+        // 지표 타입에 따라 적절한 집계 테이블 선택
+        if (metricType.startsWith("dead_tuples") || 
+            metricType.startsWith("bloat") || 
+            metricType.equals("autovacuum_worker_utilization") ||
+            metricType.equals("total_table_bloat")) {
+            // Vacuum 관련 지표
+            return interval.equals("5m") ? "vacuum_metrics_agg_5m" : "vacuum_metrics_agg_1m";
+        }
+        
+        // 다른 지표 타입들은 추후 추가
+        return null;
+    }
+
+    /**
      * 지표별 관련 객체 조회 쿼리
      */
     public String getRelatedObjectsQuery(String metricType) {
