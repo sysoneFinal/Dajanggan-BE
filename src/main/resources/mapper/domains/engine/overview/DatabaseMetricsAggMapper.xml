@@ -68,11 +68,19 @@
         dead_tuple_total,
         info_event_count, warning_event_count, critical_event_count,
         recent_event_type, recent_event_level, recent_event_age_min,
-        created_at
         FROM database_metrics_agg
         WHERE database_id = #{databaseId}
         AND collected_at >= NOW() - INTERVAL '15 minutes'
         ORDER BY collected_at DESC;
     </select>
+
+<!--    <select id="">-->
+<!--        instance_id, database_id, collected_at,active_sessions,-->
+<!--        -->
+<!--    </select>-->
+<!--    -->
+<!--    <select id="">-->
+<!--        instance_id, database_id, collected_at,-->
+<!--    </select>-->
 
 </mapper>
