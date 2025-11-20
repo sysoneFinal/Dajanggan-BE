@@ -67,7 +67,7 @@ app:
     salt-len: 16
     iv-len: 12
 
-slack:
-  webhook:
-    url: ${SLACK_WEBHOOK_URL}
-  enabled: false
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini
+

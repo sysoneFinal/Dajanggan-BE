@@ -1,8 +1,11 @@
 package com.dajanggan.domain.query.controller;
 
+import com.dajanggan.domain.query.domain.QuerySuggestion;
 import com.dajanggan.domain.query.dto.ExplainAnalyzeRequest;
 import com.dajanggan.domain.query.dto.ExplainAnalyzeResult;
+import com.dajanggan.domain.query.dto.QueryAnalysisResponse;
 import com.dajanggan.domain.query.service.ExplainAnalyzeService;
+import com.dajanggan.domain.query.service.QueryAIAnalysisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,6 +33,7 @@ import java.util.Map;
 public class ExplainAnalyzeController {
 
     private final ExplainAnalyzeService explainAnalyzeService;
+    private final QueryAIAnalysisService aiAnalysisService;
 
     /**
      * EXPLAIN ANALYZE 실행
@@ -87,6 +92,57 @@ public class ExplainAnalyzeController {
             response.put("success", false);
             response.put("message", "쿼리 분석 실패: " + e.getMessage());
 
+            return ResponseEntity.ok(response);
+        }
+    }
+
+    /**
+     * AI 기반 쿼리 분석
+     * POST /api/query-metrics/analyze-with-ai
+     *
+     * @param request { databaseId, query }
+     * @return EXPLAIN ANALYZE 결과 + AI 제안
+     */
+    @PostMapping("/analyze-with-ai")
+    @Operation(summary = "쿼리 분석 + AI 제안",
+            description = "EXPLAIN ANALYZE 실행 후 AI 기반 최적화 제안을 제공합니다.")
+    public ResponseEntity<Map<String, Object>> analyzeWithAI(
+            @RequestBody ExplainAnalyzeRequest request) {
+
+        log.info("🤖 AI 쿼리 분석 요청 - Database ID: {}", request.getDatabaseId());
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            // 1. EXPLAIN ANALYZE 실행
+            ExplainAnalyzeResult explainResult = explainAnalyzeService.execute(
+                    request.getDatabaseId(),
+                    request.getQuery()
+            );
+
+            // 2. AI 분석
+            List<QuerySuggestion> suggestions = aiAnalysisService.analyzeQuery(
+                    request.getDatabaseId(),
+                    request.getQuery(),
+                    explainResult
+            );
+
+            // 3. 응답 생성
+            QueryAnalysisResponse data = QueryAnalysisResponse.builder()
+                    .explainResult(explainResult)
+                    .suggestions(suggestions)
+                    .build();
+
+            response.put("success", true);
+            response.put("data", data);
+
+            log.info("✅ AI 분석 완료 - 제안 개수: {}", suggestions.size());
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("❌ AI 분석 실패", e);
+            response.put("success", false);
+            response.put("message", "AI 분석 실패: " + e.getMessage());
             return ResponseEntity.ok(response);
         }
     }

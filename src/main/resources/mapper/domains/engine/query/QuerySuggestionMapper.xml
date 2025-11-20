@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dajanggan.domain.query.repository.QuerySuggestionRepository">
+
+    <!-- ResultMap 정의 (캐싱 필드 추가) -->
+    <resultMap id="querySuggestionResultMap" type="com.dajanggan.domain.query.domain.QuerySuggestion">
+        <id property="suggestionId" column="suggestion_id"/>
+        <result property="databaseId" column="database_id"/>
+        <result property="queryHash" column="query_hash"/>
+        <result property="hasTuningSuggestion" column="has_tuning_suggestion"/>
+        <result property="suggestionLevel" column="suggestion_level"/>
+        <result property="suggestionType" column="suggestion_type"/>
+        <result property="suggestionTitle" column="suggestion_title"/>
+        <result property="suggestionDescription" column="suggestion_description"/>
+        <result property="suggestionSql" column="suggestion_sql"/>
+        <result property="expectedImprovementPercent" column="expected_improvement_percent"/>
+        <result property="queriesPerTransaction" column="queries_per_transaction"/>
+        <result property="transactionId" column="transaction_id"/>
+        <result property="createdAt" column="created_at"/>
+        <!-- 캐싱 관련 필드 -->
+        <result property="aiModel" column="ai_model"/>
+        <result property="tokenUsed" column="token_used"/>
+        <result property="isFromCache" column="is_from_cache"/>
+    </resultMap>
+
+    <!-- 단건 저장 (캐싱 필드 포함) -->
+    <insert id="insert" parameterType="com.dajanggan.domain.query.domain.QuerySuggestion"
+            useGeneratedKeys="true" keyProperty="suggestionId" keyColumn="suggestion_id">
+        INSERT INTO query_suggestion (
+            database_id,
+            query_hash,
+            has_tuning_suggestion,
+            suggestion_level,
+            suggestion_type,
+            suggestion_title,
+            suggestion_description,
+            suggestion_sql,
+            expected_improvement_percent,
+            queries_per_transaction,
+            transaction_id,
+            created_at,
+            ai_model,
+            token_used,
+            is_from_cache
+        ) VALUES (
+                     #{databaseId},
+                     #{queryHash},
+                     #{hasTuningSuggestion},
+                     #{suggestionLevel},
+                     #{suggestionType},
+                     #{suggestionTitle},
+                     #{suggestionDescription},
+                     #{suggestionSql},
+                     #{expectedImprovementPercent},
+                     #{queriesPerTransaction},
+                     #{transactionId},
+                     #{createdAt},
+                     #{aiModel},
+                     #{tokenUsed},
+                     #{isFromCache}
+                 )
+    </insert>
+
+    <!-- 다건 저장 (캐싱 필드 포함) -->
+    <insert id="insertAll" parameterType="java.util.List">
+        INSERT INTO query_suggestion (
+        database_id,
+        query_hash,
+        has_tuning_suggestion,
+        suggestion_level,
+        suggestion_type,
+        suggestion_title,
+        suggestion_description,
+        suggestion_sql,
+        expected_improvement_percent,
+        queries_per_transaction,
+        transaction_id,
+        created_at,
+        ai_model,
+        token_used,
+        is_from_cache
+        ) VALUES
+        <foreach collection="suggestions" item="item" separator=",">
+            (
+            #{item.databaseId},
+            #{item.queryHash},
+            #{item.hasTuningSuggestion},
+            #{item.suggestionLevel},
+            #{item.suggestionType},
+            #{item.suggestionTitle},
+            #{item.suggestionDescription},
+            #{item.suggestionSql},
+            #{item.expectedImprovementPercent},
+            #{item.queriesPerTransaction},
+            #{item.transactionId},
+            #{item.createdAt},
+            #{item.aiModel},
+            #{item.tokenUsed},
+            #{item.isFromCache}
+            )
+        </foreach>
+    </insert>
+
+    <!-- 데이터베이스와 쿼리 해시로 조회 -->
+    <select id="findByDatabaseIdAndQueryHash" resultMap="querySuggestionResultMap">
+        SELECT
+            suggestion_id,
+            database_id,
+            query_hash,
+            has_tuning_suggestion,
+            suggestion_level,
+            suggestion_type,
+            suggestion_title,
+            suggestion_description,
+            suggestion_sql,
+            expected_improvement_percent,
+            queries_per_transaction,
+            transaction_id,
+            created_at,
+            ai_model,
+            token_used,
+            is_from_cache
+        FROM query_suggestion
+        WHERE database_id = #{databaseId}
+          AND query_hash = #{queryHash}
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 최신 제안 조회 (캐싱용) -->
+    <select id="findLatestByDatabaseIdAndQueryHash" resultMap="querySuggestionResultMap">
+        SELECT
+            suggestion_id,
+            database_id,
+            query_hash,
+            has_tuning_suggestion,
+            suggestion_level,
+            suggestion_type,
+            suggestion_title,
+            suggestion_description,
+            suggestion_sql,
+            expected_improvement_percent,
+            queries_per_transaction,
+            transaction_id,
+            created_at,
+            ai_model,
+            token_used,
+            is_from_cache
+        FROM query_suggestion
+        WHERE database_id = #{databaseId}
+          AND query_hash = #{queryHash}
+        ORDER BY created_at DESC
+            LIMIT 10
+    </select>
+
+    <!-- 최근 제안 조회 -->
+    <select id="findRecentSuggestions" resultMap="querySuggestionResultMap">
+        SELECT
+            suggestion_id,
+            database_id,
+            query_hash,
+            has_tuning_suggestion,
+            suggestion_level,
+            suggestion_type,
+            suggestion_title,
+            suggestion_description,
+            suggestion_sql,
+            expected_improvement_percent,
+            queries_per_transaction,
+            transaction_id,
+            created_at,
+            ai_model,
+            token_used,
+            is_from_cache
+        FROM query_suggestion
+        WHERE database_id = #{databaseId}
+          AND created_at >= #{fromDate}
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 캐시 히트율 통계 -->
+    <select id="countByIsFromCache" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM query_suggestion
+        WHERE is_from_cache = #{isFromCache}
+    </select>
+
+</mapper>
