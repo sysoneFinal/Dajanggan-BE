@@ -19,3 +19,5 @@ public class HotTableListResponse {
     private Long total;
 }
 
+
+

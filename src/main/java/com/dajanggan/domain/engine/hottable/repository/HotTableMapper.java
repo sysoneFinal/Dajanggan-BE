@@ -1,12 +1,13 @@
 package com.dajanggan.domain.engine.hottable.repository;
 
 import com.dajanggan.domain.engine.hottable.domain.HotTableAgg;
+import com.dajanggan.domain.engine.hottable.domain.HotTableAgg5m;
 import com.dajanggan.domain.engine.hottable.domain.HotTableRaw;
 import com.dajanggan.domain.instance.domain.Database;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -57,8 +58,8 @@ public interface HotTableMapper {
     List<Map<String, Object>> selectTableActivityTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("databaseId") Long databaseId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
     );
 
     /**
@@ -72,8 +73,8 @@ public interface HotTableMapper {
     List<Map<String, Object>> selectCacheHitRatioTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("databaseId") Long databaseId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
     );
 
     /**
@@ -121,8 +122,8 @@ public interface HotTableMapper {
     List<Map<String, Object>> selectHotTableList(
             @Param("instanceId") Long instanceId,
             @Param("databaseId") Long databaseId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("statusList") List<String> statusList
     );
 
@@ -158,4 +159,27 @@ public interface HotTableMapper {
      * @param aggList Agg 데이터 리스트
      */
     void insertAggBatch(List<HotTableAgg> aggList);
+
+    /**
+     * 5분 집계를 위한 1분 집계 데이터 조회
+     * @param databaseId 데이터베이스 ID
+     * @param schemaName 스키마명
+     * @param tableName 테이블명
+     * @param startTime 시작 시간
+     * @param endTime 종료 시간
+     * @return 1분 집계 데이터 리스트
+     */
+    List<HotTableAgg> selectPreviousAgg1m(
+            @Param("databaseId") Long databaseId,
+            @Param("schemaName") String schemaName,
+            @Param("tableName") String tableName,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * 5분 집계 데이터 삽입
+     * @param agg5m 5분 집계 데이터
+     */
+    void insertAgg5m(HotTableAgg5m agg5m);
 }

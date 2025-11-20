@@ -397,4 +397,84 @@
         ORDER BY (ps.seq_scan + COALESCE(ps.idx_scan, 0)) DESC
             LIMIT 20
     </select>
+
+    <!-- 5분 집계를 위한 1분 집계 데이터 조회 -->
+    <select id="selectPreviousAgg1m" resultType="com.dajanggan.domain.engine.hottable.domain.HotTableAgg">
+        SELECT
+            hot_table_agg_id,
+            database_id,
+            collected_at,
+            schema_name,
+            table_name,
+            avg_table_size,
+            total_seq_scan,
+            total_seq_tup_read,
+            total_idx_scan,
+            total_idx_tup_fetch,
+            total_tup_ins,
+            total_tup_upd,
+            total_tup_del,
+            avg_dead_ratio,
+            avg_cache_hit_ratio,
+            avg_seq_scan_ratio,
+            vacuum_delay_seconds,
+            status,
+            total_tup_hot_upd,
+            avg_bloat_percent,
+            created_at
+        FROM hot_table_agg_1m
+        WHERE database_id = #{databaseId}
+          AND schema_name = #{schemaName}
+          AND table_name = #{tableName}
+          AND collected_at >= #{startTime}
+          AND collected_at <![CDATA[ < ]]> #{endTime}
+        ORDER BY collected_at
+    </select>
+
+    <!-- 5분 집계 데이터 삽입 -->
+    <insert id="insertAgg5m" parameterType="com.dajanggan.domain.engine.hottable.domain.HotTableAgg5m">
+        INSERT INTO hot_table_agg_5m (
+            database_id,
+            collected_at,
+            schema_name,
+            table_name,
+            avg_table_size,
+            total_seq_scan,
+            total_seq_tup_read,
+            total_idx_scan,
+            total_idx_tup_fetch,
+            total_tup_ins,
+            total_tup_upd,
+            total_tup_del,
+            avg_dead_ratio,
+            avg_cache_hit_ratio,
+            avg_seq_scan_ratio,
+            vacuum_delay_seconds,
+            status,
+            total_tup_hot_upd,
+            avg_bloat_percent,
+            created_at
+        ) VALUES (
+            #{databaseId},
+            #{collectedAt},
+            #{schemaName},
+            #{tableName},
+            #{avgTableSize},
+            #{totalSeqScan},
+            #{totalSeqTupRead},
+            #{totalIdxScan},
+            #{totalIdxTupFetch},
+            #{totalTupIns},
+            #{totalTupUpd},
+            #{totalTupDel},
+            #{avgDeadRatio},
+            #{avgCacheHitRatio},
+            #{avgSeqScanRatio},
+            #{vacuumDelaySeconds},
+            #{status},
+            #{totalTupHotUpd},
+            #{avgBloatPercent},
+            NOW()
+        )
+    </insert>
 </mapper>
