@@ -5,7 +5,7 @@ import com.dajanggan.domain.engine.bgwriter.domain.BgWriterRaw;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -29,8 +29,8 @@ public interface BgWriterMapper {
      */
     List<Map<String, Object>> selectCleanRateTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") Integer intervalMinutes
     );
 
@@ -44,8 +44,8 @@ public interface BgWriterMapper {
      */
     List<Map<String, Object>> selectBufferFlushRatioTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") Integer intervalMinutes
     );
 
@@ -59,8 +59,8 @@ public interface BgWriterMapper {
      */
     List<Map<String, Object>> selectMaxwrittenCleanTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") Integer intervalMinutes
     );
 
@@ -74,8 +74,8 @@ public interface BgWriterMapper {
      */
     List<Map<String, Object>> selectBgwriterVsCheckpointTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") Integer intervalMinutes
     );
 
@@ -89,8 +89,8 @@ public interface BgWriterMapper {
      */
     List<Map<String, Object>> selectBufferReuseRateTimeSeries(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("intervalMinutes") Integer intervalMinutes
     );
 
@@ -111,8 +111,8 @@ public interface BgWriterMapper {
      */
     List<Map<String, Object>> selectBgWriterList(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
             @Param("statusList") List<String> statusList
     );
 
@@ -140,8 +140,8 @@ public interface BgWriterMapper {
      */
     List<com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m> selectPreviousAgg1m(
             @Param("instanceId") Long instanceId,
-            @Param("startTime") LocalDateTime startTime,
-            @Param("endTime") LocalDateTime endTime
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
     );
 
     /**

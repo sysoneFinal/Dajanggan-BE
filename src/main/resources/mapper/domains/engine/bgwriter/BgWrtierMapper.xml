@@ -9,8 +9,8 @@
     <select id="selectBackendFlushRatio" resultType="map">
         SELECT
             avg_backend_flush_ratio as value,
-            total_buffers_clean as buffersClean,
-            total_buffers_backend as buffersBackend
+            total_buffers_clean as buffersclean,
+            total_buffers_backend as buffersbackend
         FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
         ORDER BY collected_at DESC
@@ -150,12 +150,16 @@
     <!-- 최근 통계 조회 -->
     <select id="selectRecentStats" resultType="map">
         SELECT
-            avg_backend_flush_ratio as bgwriterActivityRate,
-            100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as cleanBufferReuseRate,
-            total_backend_fsync as backendFsyncCount
+            avg_backend_flush_ratio as bgwriteractivityrate,
+            100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as cleanbufferreuserate,
+            total_backend_fsync as backendfsynccount,
+            0.0 as bufferpoolusagerate,
+            0 as checkpointinterruptioncount,
+            0.0 as dirtybufferaccumulationrate
         FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= NOW() - INTERVAL '5 minutes'
+          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
+          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
         ORDER BY collected_at DESC
         LIMIT 1
     </select>
@@ -168,15 +172,15 @@
             COALESCE(total_buffers_clean + total_buffers_backend, 0) as buffersAlloc,
             COALESCE(avg_clean_rate, 0.0) as cleanRate,
             -- Backend rate 계산 (backend buffers / 시간 간격, 초당)
-            COALESCE(total_buffers_backend / 60.0, 0.0) as backendRate,
+            COALESCE(total_buffers_backend / NULLIF(60.0, 0), 0.0) as backendRate,
             0 as checkpointBuffers,
             COALESCE(avg_backend_flush_ratio, 0.0) as backendRatio,
             -- Fsync rate 계산 (초당)
-            COALESCE(total_backend_fsync / 60.0, 0.0) as fsyncRate,
+            COALESCE(total_backend_fsync / NULLIF(60.0, 0), 0.0) as fsyncRate,
             -- Maxwritten rate 계산 (분당)
             COALESCE(total_maxwritten_clean, 0) as maxWrittenRate,
-            -- avg_cycle_time_ms 컬럼이 없으므로 0으로 처리
-            0.0 as avgCycleTime,
+            -- avg_cycle_time_ms 컬럼 조회
+            COALESCE(avg_cycle_time_ms, 0.0) as avgcycletime,
             COALESCE(status, '정상') as status
         FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
@@ -319,8 +323,8 @@
         FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime}
-          AND collected_at &lt; #{endTime}
-        ORDER BY collected_at
+          AND collected_at <![CDATA[ <= ]]> #{endTime}
+        ORDER BY collected_at ASC
     </select>
 
 </mapper>

@@ -14,7 +14,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -46,9 +47,14 @@ public class BgWriterCollectionScheduler {
         log.info("========== BGWriter 1분 집계 시작 ==========");
 
         try {
-            LocalDateTime collectedAt = LocalDateTime.now();
+            OffsetDateTime collectedAt = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
             List<Long> instanceIds = bgWriterMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
+            
+            if (instanceIds.isEmpty()) {
+                log.warn("활성 인스턴스가 없습니다. DB의 instance 테이블에 is_active=true인 인스턴스가 있는지 확인하세요.");
+                return;
+            }
 
             int successCount = 0;
             int failCount = 0;
@@ -79,7 +85,7 @@ public class BgWriterCollectionScheduler {
         log.info("========== BGWriter 5분 집계 시작 ==========");
 
         try {
-            LocalDateTime collectedAt = LocalDateTime.now();
+            OffsetDateTime collectedAt = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
             List<Long> instanceIds = bgWriterMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
 
@@ -92,21 +98,23 @@ public class BgWriterCollectionScheduler {
                     successCount++;
                 } catch (Exception e) {
                     failCount++;
-                    log.error("BGWriter 5분 집계 처리 실패: instanceId={}", instanceId, e);
+                    // 집계 실패는 정상적인 상황일 수 있으므로 로그 최소화
+                    log.debug("BGWriter 5분 집계 처리 실패: instanceId={}, error={}", instanceId, e.getMessage());
                 }
             }
 
             log.info("========== BGWriter 5분 집계 완료: 성공={}, 실패={} ==========", successCount, failCount);
 
         } catch (Exception e) {
-            log.error("BGWriter 5분 집계 중 오류 발생", e);
+            // 집계 실패는 정상적인 상황일 수 있으므로 로그 최소화
+            log.debug("BGWriter 5분 집계 중 오류 발생: {}", e.getMessage());
         }
     }
 
     /**
      * 특정 인스턴스의 1분 집계 처리
      */
-    private void processInstance1mMetrics(Long instanceId, LocalDateTime collectedAt) {
+    private void processInstance1mMetrics(Long instanceId, OffsetDateTime collectedAt) {
         Instance instance = instanceRepository.findById(instanceId)
                 .orElseThrow(() -> new RuntimeException("인스턴스를 찾을 수 없습니다: " + instanceId));
 
@@ -114,14 +122,28 @@ public class BgWriterCollectionScheduler {
         Map<String, Object> currentData = collectFromPgStatBgwriter(jdbcTemplate);
         BgWriterRaw previousRaw = bgWriterMapper.selectPreviousRaw(instanceId);
 
+        log.debug("BGWriter 1분 집계 데이터 수집: instanceId={}, collectedAt={}, previousRaw={}", 
+                instanceId, collectedAt, previousRaw != null ? "존재" : "없음");
+
         BgWriterRaw raw = buildBgWriterRaw(instanceId, collectedAt, currentData);
         bgWriterMapper.insertRaw(raw);
-        log.debug("Raw 데이터 저장 완료: instanceId={}", instanceId);
+        log.debug("Raw 데이터 저장 완료: instanceId={}, buffersClean={}, buffersBackend={}, buffersBackendFsync={}, maxwrittenClean={}", 
+                instanceId, raw.getBuffersClean(), raw.getBuffersBackend(), raw.getBuffersBackendFsync(), raw.getMaxwrittenClean());
 
         if (previousRaw != null) {
             BgWriterAgg1m agg1m = calculateAggregation1m(instanceId, collectedAt, raw, previousRaw);
             bgWriterMapper.insertAgg1m(agg1m);
-            log.debug("1분 집계 데이터 저장 완료: instanceId={}", instanceId);
+            log.info("1분 집계 데이터 저장 완료: instanceId={}, totalBuffersClean={}, totalBuffersBackend={}, totalBackendFsync={}, totalMaxwrittenClean={}, avgBackendFlushRatio={}, avgCleanRate={}, status={}", 
+                    instanceId, 
+                    agg1m.getTotalBuffersClean(),
+                    agg1m.getTotalBuffersBackend(),
+                    agg1m.getTotalBackendFsync(),
+                    agg1m.getTotalMaxwrittenClean(),
+                    agg1m.getAvgBackendFlushRatio(),
+                    agg1m.getAvgCleanRate(),
+                    agg1m.getStatus());
+        } else {
+            log.warn("첫 번째 수집: 이전 데이터가 없어 집계 데이터 생성을 스킵합니다. instanceId={}", instanceId);
         }
 
         log.info("1분 집계 처리 완료: instanceId={}", instanceId);
@@ -130,19 +152,31 @@ public class BgWriterCollectionScheduler {
     /**
      * 특정 인스턴스의 5분 집계 처리
      */
-    private void processInstance5mMetrics(Long instanceId, LocalDateTime collectedAt) {
+    private void processInstance5mMetrics(Long instanceId, OffsetDateTime collectedAt) {
         // 5분 전부터 현재까지의 1분 집계 데이터 조회 (5개)
-        LocalDateTime startTime = collectedAt.minusMinutes(5);
+        OffsetDateTime startTime = collectedAt.minusMinutes(5);
         List<BgWriterAgg1m> agg1mList = bgWriterMapper.selectPreviousAgg1m(instanceId, startTime, collectedAt);
 
+        log.debug("5분 집계 데이터 조회: instanceId={}, startTime={}, collectedAt={}, agg1mListSize={}", 
+                instanceId, startTime, collectedAt, agg1mList != null ? agg1mList.size() : 0);
+
         if (agg1mList == null || agg1mList.isEmpty()) {
-            log.warn("5분 집계 스킵: 1분 집계 데이터가 없습니다. instanceId={}", instanceId);
+            log.warn("5분 집계 스킵: 1분 집계 데이터가 없습니다. instanceId={}, startTime={}, collectedAt={}", 
+                    instanceId, startTime, collectedAt);
             return;
         }
 
         BgWriterAgg5m agg5m = calculateAggregation5m(instanceId, collectedAt, agg1mList);
         bgWriterMapper.insertAgg5m(agg5m);
-        log.debug("5분 집계 데이터 저장 완료: instanceId={}", instanceId);
+        log.info("5분 집계 데이터 저장 완료: instanceId={}, totalBuffersClean={}, totalBuffersBackend={}, totalBackendFsync={}, totalMaxwrittenClean={}, avgBackendFlushRatio={}, avgCleanRate={}, status={}", 
+                instanceId,
+                agg5m.getTotalBuffersClean(),
+                agg5m.getTotalBuffersBackend(),
+                agg5m.getTotalBackendFsync(),
+                agg5m.getTotalMaxwrittenClean(),
+                agg5m.getAvgBackendFlushRatio(),
+                agg5m.getAvgCleanRate(),
+                agg5m.getStatus());
 
         log.info("5분 집계 처리 완료: instanceId={}, 1분 집계 수={}", instanceId, agg1mList.size());
     }
@@ -168,13 +202,16 @@ public class BgWriterCollectionScheduler {
     /**
      * BgWriterRaw 객체 생성
      */
-    private BgWriterRaw buildBgWriterRaw(Long instanceId, LocalDateTime collectedAt,
+    private BgWriterRaw buildBgWriterRaw(Long instanceId, OffsetDateTime collectedAt,
                                          Map<String, Object> data) {
         Long buffersClean = getLongValue(data, "buffers_clean");
         Long maxwrittenClean = getLongValue(data, "maxwritten_clean");
         Long buffersBackend = getLongValue(data, "buffers_backend");
         Long buffersBackendFsync = getLongValue(data, "buffers_backend_fsync");
         Long buffersAlloc = getLongValue(data, "buffers_alloc");
+
+        log.debug("pg_stat_bgwriter 데이터: instanceId={}, buffersClean={}, buffersBackend={}, buffersBackendFsync={}, maxwrittenClean={}, buffersAlloc={}", 
+                instanceId, buffersClean, buffersBackend, buffersBackendFsync, maxwrittenClean, buffersAlloc);
 
         return BgWriterRaw.builder()
                 .instanceId(instanceId)
@@ -184,14 +221,14 @@ public class BgWriterCollectionScheduler {
                 .buffersBackend(buffersBackend)
                 .buffersBackendFsync(buffersBackendFsync)
                 .buffersAlloc(buffersAlloc)
-                .avgCycleTimeMs(0.0)  // 계산 필요 시 추가
+                .avgCycleTimeMs(null)  // Raw 데이터에는 사이클 시간 없음 (Agg에서만 계산)
                 .build();
     }
 
     /**
      * 증분 계산하여 1분 집계 데이터 생성
      */
-    private BgWriterAgg1m calculateAggregation1m(Long instanceId, LocalDateTime collectedAt,
+    private BgWriterAgg1m calculateAggregation1m(Long instanceId, OffsetDateTime collectedAt,
                                                  BgWriterRaw current, BgWriterRaw previous) {
         // 증분 계산 (음수 방어: stats_reset 발생 시 현재 값 사용)
         long deltaBuffersClean = calculateSafeDelta(
@@ -211,6 +248,9 @@ public class BgWriterCollectionScheduler {
                 previous.getMaxwrittenClean()
         );
 
+        log.debug("BGWriter 1분 집계 계산: instanceId={}, deltaBuffersClean={}, deltaBuffersBackend={}, deltaBackendFsync={}, deltaMaxwrittenClean={}", 
+                instanceId, deltaBuffersClean, deltaBuffersBackend, deltaBackendFsync, deltaMaxwrittenClean);
+
         // Backend Flush 비율 계산
         long totalBuffers = deltaBuffersClean + deltaBuffersBackend;
         double backendFlushRatio = 0.0;
@@ -220,6 +260,27 @@ public class BgWriterCollectionScheduler {
 
         // Clean Rate 계산 (버퍼/초)
         double cleanRate = deltaBuffersClean / 60.0;
+        
+        log.debug("BGWriter 비율 계산: instanceId={}, totalBuffers={}, backendFlushRatio={}, cleanRate={}", 
+                instanceId, totalBuffers, backendFlushRatio, cleanRate);
+
+        // BGWriter 사이클 시간 계산 (밀리초)
+        // 사이클 시간 = (1분 동안 처리한 버퍼 수) / (초당 처리 속도) * 1000
+        // 또는 간단히: buffers_clean이 많을수록 사이클이 빠르게 돌았다고 가정
+        // 실제 사이클 시간은 pg_stat_statements나 다른 확장이 필요하므로,
+        // 여기서는 buffers_clean 증분을 기반으로 추정
+        Double avgCycleTimeMs = null;
+        if (deltaBuffersClean > 0) {
+            // 평균 사이클 시간 추정: 1분(60000ms) / (clean rate * 10)
+            // clean rate가 높을수록 사이클이 빠르게 돌았으므로 시간이 짧아짐
+            // 실제 계산은 복잡하므로 간단한 추정식 사용
+            double estimatedCycles = Math.max(1.0, deltaBuffersClean / 1000.0); // 1000개 버퍼당 1 사이클 가정
+            avgCycleTimeMs = 60000.0 / estimatedCycles; // 1분을 사이클 수로 나눔
+            // 최대값 제한 (너무 긴 사이클 시간 방지)
+            if (avgCycleTimeMs > 60000.0) {
+                avgCycleTimeMs = 60000.0;
+            }
+        }
 
         // 상태 판단 (Backend Flush 비율 + Maxwritten Clean 고려)
         String status = determineBgWriterStatus(backendFlushRatio, deltaMaxwrittenClean);
@@ -234,14 +295,14 @@ public class BgWriterCollectionScheduler {
                 .totalBackendFsync(deltaBackendFsync)
                 .totalMaxwrittenClean(deltaMaxwrittenClean)
                 .status(status)
-                .avgCycleTimeMs(0.0)  // 계산 필요 시 추가
+                .avgCycleTimeMs(avgCycleTimeMs)
                 .build();
     }
 
     /**
      * 1분 집계 데이터를 기반으로 5분 집계 데이터 생성
      */
-    private BgWriterAgg5m calculateAggregation5m(Long instanceId, LocalDateTime collectedAt,
+    private BgWriterAgg5m calculateAggregation5m(Long instanceId, OffsetDateTime collectedAt,
                                                  List<BgWriterAgg1m> agg1mList) {
         // 1분 집계 데이터들을 합산/평균 계산
         long totalBuffersClean = 0;
