@@ -1,5 +1,8 @@
 package com.dajanggan.domain.metric.collector;
 
+import com.dajanggan.domain.event.detector.VacuumEventDetector;
+import com.dajanggan.domain.event.dto.EventLog;
+import com.dajanggan.domain.event.service.EventService;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.vacuum.dto.VacuumHistoryDto;
@@ -34,6 +37,8 @@ public class VacuumMetricsCollector {
     private final VacuumRawRepository vacuumRawRepository;
     private final VacuumHistoryMapper vacuumHistoryMapper;
     private final DataSourceFactory dataSourceFactory;
+    private final VacuumEventDetector vacuumEventDetector;
+    private final EventService eventService;
 
     public void collect(Instance instance, Database database, OffsetDateTime collectedAt) {
         log.info("🧹 [VACUUM] ===== 수집 시작 ===== ");
@@ -49,10 +54,11 @@ public class VacuumMetricsCollector {
             throw e;
         }
 
+        List<VacuumRawMetricDto> vacuumMetrics;
         try {
             log.info("🧹 [VACUUM] 쿼리 실행 중...");
 
-            List<VacuumRawMetricDto> vacuumMetrics = getVacuumMetrics(jdbc, database, instance, collectedAt);
+            vacuumMetrics = getVacuumMetrics(jdbc, database, instance, collectedAt);
 
             log.info("🧹 [VACUUM] 쿼리 결과: {} 건", vacuumMetrics.size());
 
@@ -69,7 +75,7 @@ public class VacuumMetricsCollector {
 
             // 완료된 vacuum 세션 감지 및 저장
             List<VacuumRawMetricDto> completedSessions = detectCompletedVacuumSessions(
-                    database, instance, vacuumMetrics);  // ✅ instance 파라미터 추가
+                    database, instance, vacuumMetrics);
 
             if (!completedSessions.isEmpty()) {
                 log.info("🧹 [VACUUM] 완료된 vacuum 세션 {} 건 감지", completedSessions.size());
@@ -86,6 +92,20 @@ public class VacuumMetricsCollector {
             log.error("🧹 [VACUUM] ❌ 수집 실패: {}", e.getMessage(), e);
             throw e;
         }
+
+        // 2. 전체 vacuum 대상으로 이벤트 감지
+        List<EventLog> events = vacuumEventDetector.detectEvents(
+                vacuumMetrics,
+                database.getDatabaseId(),
+                instance.getInstanceId(),
+                database.getDatabaseName(),
+                instance.getInstanceName()
+        );
+
+        // 3. 이벤트 저장
+        eventService.saveEvents(events);
+        log.info("🧹 [VACUUM] ✅ 이벤트 감지 및 저장 완료: {}건 (instance: {}, database: {})",
+                events.size(), instance.getInstanceName(), database.getDatabaseName());
     }
 
     // VacuumMetricsCollector.java - getVacuumMetrics 메서드의 SQL 수정

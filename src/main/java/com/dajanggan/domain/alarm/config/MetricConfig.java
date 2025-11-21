@@ -16,37 +16,15 @@ public class MetricConfig {
                             "NULLIF((SELECT setting::NUMERIC FROM pg_settings WHERE name = 'autovacuum_max_workers'), 0) * 100) " +
                             "FROM pg_stat_activity";
 
-            case "blockers_per_hour" ->
-                    "SELECT COUNT(*)::NUMERIC FROM pg_locks WHERE NOT granted";
-
             case "transaction_age" ->
                     "SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - xact_start))), 0)::NUMERIC " +
                             "FROM pg_stat_activity WHERE xact_start IS NOT NULL AND state != 'idle'";
-
-            case "block_duration" ->
-                    "SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - query_start))), 0)::NUMERIC " +
-                            "FROM pg_stat_activity WHERE wait_event_type = 'Lock'";
 
             case "wraparound_progress" ->
                     "SELECT COALESCE(MAX(age(relfrozenxid)::NUMERIC / " +
                             "(SELECT setting::NUMERIC FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * 100), 0) " +
                             "FROM pg_class WHERE relkind = 'r'";
 
-            case "total_table_bloat" ->
-                    "SELECT COALESCE(SUM(CASE WHEN n_live_tup + n_dead_tup > 0 " +
-                            "THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup)) * pg_total_relation_size(relid) " +
-                            "ELSE 0 END), 0) FROM pg_stat_user_tables";
-
-            case "bloat_percent" ->
-                    "SELECT COALESCE(AVG(CASE WHEN n_live_tup + n_dead_tup > 0 " +
-                            "THEN (n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup)) * 100 " +
-                            "ELSE 0 END), 0) FROM pg_stat_user_tables";
-
-            case "dead_tuples" ->
-                    "SELECT COALESCE(SUM(n_dead_tup), 0)::NUMERIC FROM pg_stat_user_tables";
-
-            case "table_size" ->
-                    "SELECT COALESCE(SUM(pg_total_relation_size(relid)), 0)::NUMERIC FROM pg_stat_user_tables";
 
             // 세션
             case "long_running_queries" ->

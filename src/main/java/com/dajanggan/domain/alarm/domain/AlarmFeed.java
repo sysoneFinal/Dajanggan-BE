@@ -19,7 +19,7 @@ public class AlarmFeed {
     private Long instanceId;
     private Long databaseId;
     private String alarmTitle;
-    private String severityLevel;  // INFO, WARNING, CRITICAL
+    private String severityLevel;
     private String metricType;
     private BigDecimal currentValue;
     private BigDecimal thresholdValue;

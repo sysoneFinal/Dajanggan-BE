@@ -7,10 +7,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
 
-/**
- * Vacuum Raw 메트릭 DTO
- * pg_stat_progress_vacuum 및 pg_stat_all_tables에서 수집
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -35,18 +31,18 @@ public class VacuumRawMetricDto {
     private Long heapBlksVacuumed;
     private Long indexVacuumCount;
 
-    // ✅ 추가: Wait Event 정보
+    // Wait Event 정보
     private String waitEventType;
     private String waitEvent;
 
-    // ✅ 추가: Progress 상세 정보
+    // Progress 상세 정보
     private Boolean progressInitializing;
     private Boolean progressScanningHeap;
     private Boolean progressVacuumingHeap;
     private Boolean progressVacuumingCleanup;
     private Boolean progressTruncatingHeap;
 
-    // ✅ 추가: 페이지 정보
+    // 페이지 정보
     private Long pagesRemoved;
     private Long pagesSkippedDueToPin;
     private Long pagesSkippedFrozen;
@@ -56,37 +52,37 @@ public class VacuumRawMetricDto {
     private Long nLiveTup;
     private Long nModSinceAnalyze;
     private Long tuplesDeleted;
-    private Long tuplesDeadButNotRemovable;  // ✅ 추가
+    private Long tuplesDeadButNotRemovable;
 
     // Vacuum 세션 정보
     private OffsetDateTime sessionStartedAt;
     private Double elapsedSeconds;
-    private String sessionTrigger;  // 'manual' or 'autovacuum'
+    private String sessionTrigger;
 
     // 테이블 크기
     private Long relsizeTotalBytes;
-    private Long relsizeHeapBytes;      // ✅ 추가
-    private Long relsizeToastBytes;     // ✅ 추가
-    private Long relsizeIndexesBytes;   // ✅ 추가
+    private Long relsizeHeapBytes;
+    private Long relsizeToastBytes;
+    private Long relsizeIndexesBytes;
 
-    // ✅ 추가: Vacuum 실행 카운트
+    // Vacuum 실행 카운트
     private Integer runningVacuumCount;
 
     // Bloat 정보
     private Long bloatBytes;
     private Double bloatRatio;
-    private String indexBloatInfo;  // JSON string
+    private String indexBloatInfo;  // JSON
 
     // Xmin Horizon & Blocker 정보
     private Long blockerXminHorizon;
     private Integer blockedSeconds;
     private Integer blockerPid;
     private String blockerLockMode;
-    private String blockerTransactionState;  // ✅ 추가
-    private String blockerQuery;             // ✅ 추가
+    private String blockerTransactionState;
+    private String blockerQuery;
     private Boolean isBlocked;
     private String queryState;
-    private Long transactionAge;             // ✅ 추가
+    private Long transactionAge;
 
     // Autovacuum 설정
     private Integer autovacuumCostDelayMs;
@@ -98,7 +94,7 @@ public class VacuumRawMetricDto {
     private Long ageCurrentXid;
     private Long ageMaxFreeze;
     private Double wraparoundProgress;
-    private String wraparoundRiskLevel;      // ✅ 추가
+    private String wraparoundRiskLevel;
 
     // Vacuum 이력
     private OffsetDateTime lastVacuum;

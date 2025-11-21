@@ -126,6 +126,21 @@ public class VacuumAgg1mAggregator {
            COALESCE(MAX(bloat_ratio), 0) as max_bloat_ratio,
            COUNT(*) FILTER (WHERE bloat_ratio > 0.2) as critical_bloat_tables,
            SUM(relsize_total_bytes) as total_table_size_bytes,
+           
+           -- Index Bloat 계산 (JSON 파싱)
+           COALESCE(SUM(
+               (SELECT COALESCE(SUM((elem->>'bytes')::BIGINT), 0)
+                FROM jsonb_array_elements(
+                    CASE 
+                        WHEN index_bloat_info IS NOT NULL 
+                             AND index_bloat_info != '[]' 
+                             AND index_bloat_info != ''
+                        THEN index_bloat_info::jsonb
+                        ELSE '[]'::jsonb
+                    END
+                ) AS elem
+               )
+           ), 0) as total_index_bloat_bytes,
             
             -- Worker 설정
             AVG(autovacuum_cost_delay_ms) FILTER (
@@ -212,6 +227,7 @@ public class VacuumAgg1mAggregator {
             if (item.getMaxBloatRatio() == null) item.setMaxBloatRatio(0.0);
             if (item.getCriticalBloatTables() == null) item.setCriticalBloatTables(0);
             if (item.getTotalTableSizeBytes() == null) item.setTotalTableSizeBytes(0L);
+            if (item.getTotalIndexBloatBytes() == null) item.setTotalIndexBloatBytes(0L);
             if (item.getAvgCostDelayMs() == null) item.setAvgCostDelayMs(0.0);
             if (item.getMaxWorkersConfigured() == null) item.setMaxWorkersConfigured(0);
             if (item.getWorkerUtilizationPct() == null) item.setWorkerUtilizationPct(0.0);
@@ -241,6 +257,7 @@ public class VacuumAgg1mAggregator {
                     avg_cost_delay_ms, worker_utilization_pct, max_workers_configured,
                     avg_bloat_bytes, max_bloat_bytes, total_bloat_bytes,
                     avg_bloat_ratio, max_bloat_ratio, critical_bloat_tables, total_table_size_bytes,
+                    total_index_bloat_bytes,
                     blocked_vacuum_count, avg_blocked_seconds, max_blocked_seconds,
                     created_at
                 ) VALUES 
@@ -249,7 +266,7 @@ public class VacuumAgg1mAggregator {
             for (int i = 0; i < items.size(); i++) {
                 VacuumAgg1mDto item = items.get(i);
                 sql.append(String.format(
-                        "(%d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %.2f, %.2f, %d, %d, %d, %.2f, %.2f, %d, %d, %d, %d, %.4f, %.4f, %d, %d, %d, %.2f, %d, NOW())",
+                        "(%d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %.2f, %.2f, %d, %d, %d, %.2f, %.2f, %d, %d, %d, %d, %.4f, %.4f, %d, %d, %d, %d, %.2f, %d, NOW())",
                         item.getDatabaseId(),
                         item.getInstanceId(),
                         item.getCollectedAt(),
@@ -278,6 +295,7 @@ public class VacuumAgg1mAggregator {
                         item.getMaxBloatRatio(),
                         item.getCriticalBloatTables(),
                         item.getTotalTableSizeBytes(),
+                        item.getTotalIndexBloatBytes(),
                         item.getBlockedVacuumCount(),
                         item.getAvgBlockedSeconds(),
                         item.getMaxBlockedSeconds()
@@ -314,6 +332,7 @@ public class VacuumAgg1mAggregator {
                     max_bloat_ratio = EXCLUDED.max_bloat_ratio,
                     critical_bloat_tables = EXCLUDED.critical_bloat_tables,
                     total_table_size_bytes = EXCLUDED.total_table_size_bytes,
+                    total_index_bloat_bytes = EXCLUDED.total_index_bloat_bytes,
                     blocked_vacuum_count = EXCLUDED.blocked_vacuum_count,
                     avg_blocked_seconds = EXCLUDED.avg_blocked_seconds,
                     max_blocked_seconds = EXCLUDED.max_blocked_seconds,
@@ -361,10 +380,11 @@ public class VacuumAgg1mAggregator {
                     .avgBloatBytes(rs.getLong("avg_bloat_bytes"))
                     .maxBloatBytes(rs.getLong("max_bloat_bytes"))
                     .totalBloatBytes(rs.getLong("total_bloat_bytes"))
-                    .avgBloatRatio(rs.getDouble("avg_bloat_ratio"))
+                    .                    avgBloatRatio(rs.getDouble("avg_bloat_ratio"))
                     .maxBloatRatio(rs.getDouble("max_bloat_ratio"))
                     .criticalBloatTables(rs.getInt("critical_bloat_tables"))
                     .totalTableSizeBytes(rs.getLong("total_table_size_bytes"))
+                    .totalIndexBloatBytes(rs.getLong("total_index_bloat_bytes"))
                     .blockedVacuumCount(rs.getInt("blocked_vacuum_count"))
                     .avgBlockedSeconds(rs.getDouble("avg_blocked_seconds"))
                     .maxBlockedSeconds(rs.getInt("max_blocked_seconds"))

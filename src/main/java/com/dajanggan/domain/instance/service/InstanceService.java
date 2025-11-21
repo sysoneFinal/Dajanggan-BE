@@ -192,6 +192,166 @@ public class InstanceService {
                 .toList();
     }
 
+    /**
+     * Slack 설정 업데이트 (인스턴스 이름 기준)
+     */
+    @Transactional
+    public void updateSlackSettings(String instanceName, SlackSettingsRequest request) {
+        log.info("=== Slack 설정 업데이트 시작 ===");
+        log.info("instanceName: {}, enabled: {}, webhookUrl: {}", 
+                instanceName, request.getEnabled(), request.getWebhookUrl());
+
+        // 인스턴스 존재 여부 확인
+        Optional<Long> instanceIdOpt = instanceRepository.findIdByInstanceName(instanceName);
+        if (instanceIdOpt.isEmpty()) {
+            throw new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND);
+        }
+
+        // Slack 설정 업데이트
+        int rows = instanceRepository.updateSlackSettings(
+                instanceName,
+                request.getEnabled() != null ? request.getEnabled() : false,
+                request.getWebhookUrl(),
+                request.getDefaultChannel(),
+                request.getMention()
+        );
+
+        if (rows != 1) {
+            throw new IllegalStateException("Slack 설정 업데이트 실패: instanceName=" + instanceName);
+        }
+
+        log.info("Slack 설정 업데이트 완료: instanceName={}", instanceName);
+    }
+
+    /**
+     * Slack 설정 업데이트 (인스턴스 ID 기준)
+     */
+    @Transactional
+    public void updateSlackSettingsById(Long instanceId, SlackSettingsRequest request) {
+        log.info("=== Slack 설정 업데이트 시작 ===");
+        log.info("instanceId: {}, enabled: {}, webhookUrl: {}", 
+                instanceId, request.getEnabled(), request.getWebhookUrl());
+
+        // 인스턴스 존재 여부 확인
+        instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+
+        // Slack 설정 업데이트
+        int rows = instanceRepository.updateSlackSettingsById(
+                instanceId,
+                request.getEnabled() != null ? request.getEnabled() : false,
+                request.getWebhookUrl(),
+                request.getDefaultChannel(),
+                request.getMention()
+        );
+
+        if (rows != 1) {
+            throw new IllegalStateException("Slack 설정 업데이트 실패: instanceId=" + instanceId);
+        }
+
+        log.info("Slack 설정 업데이트 완료: instanceId={}", instanceId);
+    }
+
+    /**
+     * Slack 설정 조회 (인스턴스 이름 기준)
+     */
+    public SlackSettingsRequest getSlackSettings(String instanceName) {
+        Optional<Long> instanceIdOpt = instanceRepository.findIdByInstanceName(instanceName);
+        if (instanceIdOpt.isEmpty()) {
+            throw new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND);
+        }
+
+        Instance instance = instanceRepository.findById(instanceIdOpt.get())
+                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+
+        SlackSettingsRequest settings = new SlackSettingsRequest();
+        settings.setEnabled(instance.getSlackEnabled());
+        settings.setWebhookUrl(instance.getSlackWebhookUrl());
+        settings.setDefaultChannel(instance.getSlackChannel());
+        settings.setMention(instance.getSlackMention());
+
+        return settings;
+    }
+
+    /**
+     * Slack 설정 조회 (인스턴스 ID 기준)
+     */
+    public SlackSettingsRequest getSlackSettingsById(Long instanceId) {
+        Instance instance = instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+
+        SlackSettingsRequest settings = new SlackSettingsRequest();
+        settings.setEnabled(instance.getSlackEnabled());
+        settings.setWebhookUrl(instance.getSlackWebhookUrl());
+        settings.setDefaultChannel(instance.getSlackChannel());
+        settings.setMention(instance.getSlackMention());
+
+        return settings;
+    }
+
+    /**
+     * Slack 설정 삭제/초기화 (인스턴스 이름 기준)
+     */
+    @Transactional
+    public void deleteSlackSettings(String instanceName) {
+        log.info("=== Slack 설정 삭제 시작 ===");
+        log.info("instanceName: {}", instanceName);
+
+        // 인스턴스 존재 여부 확인
+        Optional<Long> instanceIdOpt = instanceRepository.findIdByInstanceName(instanceName);
+        if (instanceIdOpt.isEmpty()) {
+            throw new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND);
+        }
+
+        // Slack 설정 삭제
+        int rows = instanceRepository.deleteSlackSettingsByName(instanceName);
+
+        if (rows != 1) {
+            throw new IllegalStateException("Slack 설정 삭제 실패: instanceName=" + instanceName);
+        }
+
+        log.info("Slack 설정 삭제 완료: instanceName={}", instanceName);
+    }
+
+    /**
+     * Slack 설정 삭제/초기화 (인스턴스 ID 기준)
+     */
+    @Transactional
+    public void deleteSlackSettingsById(Long instanceId) {
+        log.info("=== Slack 설정 삭제 시작 ===");
+        log.info("instanceId: {}", instanceId);
+
+        // 인스턴스 존재 여부 확인
+        instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+
+        // Slack 설정 삭제
+        int rows = instanceRepository.deleteSlackSettingsById(instanceId);
+
+        if (rows != 1) {
+            throw new IllegalStateException("Slack 설정 삭제 실패: instanceId=" + instanceId);
+        }
+
+        log.info("Slack 설정 삭제 완료: instanceId={}", instanceId);
+    }
+
+    /**
+     * 모든 인스턴스의 Slack 설정 목록 조회
+     */
+    public List<InstanceSlackSettingsResponse> getAllSlackSettings() {
+        List<Instance> instances = instanceRepository.findAll();
+        
+        return instances.stream()
+                .map(instance -> InstanceSlackSettingsResponse.builder()
+                        .instanceId(instance.getInstanceId())
+                        .instanceName(instance.getInstanceName())
+                        .slackEnabled(instance.getSlackEnabled())
+                        .slackWebhookUrl(instance.getSlackWebhookUrl())
+                        .slackChannel(instance.getSlackChannel())
+                        .slackMention(instance.getSlackMention())
+                        .build())
+                .toList();
+    }
 
     @Transactional
     public InstanceResponse update(Long id, @Valid InstanceUpdateRequest req) {

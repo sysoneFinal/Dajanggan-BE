@@ -132,8 +132,8 @@ public class AlarmRuleService {
 
         // 기본값 설정 (levels가 null인 경우)
         if (levelsJson == null) {
-            levelsJson = "{\"notice\":{\"threshold\":100000,\"minDurationMin\":1,\"occurCount\":2,\"windowMin\":15},"
-                    + "\"warning\":{\"threshold\":500000,\"minDurationMin\":5,\"occurCount\":2,\"windowMin\":15},"
+            levelsJson = "{\"info\":{\"threshold\":100000,\"minDurationMin\":1,\"occurCount\":2,\"windowMin\":15},"
+                    + "\"warn\":{\"threshold\":500000,\"minDurationMin\":5,\"occurCount\":2,\"windowMin\":15},"
                     + "\"critical\":{\"threshold\":1000000,\"minDurationMin\":10,\"occurCount\":1,\"windowMin\":10}}";
         }
 

@@ -80,14 +80,8 @@ public class AlarmMetricsCollector {
                 // MetricConfig에 정의된 모든 지표 체크
                 // Vacuum 관련 지표
                 checkMetricSafely(conn, instance, db, "autovacuum_worker_utilization");
-                checkMetricSafely(conn, instance, db, "blockers_per_hour");
                 checkMetricSafely(conn, instance, db, "transaction_age");
-                checkMetricSafely(conn, instance, db, "block_duration");
                 checkMetricSafely(conn, instance, db, "wraparound_progress");
-                checkMetricSafely(conn, instance, db, "total_table_bloat");
-                checkMetricSafely(conn, instance, db, "bloat_percent");
-                checkMetricSafely(conn, instance, db, "dead_tuples");
-                checkMetricSafely(conn, instance, db, "table_size");
                 
                 // 세션 관련 지표
                 checkMetricSafely(conn, instance, db, "long_running_queries");

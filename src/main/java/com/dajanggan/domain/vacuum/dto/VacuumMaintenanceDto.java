@@ -29,10 +29,10 @@ public class VacuumMaintenanceDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Kpi {
-        private Integer blockedSessions;      // 차단된 세션 수
-        private Double avgRunningTime;        // 평균 실행 시간 (초)
-        private Long totalDeadTuples;         // Dead Tuple 총량
-        private String activeWorkers;         // "활성/최대" 형태 (예: "0/3")
+        private Integer blockedSessions;
+        private Double avgRunningTime;
+        private Long totalDeadTuples;
+        private String activeWorkers;
     }
 
     @Data

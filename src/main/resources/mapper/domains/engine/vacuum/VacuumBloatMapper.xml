@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumBloatRawMapper">
+<mapper namespace="com.dajanggan.domain.vacuum.repository.VacuumBloatMapper">
 
     <!-- VacuumRawMetricDto ResultMap -->
     <resultMap id="vacuumRawMetricMap" type="com.dajanggan.domain.vacuum.dto.raw.VacuumRawMetricDto">
@@ -35,6 +35,21 @@
         <result column="last_autovacuum" property="lastAutovacuum"/>
         <result column="created_at" property="createdAt"/>
     </resultMap>
+
+    <!-- VacuumAgg5mDto ResultMap -->
+    <resultMap id="vacuumAgg5mMap" type="com.dajanggan.domain.vacuum.dto.agg.VacuumAgg5mDto">
+        <result column="database_id" property="databaseId"/>
+        <result column="instance_id" property="instanceId"/>
+        <result column="collected_at" property="collectedAt"/>
+        <result column="total_bloat_bytes" property="totalBloatBytes"/>
+        <result column="avg_bloat_ratio" property="avgBloatRatio"/>
+        <result column="max_bloat_ratio" property="maxBloatRatio"/>
+        <result column="critical_bloat_tables" property="criticalBloatTables"/>
+        <result column="total_table_size_bytes" property="totalTableSizeBytes"/>
+        <result column="total_index_bloat_bytes" property="totalIndexBloatBytes"/>
+    </resultMap>
+
+    <!-- ========== Raw 데이터 ========== -->
 
     <!-- Xmin Horizon 데이터 조회 -->
     <select id="findXminHorizonData" resultMap="vacuumRawMetricMap">
@@ -109,4 +124,56 @@
         ORDER BY collected_at ASC
     </select>
 
+    <!-- Index Bloat 데이터 조회 (30일 추이용) -->
+    <select id="findIndexBloatData" resultMap="vacuumRawMetricMap">
+        SELECT
+            database_id,
+            instance_id,
+            collected_at,
+            index_bloat_info
+        FROM vacuum_raw_metrics
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND index_bloat_info IS NOT NULL
+          AND index_bloat_info != '[]'
+        ORDER BY collected_at ASC
+    </select>
+
+    <!-- ========== 집계 데이터 (5분 집계 테이블) ========== -->
+
+    <!-- Bloat KPI 집계 -->
+    <select id="getBloatKpiSummary" resultMap="vacuumAgg5mMap">
+        SELECT
+            #{databaseId} AS database_id,
+            #{instanceId} AS instance_id,
+            AVG(total_bloat_bytes) AS total_bloat_bytes,
+            AVG(avg_bloat_ratio) AS avg_bloat_ratio,
+            SUM(critical_bloat_tables) AS critical_bloat_tables,
+            AVG(total_table_size_bytes) AS total_table_size_bytes
+        FROM vacuum_metrics_agg_5m
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+    </select>
+
+    <!-- Bloat Trend (집계 데이터) -->
+    <select id="getBloatTrend" resultMap="vacuumAgg5mMap">
+        SELECT
+            database_id,
+            instance_id,
+            collected_at,
+            COALESCE(total_bloat_bytes, 0) AS total_bloat_bytes,
+            avg_bloat_ratio,
+            max_bloat_ratio,
+            critical_bloat_tables,
+            total_table_size_bytes
+        FROM vacuum_metrics_agg_5m
+        WHERE database_id = #{databaseId}
+          AND instance_id = #{instanceId}
+          AND collected_at BETWEEN #{startTime} AND #{endTime}
+        ORDER BY collected_at ASC
+    </select>
+
 </mapper>
+

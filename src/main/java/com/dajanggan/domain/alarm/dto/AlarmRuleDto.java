@@ -39,8 +39,8 @@ public class AlarmRuleDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Levels {
-        private ThresholdLevel notice;
-        private ThresholdLevel warning;
+        private ThresholdLevel info;
+        private ThresholdLevel warn;
         private ThresholdLevel critical;
     }
 

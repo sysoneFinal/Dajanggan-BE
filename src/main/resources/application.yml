@@ -50,10 +50,10 @@ postgres:
 
 logging:
   level:
-    com.dajanggan: DEBUG
-    com.dajanggan.domain.engine: DEBUG
-    com.dajanggan.domain.query: DEBUG  # 추가: 쿼리 도메인 로깅
-    org.apache.ibatis: DEBUG             # MyBatis ?? ??
+    com.dajanggan: INFO
+    com.dajanggan.domain.engine: INFO
+    com.dajanggan.domain.query: INFO  # 추가: 쿼리 도메인 로깅
+    org.apache.ibatis: INFO             # MyBatis ?? ??
     com.zaxxer.hikari: INFO              # HikariCP ??
 
 server:

@@ -253,10 +253,28 @@ public class GenericAlarmCollector {
                         rule.getAlarmRuleId(), metricType, triggeredLevel);
             } else {
                 // 기존 트래킹이 있으면 metric 값은 tracking 상태에 따라 처리
+                // FIRED 상태일 때는 항상 메트릭 히스토리를 저장해야 함
                 if ("FIRED".equals(tracking.getStatus())) {
                     Long feedId = selectLatestFeedIdForTracking(tracking.getAlarmTrackingId());
                     if (feedId != null) {
+                        log.info("📊 기존 Feed에 메트릭 히스토리 저장: feedId={}, value={}, trackingId={}", 
+                                feedId, currentValue, tracking.getAlarmTrackingId());
                         saveMetricHistory(feedId, currentValue);
+                    } else {
+                        log.warn("⚠️ 트래킹이 FIRED 상태이지만 Feed가 없습니다. trackingId={}, ruleId={}, " +
+                                "Feed를 생성하기 위해 fireAlarm 호출", 
+                                tracking.getAlarmTrackingId(), rule.getAlarmRuleId());
+                        // Feed가 없으면 fireAlarm을 호출하여 Feed 생성 (메트릭 히스토리 저장을 위해)
+                        // 이미 FIRED 상태이지만 Feed가 없으면 생성해야 함
+                        fireAlarm(conn, rule, tracking, currentValue, triggeredLevel, metricType, false);
+                        // Feed 생성 후 다시 조회하여 메트릭 히스토리 저장
+                        feedId = selectLatestFeedIdForTracking(tracking.getAlarmTrackingId());
+                        if (feedId != null) {
+                            log.info("📊 새로 생성된 Feed에 메트릭 히스토리 저장: feedId={}, value={}", feedId, currentValue);
+                            saveMetricHistory(feedId, currentValue);
+                        } else {
+                            log.error("❌ Feed 생성 후에도 조회되지 않습니다. trackingId={}", tracking.getAlarmTrackingId());
+                        }
                     }
                 }
             }
@@ -471,7 +489,7 @@ public class GenericAlarmCollector {
             // 4) 관련 객체 저장 (feed 기준)
             saveRelatedObjects(conn, feedId, rule.getAlarmRuleId(), metricType);
 
-            // 5) Slack 알림 전송
+            // 5) Slack 알림 전송 (인스턴스 ID 포함)
             String instanceName = getInstanceName(tracking.getInstanceId());
             String databaseName = getDatabaseName(tracking.getDatabaseId());
             BigDecimal threshold = getThresholdValue(parseJsonLevels(rule.getLevels()), level.toLowerCase());
@@ -484,13 +502,25 @@ public class GenericAlarmCollector {
                     tracking.getConsecutiveCount()
             );
 
-            slackNotificationService.sendAlarmNotification(
-                    metricType + " 임계치 초과",
-                    level,
-                    description,
-                    instanceName,
-                    databaseName
-            );
+            log.info("📤 Slack 알림 전송 시작: instanceId={}, instanceName={}, metricType={}, level={}", 
+                    tracking.getInstanceId(), instanceName, metricType, level);
+
+            // ✅ 인스턴스 ID를 포함하여 전송 (인스턴스별 Slack 설정 사용)
+            try {
+                slackNotificationService.sendAlarmNotification(
+                        tracking.getInstanceId(),
+                        metricType + " 임계치 초과",
+                        level,
+                        description,
+                        instanceName,
+                        databaseName
+                );
+                log.info("✅ Slack 알림 전송 요청 완료: instanceId={}, instanceName={}", 
+                        tracking.getInstanceId(), instanceName);
+            } catch (Exception e) {
+                log.error("❌ Slack 알림 전송 중 예외 발생: instanceId={}, instanceName={}, error={}", 
+                        tracking.getInstanceId(), instanceName, e.getMessage(), e);
+            }
 
             log.warn("{} ruleId={}, trackingId={}, feedId={}, metric={}, level={}",
                     logMessage, rule.getAlarmRuleId(), tracking.getAlarmTrackingId(), feedId, metricType, level);
@@ -506,14 +536,19 @@ public class GenericAlarmCollector {
      */
     private void saveMetricHistory(Long alarmFeedId, BigDecimal value) {
         if (alarmFeedId == null) {
-            log.warn("saveMetricHistory 호출 시 alarmFeedId가 null입니다. 저장 건너뜀. value={}", value);
+            log.warn("⚠️ saveMetricHistory 호출 시 alarmFeedId가 null입니다. 저장 건너뜀. value={}", value);
             return;
         }
-        alarmFeedMapper.insertMetricHistory(
-                alarmFeedId,
-                value,
-                OffsetDateTime.now()
-        );
+        try {
+            alarmFeedMapper.insertMetricHistory(
+                    alarmFeedId,
+                    value,
+                    OffsetDateTime.now()
+            );
+            log.debug("✅ 메트릭 히스토리 저장 완료: feedId={}, value={}", alarmFeedId, value);
+        } catch (Exception e) {
+            log.error("❌ 메트릭 히스토리 저장 실패: feedId={}, value={}", alarmFeedId, value, e);
+        }
     }
 
     /**
@@ -611,28 +646,44 @@ public class GenericAlarmCollector {
      * 관련 객체 저장 (범용)
      */
     private void saveRelatedObjects(Connection conn, Long alarmFeedId, Long alarmRuleId, String metricType) {
+        log.info("💾 관련 객체 저장 시작: alarmFeedId={}, metricType={}", alarmFeedId, metricType);
+        
         String sql = metricConfig.getRelatedObjectsQuery(metricType);
         if (sql == null) {
-            log.debug("관련 객체 쿼리 없음: {}", metricType);
+            log.warn("⚠️ 관련 객체 쿼리 없음: metricType={}", metricType);
             return;
         }
 
+        log.info("📝 관련 객체 쿼리 실행: metricType={}, sql={}", metricType, sql);
+
+        int savedCount = 0;
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
 
             while (rs.next()) {
+                String objectType = rs.getString("object_type");
+                String objectName = rs.getString("object_name");
+                BigDecimal metricValue = rs.getBigDecimal("metric_value");
+                String status = rs.getString("status");
+                
+                log.info("  - 저장할 객체: type={}, name={}, metricValue={}, status={}", 
+                        objectType, objectName, metricValue, status);
+                
                 alarmFeedMapper.insertRelatedObject(
                         alarmFeedId,
                         alarmRuleId,
-                        rs.getString("object_type"),
-                        rs.getString("object_name"),
-                        rs.getBigDecimal("metric_value"),
-                        rs.getString("status")
+                        objectType,
+                        objectName,
+                        metricValue,
+                        status
                 );
+                savedCount++;
             }
 
+            log.info("✅ 관련 객체 저장 완료: alarmFeedId={}, 저장된 개수={}", alarmFeedId, savedCount);
+
         } catch (SQLException e) {
-            log.error("관련 객체 저장 실패: {}", metricType, e);
+            log.error("❌ 관련 객체 저장 실패: metricType={}, alarmFeedId={}", metricType, alarmFeedId, e);
         }
     }
 

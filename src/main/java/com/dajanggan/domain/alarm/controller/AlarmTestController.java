@@ -538,6 +538,46 @@ public class AlarmTestController {
                 log.warn("관련 객체 저장 실패 (무시): {}", e.getMessage());
             }
 
+            // 5. Slack 알림 전송
+            try {
+                Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                        .findFirst()
+                        .orElse(null);
+                
+                String instanceName = instance != null ? instance.getInstanceName() : "Unknown";
+                
+                List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+                String databaseName = databases.stream()
+                        .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                        .findFirst()
+                        .map(Database::getDatabaseName)
+                        .orElse("Unknown");
+
+                String description = String.format(
+                        "%s가 임계치를 초과했습니다 (수동 발생).\n• 현재값: %s\n• 임계치: %s\n• 발생 횟수: %d회",
+                        rule.getMetricType(),
+                        currentValue,
+                        feed.getThresholdValue(),
+                        tracking.getConsecutiveCount()
+                );
+
+                log.info("📤 수동 알람 Slack 알림 전송 시도: instanceId={}, instanceName={}", 
+                        rule.getInstanceId(), instanceName);
+                
+                slackNotificationService.sendAlarmNotification(
+                        rule.getInstanceId(),
+                        rule.getMetricType() + " 임계치 초과 (수동 발생)",
+                        severityLevel,
+                        description,
+                        instanceName,
+                        databaseName
+                );
+                
+                log.info("✅ 수동 알람 Slack 알림 전송 요청 완료");
+            } catch (Exception e) {
+                log.error("❌ 수동 알람 Slack 알림 전송 실패: {}", e.getMessage(), e);
+            }
+
             result.put("success", true);
             result.put("message", "알람이 수동으로 발생되었습니다.");
             result.put("trackingId", tracking.getAlarmTrackingId());
