@@ -28,6 +28,7 @@ public class CommonMetricsCollector {
     /** 1분마다 전체 활성화된 데이터베이스의 메트릭 수집 */
     @Scheduled(fixedRate = 60000)  // 60,000ms = 1분
     public void collectAllDatabases() {
+        long startTime = System.currentTimeMillis();
         OffsetDateTime collectedAt = OffsetDateTime.now();
         log.info("========== 원시 데이터 수집 시작  at {} ==========", collectedAt);
 
@@ -43,25 +44,27 @@ public class CommonMetricsCollector {
                 .map(Database::getInstanceId)
                 .distinct()
                 .toList();
-        
+
         Map<Long, Instance> instanceMap = instanceRepository.findAllWithSecrets(instanceIds).stream()
                 .collect(Collectors.toMap(Instance::getInstanceId, i -> i));
 
         // (3) 데이터베이스별 수집 실행
         int successCount = 0;
         int failureCount = 0;
-        
+
         for (Database database : databases) {
             Instance instance = instanceMap.get(database.getInstanceId());
-            
+
             if (instance == null) {
                 log.error("************* Database ID {} - 연결된 Instance를 찾을 수 없음 (instance_id: {})",
                         database.getDatabaseId(), database.getInstanceId());
                 failureCount++;
                 continue;
             }
+            long dbStartTime = System.currentTimeMillis();
 
             try {
+
                 log.info(">>>>>>>>>>>>>>>> [{}] Collecting metrics from {}:{} / {}",
                         collectedAt,
                         instance.getHost(),
@@ -69,28 +72,35 @@ public class CommonMetricsCollector {
                         database.getDatabaseName());
 
                 sessionMetricsCollector.collect(instance, database, collectedAt);
-                // 쿼리 메트릭 수집
                 queryMetricsCollector.collect(instance, database, collectedAt);
+               // vacuumMetricsCollector.collect(instance, database, collectedAt);
 
-                // Vacuum 메트릭 수집
-                vacuumMetricsCollector.collect(instance, database, collectedAt);
-
+                long dbElapsedTime = System.currentTimeMillis() - dbStartTime;
+                log.info("================ [{}] {}:{}/{} 수집 완료 (소요시간: {}ms)",
+                        collectedAt,
+                        instance.getHost(),
+                        instance.getPort(),
+                        database.getDatabaseName(),
+                        dbElapsedTime);
 
                 successCount++;
 
             } catch (Exception e) {
                 failureCount++;
-                log.error("************* [{}] {}:{}/{} 수집 실패: {}",
+                long dbElapsedTime = System.currentTimeMillis() - dbStartTime;
+                log.error("************* [{}] {}:{}/{} 수집 실패 (소요시간: {}ms): {}",
                         collectedAt,
                         instance.getHost(),
                         instance.getPort(),
                         database.getDatabaseName(),
-                        e.getMessage(), 
+                        dbElapsedTime,
+                        e.getMessage(),
                         e);
             }
         }
 
-        log.info("========== 원시 데이터 수집 완료 : Success={}, Failure={} ==========",
-                successCount, failureCount);
+        long totalElapsedTime = System.currentTimeMillis() - startTime;
+        log.info("========== 원시 데이터 수집 완료 : Success={}, Failure={}, 총 소요시간={}ms ({} 초) ==========",
+                successCount, failureCount, totalElapsedTime, totalElapsedTime / 1000.0);
     }
 }
