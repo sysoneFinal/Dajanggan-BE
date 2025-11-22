@@ -48,7 +48,7 @@ public class MetricAggregationScheduler {
      * 1분마다 1분 집계 Job들 실행
      * 매분 5초에 실행 (수집이 완료된 후 실행하기 위해)
      */
-    @Scheduled(cron = "5 * * * * *")  // 매분 5초
+    @Scheduled(cron = "30 * * * * *")  // 매분 5초
     public void runAgg1mJobs() {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 1분 집계 배치 시작: {} ==========", runTime);
@@ -67,7 +67,7 @@ public class MetricAggregationScheduler {
      * 5분마다 5분 집계 Job들 실행
      * 매 5분의 10초에 실행
      */
-    @Scheduled(cron = "10 */5 * * * *")  // 매 5분의 10초 (0:10, 5:10, 10:10, ...)
+    @Scheduled(cron = "10 */45 * * * *")  // 매 5분의 10초 (0:10, 5:10, 10:10, ...)
     public void runAgg5mJobs() {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 5분 집계 배치 시작: {} ==========", runTime);
@@ -86,7 +86,7 @@ public class MetricAggregationScheduler {
      * 데이터베이스 메트릭 집계 (매 1분마다, 45초에 실행)
      * - 도메인별 1분 집계가 완료된 후 실행되도록 시간 조정
      */
-    @Scheduled(cron = "45 * * * * *")
+    @Scheduled(cron = "30 * * * * *")
     public void aggregateDatabaseMetrics() {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("=== 데이터베이스 메트릭 집계 작업 시작: {} ===", runTime);

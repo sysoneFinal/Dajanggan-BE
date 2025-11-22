@@ -50,12 +50,11 @@ postgres:
 
 logging:
   level:
-    com.dajanggan: DEBUG
-    com.dajanggan.domain.engine: DEBUG
-    com.dajanggan.domain.query: DEBUG  # 추가: 쿼리 도메인 로깅
-    org.apache.ibatis: DEBUG             # MyBatis ?? ??
-    com.zaxxer.hikari: INFO              # HikariCP ??
-
+    root: INFO                           # 기본은 INFO
+    com.dajanggan: INFO                  # 전체 INFO
+    com.dajanggan.domain.metric.collector: DEBUG  # 수집기만 DEBUG
+    org.apache.ibatis: WARN
+    com.zaxxer.hikari: WARN
 server:
   port: 8080
 
