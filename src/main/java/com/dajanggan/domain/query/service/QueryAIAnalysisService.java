@@ -79,18 +79,18 @@ public class QueryAIAnalysisService {
 
             // 캐시가 유효한지 확인
             if (LocalDateTime.now().isBefore(expiryDate)) {
-                log.info("✅ 캐시 히트! {} 개의 제안 반환 (생성일: {})",
+                log.info(" 캐시 히트! {} 개의 제안 반환 (생성일: {})",
                         cachedSuggestions.size(), cacheCreatedAt);
-                log.info("💰 OpenAI API 호출 생략 - 비용 절감!");
+                log.info(" OpenAI API 호출 생략 - 비용 절감!");
 
                 // 캐시 플래그 설정
                 cachedSuggestions.forEach(s -> s.setIsFromCache(true));
                 return cachedSuggestions;
             } else {
-                log.info("⏰ 캐시 만료됨 ({}일 경과). 새로 분석합니다.", CACHE_VALIDITY_DAYS);
+                log.info(" 캐시 만료됨 ({}일 경과). 새로 분석합니다.", CACHE_VALIDITY_DAYS);
             }
         } else {
-            log.info("❌ 캐시 미스. AI 분석을 시작합니다.");
+            log.info(" 캐시 미스. AI 분석을 시작합니다.");
         }
 
         // 3. 캐시 미스 -> AI 호출
@@ -100,7 +100,7 @@ public class QueryAIAnalysisService {
             String preprocessedExplain = explainResult.getExplainPlan();
 
             if (ENABLE_TOKEN_OPTIMIZATION) {
-                log.info("🔧 토큰 절감 전처리 시작...");
+                log.info(" 토큰 절감 전처리 시작...");
 
                 int originalSqlLength = sql.length();
                 int originalExplainLength = explainResult.getExplainPlan().split("\n").length;
@@ -111,10 +111,10 @@ public class QueryAIAnalysisService {
                 int processedSqlLength = preprocessedSql.length();
                 int processedExplainLines = preprocessedExplain.split("\n").length;
 
-                log.info("  📊 SQL 전처리: {} → {} chars ({} 절감)",
+                log.info("   SQL 전처리: {} → {} chars ({} 절감)",
                         originalSqlLength, processedSqlLength,
                         String.format("%.1f%%", (1 - (double)processedSqlLength/originalSqlLength) * 100));
-                log.info("  📊 EXPLAIN 전처리: {} → {} lines ({} 절감)",
+                log.info("   EXPLAIN 전처리: {} → {} lines ({} 절감)",
                         originalExplainLength, processedExplainLines,
                         String.format("%.1f%%", (1 - (double)processedExplainLines/originalExplainLength) * 100));
             }
@@ -123,13 +123,13 @@ public class QueryAIAnalysisService {
 
             // 프롬프트 토큰 수 추정 (대략 1 토큰 ≈ 4 글자)
             int estimatedTokens = prompt.length() / 4;
-            log.info("  💡 예상 프롬프트 토큰: ~{} tokens", estimatedTokens);
+            log.info("   예상 프롬프트 토큰: ~{} tokens", estimatedTokens);
             log.info("Prompt 생성 완료, OpenAI 호출 시작...");
 
             String aiResponse = callOpenAI(prompt);
             log.info("OpenAI 응답 수신 완료 (길이: {} chars)", aiResponse.length());
 
-            // ⭐ OpenAI 원본 응답 로그
+            //  OpenAI 원본 응답 로그
             log.debug("========== OpenAI 원본 응답 시작 ==========");
             log.debug(aiResponse);
             log.debug("========== OpenAI 원본 응답 끝 ==========");
@@ -182,9 +182,9 @@ public class QueryAIAnalysisService {
 
             try {
                 suggestionRepository.insertAll(suggestions);
-                log.info("✅ DB 저장 완료 (캐싱됨)");
+                log.info(" DB 저장 완료 (캐싱됨)");
             } catch (Exception dbException) {
-                log.error("❌❌❌ DB 저장 실패 ❌❌❌");
+                log.error(" DB 저장 실패 ");
                 log.error("에러 메시지: {}", dbException.getMessage());
                 log.error("에러 클래스: {}", dbException.getClass().getName());
                 log.error("저장 시도한 제안 개수: {}", suggestions.size());
@@ -213,7 +213,7 @@ public class QueryAIAnalysisService {
             return suggestions;
 
         } catch (Exception e) {
-            log.error("❌ AI 분석 실패: {}", e.getMessage(), e);
+            log.error(" AI 분석 실패: {}", e.getMessage(), e);
             log.info("Fallback 제안 생성 중...");
             List<QuerySuggestion> fallback = createFallbackSuggestions(
                     databaseId, sql, queryHash, explainResult);
@@ -234,9 +234,9 @@ public class QueryAIAnalysisService {
             try {
                 log.info("Fallback 제안 DB 저장 시작: {} 개", fallback.size());
                 suggestionRepository.insertAll(fallback);
-                log.info("✅ Fallback 제안 DB 저장 완료: {} 개", fallback.size());
+                log.info(" Fallback 제안 DB 저장 완료: {} 개", fallback.size());
             } catch (Exception dbError) {
-                log.error("❌ Fallback 저장 실패: {}", dbError.getMessage(), dbError);
+                log.error(" Fallback 저장 실패: {}", dbError.getMessage(), dbError);
                 log.error("Fallback 제안 개수: {}", fallback.size());
                 if (!fallback.isEmpty()) {
                     QuerySuggestion first = fallback.get(0);
@@ -339,7 +339,7 @@ public class QueryAIAnalysisService {
         }
 
         // 응답 형식
-        prompt.append("## ⚠️ 필수 응답 형식 ⚠️\n");
+        prompt.append("##  필수 응답 형식 \n");
         prompt.append("반드시 아래 형식을 정확히 따라주세요. 각 제안은 대괄호 안에 값을 넣어야 합니다:\n\n");
         prompt.append("[제안 1]\n");
         prompt.append("레벨: [높음/경고/정보 중 하나]\n");
@@ -349,7 +349,7 @@ public class QueryAIAnalysisService {
         prompt.append("개선 SQL: [실행 가능한 SQL 또는 DDL]\n");
         prompt.append("예상 개선율: [0-100 사이 숫자만]\n\n");
 
-        prompt.append("⚠️ 주의사항:\n");
+        prompt.append(" 주의사항:\n");
         prompt.append("- 반드시 대괄호 [ ] 안에 값을 넣으세요\n");
         prompt.append("- 각 항목은 한 줄에 작성하세요\n");
         prompt.append("- 최대 3개 제안만 작성하세요\n");
@@ -393,7 +393,7 @@ public class QueryAIAnalysisService {
             count++;
             String section = sectionMatcher.group(1).trim();
 
-            // ⭐ 파싱 디버그 로그
+            //  파싱 디버그 로그
             log.debug("========== 제안 {} 파싱 시작 ==========", count);
             log.debug(section);
             log.debug("========================================");
@@ -410,12 +410,12 @@ public class QueryAIAnalysisService {
             String sqlText = extractValue(section, "개선 SQL:\\s*\\[([^\\]]+)\\]");
             String improvementStr = extractValue(section, "예상 개선율:\\s*\\[([^\\]]+)\\]");
 
-            // ⭐ 파싱 결과 로그
+            //  파싱 결과 로그
             log.debug("파싱 결과: level={}, type={}, title={}", level, type, title);
 
-            // ⭐ 빈 값 체크
+            //  빈 값 체크
             if (level.isEmpty() || type.isEmpty() || title.isEmpty()) {
-                log.warn("❌ 제안 {} 파싱 실패: 필수 필드가 비어있음", count);
+                log.warn(" 제안 {} 파싱 실패: 필수 필드가 비어있음", count);
                 log.warn("   level='{}', type='{}', title='{}'", level, type, title);
                 continue;
             }
@@ -441,7 +441,7 @@ public class QueryAIAnalysisService {
             suggestions.add(suggestion);
         }
 
-        log.info("✅ 총 {} 개 제안 파싱 완료 (성공: {})", count, suggestions.size());
+        log.info(" 총 {} 개 제안 파싱 완료 (성공: {})", count, suggestions.size());
         return suggestions;
     }
 
@@ -505,7 +505,7 @@ public class QueryAIAnalysisService {
                         "전체 테이블 스캔이 발생하고 있습니다. WHERE 절의 조건 컬럼에 인덱스를 추가하면 성능이 크게 개선될 수 있습니다.");
                 suggestion.setExpectedImprovementPercent(new BigDecimal("70"));
                 fallback.add(suggestion);
-                log.info("  ✅ Seq Scan 제안 추가");
+                log.info("   Seq Scan 제안 추가");
             }
 
             // 2. Sort 체크
@@ -521,7 +521,7 @@ public class QueryAIAnalysisService {
                         "메모리에서 정렬 작업이 수행되고 있습니다. ORDER BY 절의 컬럼에 인덱스를 추가하면 정렬 비용을 줄일 수 있습니다.");
                 suggestion.setExpectedImprovementPercent(new BigDecimal("40"));
                 fallback.add(suggestion);
-                log.info("  ✅ Sort 제안 추가");
+                log.info("   Sort 제안 추가");
             }
 
             // 3. 실행 시간 기반 제안
@@ -556,12 +556,12 @@ public class QueryAIAnalysisService {
                 }
 
                 fallback.add(suggestion);
-                log.info("  ✅ 실행 시간 제안 추가 ({}ms)", executionTime);
+                log.info("   실행 시간 제안 추가 ({}ms)", executionTime);
             }
         }
 
         // SQL 쿼리 자체 분석
-        log.info("  🔍 SQL 구문 분석 시작...");
+        log.info("   SQL 구문 분석 시작...");
 
         // 1. SELECT * 사용 체크
         if (upperSql.contains("SELECT *") || upperSql.matches(".*SELECT\\s+\\*\\s+FROM.*")) {
@@ -577,7 +577,7 @@ public class QueryAIAnalysisService {
             suggestion.setSuggestionSql("SELECT column1, column2 FROM table_name WHERE ...");
             suggestion.setExpectedImprovementPercent(new BigDecimal("30"));
             fallback.add(suggestion);
-            log.info("  ✅ SELECT * 제안 추가");
+            log.info("   SELECT * 제안 추가");
         }
 
         // 2. WHERE 절 없는 SELECT 체크
@@ -594,12 +594,12 @@ public class QueryAIAnalysisService {
             suggestion.setSuggestionSql("SELECT ... FROM table_name WHERE condition LIMIT 1000");
             suggestion.setExpectedImprovementPercent(new BigDecimal("80"));
             fallback.add(suggestion);
-            log.info("  ✅ WHERE 절 없음 제안 추가");
+            log.info("   WHERE 절 없음 제안 추가");
         }
 
         // 최종 결과
         if (fallback.isEmpty()) {
-            log.warn("⚠️ Fallback 제안을 생성할 수 없습니다.");
+            log.warn(" Fallback 제안을 생성할 수 없습니다.");
 
             QuerySuggestion suggestion = new QuerySuggestion();
             suggestion.setDatabaseId(databaseId);

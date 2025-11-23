@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +15,7 @@ import java.util.stream.Collectors;
 
 /**
  * 쿼리 메트릭스 원시 데이터 서비스 구현체
+ * - query_metrics_raw 테이블 CRUD 및 조회 기능
  *
  * @author 이해든
  */
@@ -27,15 +27,11 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
 
     private final QueryMetricsRawRepository queryMetricsRawRepository;
 
-
     public QueryMetricsRawServiceImpl(QueryMetricsRawRepository queryMetricsRawRepository) {
         this.queryMetricsRawRepository = queryMetricsRawRepository;
         logger.info("QueryMetricsRawServiceImpl 인스턴스 생성됨 (Singleton)");
     }
 
-    /**
-     * 전체 쿼리 메트릭스 조회
-     */
     @Override
     public List<QueryMetricsRawDto> getAllQueryMetrics() {
         logger.info("전체 쿼리 메트릭스 조회 시작");
@@ -55,9 +51,6 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * ID로 쿼리 메트릭스 조회
-     */
     @Override
     public QueryMetricsRawDto getQueryMetricById(Long queryMetricId) {
         logger.info("쿼리 메트릭스 조회 시작: ID = {}", queryMetricId);
@@ -85,9 +78,6 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * 데이터베이스 ID로 쿼리 메트릭스 목록 조회 (전체)
-     */
     @Override
     public List<QueryMetricsRawDto> getQueryMetricsByDatabaseId(Long databaseId) {
         logger.info("데이터베이스별 쿼리 메트릭스 조회 시작: databaseId = {}", databaseId);
@@ -113,12 +103,9 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * 데이터베이스 ID와 기간으로 쿼리 메트릭스 조회
-     */
     @Override
     public List<QueryMetricsRawDto> getQueryMetricsByDatabaseIdAndDays(Long databaseId, Integer days) {
-        logger.info("📊 데이터베이스별 기간 조회 - databaseId: {}, days: {}", databaseId, days);
+        logger.info("데이터베이스별 기간 조회 - databaseId: {}, days: {}", databaseId, days);
 
         if (databaseId == null) {
             logger.warn("databaseId가 null입니다");
@@ -127,7 +114,7 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
 
         if (days == null || days < 0) {
             logger.warn("days가 유효하지 않습니다: {}", days);
-            days = 1; // 기본값 1일
+            days = 1;
         }
 
         try {
@@ -135,26 +122,22 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
             params.put("databaseId", databaseId);
             params.put("days", days);
 
-            // ✅ Repository는 Entity를 반환하므로 DTO로 변환 필요
             List<QueryMetricsRaw> entities = queryMetricsRawRepository.findByDatabaseIdAndDays(params);
             List<QueryMetricsRawDto> result = entities.stream()
                     .map(QueryMetricsRawDto::from)
                     .collect(Collectors.toList());
 
-            logger.info("✅ 조회 완료: databaseId = {}, days = {}, 조회 건수 = {}",
+            logger.info("조회 완료: databaseId = {}, days = {}, 조회 건수 = {}",
                     databaseId, days, result.size());
 
             return result;
 
         } catch (Exception e) {
-            logger.error("❌ 데이터베이스별 기간 조회 중 오류 발생: databaseId = {}, days = {}", databaseId, days, e);
+            logger.error("데이터베이스별 기간 조회 중 오류 발생: databaseId = {}, days = {}", databaseId, days, e);
             throw new RuntimeException("쿼리 메트릭스 조회 실패", e);
         }
     }
 
-    /**
-     * 최근 N분간의 쿼리 메트릭스 조회
-     */
     @Override
     public List<QueryMetricsRawDto> getRecentMetrics(Long databaseId, Integer minutes) {
         logger.info("최근 {}분 데이터 조회 시작: databaseId = {}", minutes, databaseId);
@@ -166,7 +149,7 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
 
         if (minutes == null || minutes <= 0) {
             logger.warn("minutes가 유효하지 않습니다: {}", minutes);
-            minutes = 5; // 기본값
+            minutes = 5;
         }
 
         try {
@@ -185,9 +168,6 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * 쿼리 타입별 조회
-     */
     @Override
     public List<QueryMetricsRawDto> getQueryMetricsByType(String queryType) {
         logger.info("쿼리 타입별 메트릭스 조회 시작: queryType = {}", queryType);
@@ -213,9 +193,6 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * 슬로우 쿼리 조회
-     */
     @Override
     public List<QueryMetricsRawDto> getSlowQueries(Double thresholdMs) {
         logger.info("슬로우 쿼리 조회 시작: thresholdMs = {}", thresholdMs);
@@ -241,16 +218,13 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * CPU 사용량 상위 N개 조회
-     */
     @Override
     public List<QueryMetricsRawDto> getTopByCpuUsage(Integer limit) {
         logger.info("CPU 사용량 상위 쿼리 조회 시작: limit = {}", limit);
 
         if (limit == null || limit <= 0) {
             logger.warn("limit이 유효하지 않습니다: {}", limit);
-            limit = 10; // 기본값
+            limit = 10;
         }
 
         try {
@@ -269,16 +243,13 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * 메모리 사용량 상위 N개 조회
-     */
     @Override
     public List<QueryMetricsRawDto> getTopByMemoryUsage(Integer limit) {
         logger.info("메모리 사용량 상위 쿼리 조회 시작: limit = {}", limit);
 
         if (limit == null || limit <= 0) {
             logger.warn("limit이 유효하지 않습니다: {}", limit);
-            limit = 10; // 기본값
+            limit = 10;
         }
 
         try {
@@ -297,9 +268,70 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * 전체 쿼리 메트릭스 개수 조회
-     */
+    @Override
+    public List<Map<String, Object>> getExecutionStats(Long databaseId, Integer hours) {
+        logger.info("쿼리별 집계 통계 조회 시작 - databaseId: {}, hours: {}", databaseId, hours);
+
+        if (databaseId == null) {
+            logger.warn("databaseId가 null입니다");
+            throw new IllegalArgumentException("databaseId는 필수입니다");
+        }
+
+        if (hours == null || hours < 0) {
+            logger.warn("hours가 유효하지 않습니다: {}", hours);
+            hours = 1;
+        }
+
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("databaseId", databaseId);
+            params.put("hours", hours);
+
+            List<Map<String, Object>> result = queryMetricsRawRepository.findExecutionStats(params);
+
+            logger.info("쿼리별 집계 완료: databaseId = {}, hours = {}, 집계된 쿼리 수 = {}",
+                    databaseId, hours, result.size());
+
+            return result;
+
+        } catch (Exception e) {
+            logger.error("쿼리별 집계 통계 조회 중 오류 발생: databaseId = {}, hours = {}", databaseId, hours, e);
+            throw new RuntimeException("쿼리별 집계 조회 실패", e);
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> getHourlyDistribution(Long databaseId, Integer hours) {
+        logger.info("시간대별 쿼리 수 집계 조회 시작 - databaseId: {}, hours: {}", databaseId, hours);
+
+        if (databaseId == null) {
+            logger.warn("databaseId가 null입니다");
+            throw new IllegalArgumentException("databaseId는 필수입니다");
+        }
+
+        if (hours == null || hours < 0) {
+            logger.warn("hours가 유효하지 않습니다: {}", hours);
+            hours = 5;
+        }
+
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("databaseId", databaseId);
+            params.put("hours", hours);
+
+            List<Map<String, Object>> result = queryMetricsRawRepository.findHourlyDistribution(params);
+
+            logger.info("시간대별 분포 조회 완료: databaseId = {}, hours = {}, 시간대 수 = {}",
+                    databaseId, hours, result.size());
+
+            return result;
+
+        } catch (Exception e) {
+            logger.error("시간대별 분포 조회 중 오류 발생: databaseId = {}, hours = {}", databaseId, hours, e);
+            throw new RuntimeException("시간대별 분포 조회 실패", e);
+        }
+    }
+
     @Override
     public int getTotalCount() {
         logger.info("전체 쿼리 메트릭스 개수 조회 시작");
@@ -315,9 +347,6 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         }
     }
 
-    /**
-     * 데이터베이스별 쿼리 메트릭스 개수 조회
-     */
     @Override
     public int getCountByDatabaseId(Long databaseId) {
         logger.info("데이터베이스별 쿼리 메트릭스 개수 조회 시작: databaseId = {}", databaseId);
@@ -336,74 +365,6 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
         } catch (Exception e) {
             logger.error("데이터베이스별 쿼리 메트릭스 개수 조회 중 오류 발생: databaseId = {}", databaseId, e);
             throw new RuntimeException("개수 조회 실패", e);
-        }
-    }
-    /**
-     * ExecutionStatus용 쿼리별 집계 통계
-     */
-    @Override
-    public List<Map<String, Object>> getExecutionStats(Long databaseId, Integer hours) {
-        logger.info("📊 쿼리별 집계 통계 조회 시작 - databaseId: {}, hours: {}", databaseId, hours);
-
-        if (databaseId == null) {
-            logger.warn("databaseId가 null입니다");
-            throw new IllegalArgumentException("databaseId는 필수입니다");
-        }
-
-        if (hours == null || hours < 0) {
-            logger.warn("hours가 유효하지 않습니다: {}", hours);
-            hours = 1; // 기본값 1시간
-        }
-
-        try {
-            Map<String, Object> params = new HashMap<>();
-            params.put("databaseId", databaseId);
-            params.put("hours", hours);  // ✅ days → hours
-
-            List<Map<String, Object>> result = queryMetricsRawRepository.findExecutionStats(params);
-
-            logger.info("✅ 쿼리별 집계 완료: databaseId = {}, hours = {}, 집계된 쿼리 수 = {}",
-                    databaseId, hours, result.size());
-
-            return result;
-
-        } catch (Exception e) {
-            logger.error("❌ 쿼리별 집계 통계 조회 중 오류 발생: databaseId = {}, hours = {}", databaseId, hours, e);
-            throw new RuntimeException("쿼리별 집계 조회 실패", e);
-        }
-    }
-    /**
-     * 시간대별 쿼리 수 분포 조회
-     */
-    @Override
-    public List<Map<String, Object>> getHourlyDistribution(Long databaseId, Integer hours) {
-        logger.info("📊 시간대별 쿼리 수 집계 조회 시작 - databaseId: {}, hours: {}", databaseId, hours);
-
-        if (databaseId == null) {
-            logger.warn("databaseId가 null입니다");
-            throw new IllegalArgumentException("databaseId는 필수입니다");
-        }
-
-        if (hours == null || hours < 0) {
-            logger.warn("hours가 유효하지 않습니다: {}", hours);
-            hours = 5; // 기본값 5시간
-        }
-
-        try {
-            Map<String, Object> params = new HashMap<>();
-            params.put("databaseId", databaseId);
-            params.put("hours", hours);
-
-            List<Map<String, Object>> result = queryMetricsRawRepository.findHourlyDistribution(params);
-
-            logger.info("✅ 시간대별 분포 조회 완료: databaseId = {}, hours = {}, 시간대 수 = {}",
-                    databaseId, hours, result.size());
-
-            return result;
-
-        } catch (Exception e) {
-            logger.error("❌ 시간대별 분포 조회 중 오류 발생: databaseId = {}, hours = {}", databaseId, hours, e);
-            throw new RuntimeException("시간대별 분포 조회 실패", e);
         }
     }
 }

@@ -28,10 +28,8 @@ import java.util.List;
 
 /**
  * 1분 단위 쿼리 집계 Batch Job
- * DB에서 GROUP BY로 집계된 데이터를 읽어서 query_metrics_agg_1m에 저장
- *
- * ✅ 수정사항:
- * - Disk I/O 계산식 수정 (실제 데이터 기반 정규화)
+ * - DB에서 GROUP BY로 집계된 데이터를 읽어서 query_metrics_agg_1m에 저장
+ * - Disk I/O 계산식: 실제 데이터 기반 정규화 (P95 기준: 40,000 blocks = 100%)
  *
  * @author 이해든
  */
@@ -69,7 +67,7 @@ public class Query1mAggregator {
     }
 
     /**
-     * Reader: DB에서 이미 집계된 데이터 읽기 (GROUP BY 사용)
+     * Reader: DB에서 이미 집계된 데이터 읽기
      * 지난 1~2분 사이 데이터를 database_id, instance_id별로 집계
      */
     @Bean
@@ -80,7 +78,6 @@ public class Query1mAggregator {
             database_id,
             DATE_TRUNC('minute', collected_at) as collected_at,
             
-            -- 쿼리 수 집계
             COUNT(*) as total_queries,
             COUNT(*) FILTER (WHERE query_type = 'SELECT') as select_queries,
             COUNT(*) FILTER (WHERE query_type = 'INSERT') as insert_queries,
@@ -88,22 +85,17 @@ public class Query1mAggregator {
             COUNT(*) FILTER (WHERE query_type = 'DELETE') as delete_queries,
             COUNT(*) FILTER (WHERE query_type NOT IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')) as other_queries,
             
-            -- 실행 시간 집계
             AVG(execution_time_ms) as avg_execution_time_ms,
             MAX(execution_time_ms) as max_execution_time_ms,
             AVG(planning_time_ms) as avg_planning_time_ms,
             
-            -- IO 블록 집계
             SUM(io_blocks) as total_io_blocks,
             AVG(io_blocks) as avg_io_blocks,
             
-            -- 슬로우 쿼리 (1초 초과)
             COUNT(*) FILTER (WHERE execution_time_ms > 1000) as slow_query_count,
             
-            -- 리소스 사용률 (평균값 사용)
             AVG(cpu_usage_percent) as current_cpu_usage_percent,
             AVG(memory_usage_mb) as current_memory_usage_percent,
-            -- ✅ 개선: Disk I/O 계산 (P95 기준 정규화: 37,674 blocks = 100%)
             CASE 
                 WHEN AVG(io_blocks) IS NULL THEN 0
                 WHEN AVG(io_blocks) = 0 THEN 0
@@ -117,7 +109,6 @@ public class Query1mAggregator {
         ORDER BY instance_id, database_id, collected_at
         """;
 
-
         return new JdbcCursorItemReaderBuilder<QueryAgg1mDto>()
                 .name("queryAgg1mReader")
                 .dataSource(dataSource)
@@ -128,13 +119,13 @@ public class Query1mAggregator {
 
     /**
      * Processor: 간단한 후처리
+     * null 값 처리 및 기본값 설정
      */
     @Bean
     public ItemProcessor<QueryAgg1mDto, QueryAgg1mDto> queryAgg1mProcessor() {
         return item -> {
             item.setCreatedAt(OffsetDateTime.now());
 
-            // null 값 처리
             if (item.getAvgExecutionTimeMs() == null) {
                 item.setAvgExecutionTimeMs(0.0);
             }
@@ -192,7 +183,6 @@ public class Query1mAggregator {
                 ));
             }
 
-            // 쿼리 수
             dto.setTotalQueries(rs.getInt("total_queries"));
             dto.setSelectQueries(rs.getInt("select_queries"));
             dto.setInsertQueries(rs.getInt("insert_queries"));
@@ -200,7 +190,6 @@ public class Query1mAggregator {
             dto.setDeleteQueries(rs.getInt("delete_queries"));
             dto.setOtherQueries(rs.getInt("other_queries"));
 
-            // 실행 시간
             Double avgExecTime = rs.getDouble("avg_execution_time_ms");
             dto.setAvgExecutionTimeMs(rs.wasNull() ? null : avgExecTime);
 
@@ -210,16 +199,13 @@ public class Query1mAggregator {
             Double avgPlanTime = rs.getDouble("avg_planning_time_ms");
             dto.setAvgPlanningTimeMs(rs.wasNull() ? null : avgPlanTime);
 
-            // IO 블록
             dto.setTotalIoBlocks(rs.getLong("total_io_blocks"));
 
             Double avgIo = rs.getDouble("avg_io_blocks");
             dto.setAvgIoBlocks(rs.wasNull() ? null : avgIo);
 
-            // 슬로우 쿼리
             dto.setSlowQueryCount(rs.getInt("slow_query_count"));
 
-            // 리소스 사용률
             Double currentCpu = rs.getDouble("current_cpu_usage_percent");
             dto.setCurrentCpuUsagePercent(rs.wasNull() ? null : currentCpu);
 

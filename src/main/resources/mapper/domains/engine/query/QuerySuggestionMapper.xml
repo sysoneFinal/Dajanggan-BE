@@ -2,9 +2,16 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
+<!--
+    쿼리 제안 Mapper
+    - AI 기반 쿼리 최적화 제안 저장 및 조회
+    - 캐싱 기능을 통한 중복 제안 방지
+
+    @author 이해든
+-->
 <mapper namespace="com.dajanggan.domain.query.repository.QuerySuggestionRepository">
 
-    <!-- ResultMap 정의 (캐싱 필드 추가) -->
+    <!-- ResultMap 정의 -->
     <resultMap id="querySuggestionResultMap" type="com.dajanggan.domain.query.domain.QuerySuggestion">
         <id property="suggestionId" column="suggestion_id"/>
         <result property="databaseId" column="database_id"/>
@@ -19,13 +26,12 @@
         <result property="queriesPerTransaction" column="queries_per_transaction"/>
         <result property="transactionId" column="transaction_id"/>
         <result property="createdAt" column="created_at"/>
-        <!-- 캐싱 관련 필드 -->
         <result property="aiModel" column="ai_model"/>
         <result property="tokenUsed" column="token_used"/>
         <result property="isFromCache" column="is_from_cache"/>
     </resultMap>
 
-    <!-- 단건 저장 (캐싱 필드 포함) -->
+    <!-- 단건 저장 -->
     <insert id="insert" parameterType="com.dajanggan.domain.query.domain.QuerySuggestion"
             useGeneratedKeys="true" keyProperty="suggestionId" keyColumn="suggestion_id">
         INSERT INTO query_suggestion (
@@ -63,7 +69,7 @@
                  )
     </insert>
 
-    <!-- 다건 저장 (캐싱 필드 포함) -->
+    <!-- 다건 일괄 저장 -->
     <insert id="insertAll" parameterType="java.util.List">
         INSERT INTO query_suggestion (
         database_id,
@@ -179,7 +185,7 @@
         ORDER BY created_at DESC
     </select>
 
-    <!-- 캐시 히트율 통계 -->
+    <!-- 캐시 히트율 통계 조회 -->
     <select id="countByIsFromCache" resultType="java.lang.Long">
         SELECT COUNT(*)
         FROM query_suggestion
