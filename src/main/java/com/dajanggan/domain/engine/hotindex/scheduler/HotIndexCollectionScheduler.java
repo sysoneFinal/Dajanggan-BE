@@ -43,7 +43,7 @@ public class HotIndexCollectionScheduler {
     /**
      * 1분마다 실행 (매분 0초)
      */
-    @Scheduled(cron = "0 * * * * *")
+    //@Scheduled(cron = "0 * * * * *")
     public void collectHotIndexMetrics() {
         log.info("========== HotIndex 메트릭 수집 시작 ==========");
 
