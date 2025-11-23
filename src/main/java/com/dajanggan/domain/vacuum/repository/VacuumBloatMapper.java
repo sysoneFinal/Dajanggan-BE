@@ -81,5 +81,8 @@ public interface VacuumBloatMapper {
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
     );
+
+    // ⚠️ 메타데이터 조회는 Service 레벨에서 실제 PostgreSQL 인스턴스에 연결하여 조회
+    // (MyBatis Mapper는 모니터링 시스템의 메인 DB에 연결되므로 사용하지 않음)
 }
 

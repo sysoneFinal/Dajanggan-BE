@@ -25,6 +25,9 @@ public class DataSourceFactory {
 
     // 인스턴스+DB별 DataSource 캐싱
     private final Map<String, DataSource> dataSourceCache = new ConcurrentHashMap<>();
+    
+    // Instance별 복호화된 비밀번호 캐싱 (최적화)
+    private final Map<Long, String> passwordCache = new ConcurrentHashMap<>();
 
     /**
      * Instance와 Database 이름을 기반으로 JdbcTemplate 생성
@@ -41,6 +44,19 @@ public class DataSourceFactory {
         String cacheKey = instance.getInstanceId() + ":" + databaseName;
         return dataSourceCache.computeIfAbsent(cacheKey, 
             key -> createDataSource(instance, databaseName));
+    }
+
+    /**
+     * Instance별 비밀번호 캐시에서 가져오거나 복호화 (최적화)
+     */
+    private String getOrDecryptPassword(Instance instance) {
+        return passwordCache.computeIfAbsent(instance.getInstanceId(), 
+            instanceId -> {
+                String password = aesGcmService.decryptToString(instance.getSecretRef());
+                log.debug(">>>> Password decrypted and cached for instance: {} (instanceId: {})", 
+                        instance.getInstanceName(), instanceId);
+                return password;
+            });
     }
 
     /**
@@ -66,13 +82,13 @@ public class DataSourceFactory {
         // 인증 정보
         config.setUsername(instance.getUserName());
         
-        // secretRef 복호화하여 비밀번호 설정
+        // secretRef 복호화하여 비밀번호 설정 (Instance별로 한 번만 복호화)
         if (instance.getSecretRef() != null && !instance.getSecretRef().isEmpty()) {
             try {
-                String password = aesGcmService.decryptToString(instance.getSecretRef());
+                String password = getOrDecryptPassword(instance);
                 config.setPassword(password);
-                log.debug(">>>> Password decrypted successfully for instance: {}", instance.getInstanceName());
-                log.warn(">>>>> [TEMP DEBUG] Decrypted password length: {} chars", password.length()); // 임시 디버깅
+                log.debug(">>>> Password set for instance: {} (from cache: {})", 
+                        instance.getInstanceName(), passwordCache.containsKey(instance.getInstanceId()));
             } catch (Exception e) {
                 log.error("************Failed to decrypt password for instance: {} - {}",
                         instance.getInstanceName(), e.getMessage());
@@ -120,7 +136,9 @@ public class DataSourceFactory {
             }
             return false;
         });
-        log.info("All DataSources closed for instanceId: {}", instanceId);
+        // 비밀번호 캐시도 제거
+        passwordCache.remove(instanceId);
+        log.info("All DataSources and password cache removed for instanceId: {}", instanceId);
     }
 
     /**
@@ -133,6 +151,7 @@ public class DataSourceFactory {
             }
         });
         dataSourceCache.clear();
-        log.info("All DataSources closed");
+        passwordCache.clear();
+        log.info("All DataSources and password cache cleared");
     }
 }

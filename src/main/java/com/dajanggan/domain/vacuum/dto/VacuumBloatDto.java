@@ -65,5 +65,14 @@ public class VacuumBloatDto {
         private String tableBloat;
         private Integer criticalTable;
         private String bloatGrowth;
+        
+        // ✅ Severity 필드 추가 (백엔드에서 계산)
+        private String tableBloatSeverity;      // "NORMAL", "WARNING", "CRITICAL"
+        private String criticalTableSeverity;    // "NORMAL", "WARNING", "CRITICAL"
+        private String bloatGrowthSeverity;      // "NORMAL", "WARNING", "CRITICAL"
+        
+        // ✅ 메타데이터 (백엔드에서 조회)
+        private Long totalDatabaseSizeBytes;     // 전체 DB 크기
+        private Integer totalTableCount;        // 전체 테이블 수
     }
 }

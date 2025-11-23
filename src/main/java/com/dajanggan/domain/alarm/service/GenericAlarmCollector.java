@@ -312,19 +312,34 @@ public class GenericAlarmCollector {
             // 모든 레벨에서 발생 조건 확인 (NOTICE, WARNING, CRITICAL)
             // 레벨 변경 시 무조건 알람 발생, 같은 레벨에서 처음 조건 만족 시에도 알람 발생
             if (shouldFireAlarm(rule, tracking, triggeredLevel, previousLevel) || levelChanged) {
+                // 쿨다운 체크 (레벨 변경 시에는 쿨다운 무시)
+                if (!levelChanged && isInCooldown(rule, triggeredLevel)) {
+                    log.debug("⏸️ 쿨다운 중: 알람 발생 건너뜀 - ruleId={}, level={}, cooldown={}분",
+                            rule.getAlarmRuleId(), triggeredLevel, getCooldown(rule.getLevels(), triggeredLevel));
+                    return; // 쿨다운 중이면 알람 발생 안 함
+                }
                 // 알람 발생 또는 레벨 변경
                 fireAlarm(conn, rule, tracking, currentValue, triggeredLevel, metricType, levelChanged);
             }
 
         } else {
-            // 정상 범위: 상태 복구 또는 트래킹 삭제
+            // 정상 범위: 히스테리시스 적용하여 복구 조건 체크
             if (tracking != null && "FIRED".equals(tracking.getStatus())) {
-                // 이미 FIRED 였다면 resolve 처리 (Feed 상태 업데이트 및 tracking 상태 갱신)
-                resolveAlarm(tracking, metricType);
-            }
-
-            if (tracking != null) {
-                // 비활성화된 규칙일 경우(또는 정상화된 경우) 트래킹을 삭제
+                // 이미 FIRED 였다면 복구 조건 체크 (히스테리시스)
+                String currentLevel = tracking.getCurrentLevel();
+                if (shouldResolveAlarm(conn, rule, tracking, currentValue, currentLevel)) {
+                    // 복구 조건 충족 → 알람 해제
+                    resolveAlarm(tracking, metricType);
+                    // 트래킹 삭제
+                    alarmTrackingMapper.delete(tracking.getAlarmTrackingId());
+                } else {
+                    // 복구 조건 미충족 → 알람 유지 (히스테리시스 효과)
+                    log.debug("🔄 복구 조건 미충족: 알람 유지 (히스테리시스) - currentValue={}, resolveThreshold={}, resolveDuration={}분",
+                            currentValue, getResolveThreshold(rule.getLevels(), currentLevel), 
+                            getResolveDuration(rule.getLevels(), currentLevel));
+                }
+            } else if (tracking != null) {
+                // PENDING_FIRED 상태이거나 트래킹만 있는 경우 → 트래킹 삭제
                 alarmTrackingMapper.delete(tracking.getAlarmTrackingId());
             }
         }
@@ -626,6 +641,94 @@ public class GenericAlarmCollector {
     }
 
     /**
+     * 알람 복구 조건 체크 (히스테리시스)
+     * - 복구 임계치는 발생 임계치보다 낮게 설정
+     * - 복구 지속 시간도 체크
+     */
+    private boolean shouldResolveAlarm(
+            Connection conn,
+            AlarmRule rule,
+            AlarmTracking tracking,
+            BigDecimal currentValue,
+            String currentLevel
+    ) {
+        try {
+            // 복구 임계치와 지속 시간 가져오기
+            BigDecimal resolveThreshold = getResolveThreshold(rule.getLevels(), currentLevel);
+            int resolveDuration = getResolveDuration(rule.getLevels(), currentLevel);
+            String operator = rule.getOperator();
+
+            // 복구 임계치가 설정되지 않았으면 기본값 사용 (발생 임계치의 80%)
+            if (resolveThreshold == null) {
+                BigDecimal fireThreshold = getThresholdValue(parseJsonLevels(rule.getLevels()), currentLevel.toLowerCase());
+                if (fireThreshold != null) {
+                    // 발생 임계치의 80%로 설정 (operator에 따라 반대 방향)
+                    if (operator.equals("gt") || operator.equals("gte")) {
+                        resolveThreshold = fireThreshold.multiply(new BigDecimal("0.8"));
+                    } else {
+                        resolveThreshold = fireThreshold.multiply(new BigDecimal("1.2"));
+                    }
+                    log.debug("복구 임계치 기본값 사용: {} (발생 임계치의 80%)", resolveThreshold);
+                } else {
+                    // 복구 임계치를 알 수 없으면 즉시 복구 (기존 동작)
+                    log.debug("복구 임계치를 알 수 없음: 즉시 복구");
+                    return true;
+                }
+            }
+
+            // 복구 지속 시간 기본값 (설정되지 않았으면 3분)
+            if (resolveDuration <= 0) {
+                resolveDuration = 3;
+            }
+
+            // 1. 복구 임계치 체크 (발생 임계치보다 낮은 값이어야 함)
+            // operator 반대 방향으로 체크 (gt면 lt, lt면 gt)
+            String resolveOperator = getReverseOperator(operator);
+            boolean belowResolveThreshold = compareValue(currentValue, resolveThreshold, resolveOperator);
+
+            if (!belowResolveThreshold) {
+                log.debug("복구 임계치 미달: currentValue={} {} resolveThreshold={}",
+                        currentValue, resolveOperator, resolveThreshold);
+                return false;
+            }
+
+            // 2. 복구 지속 시간 체크
+            OffsetDateTime now = OffsetDateTime.now();
+            OffsetDateTime firstTriggered = tracking.getFirstTriggeredAt();
+            long durationMinutes = java.time.Duration.between(firstTriggered, now).toMinutes();
+
+            if (durationMinutes < resolveDuration) {
+                log.debug("복구 지속 시간 부족: {}분/{}분", durationMinutes, resolveDuration);
+                return false;
+            }
+
+            log.info("✅ 복구 조건 충족: currentValue={} {} resolveThreshold={}, duration={}분/{}분",
+                    currentValue, resolveOperator, resolveThreshold, durationMinutes, resolveDuration);
+            return true;
+
+        } catch (Exception e) {
+            log.error("복구 조건 체크 실패", e);
+            // 에러 발생 시 안전하게 복구 허용
+            return true;
+        }
+    }
+
+    /**
+     * operator 반대 방향 반환 (히스테리시스용)
+     */
+    private String getReverseOperator(String operator) {
+        if (operator == null) return "lt";
+        return switch (operator) {
+            case "gt" -> "lt";
+            case "gte" -> "lte";
+            case "lt" -> "gt";
+            case "lte" -> "gte";
+            case "eq" -> "eq";  // 같음은 그대로
+            default -> "lt";
+        };
+    }
+
+    /**
      * 알람 해제
      */
     private void resolveAlarm(AlarmTracking tracking, String metricType) {
@@ -750,5 +853,92 @@ public class GenericAlarmCollector {
             log.error("윈도우 시간 추출 실패: level={}", level, e);
         }
         return 15; // 기본값: 15분
+    }
+
+    /**
+     * 복구 임계치 추출 (히스테리시스)
+     */
+    private BigDecimal getResolveThreshold(String levelsJson, String level) {
+        try {
+            Map<String, Map<String, Object>> levels = parseJsonLevels(levelsJson);
+            Map<String, Object> levelConfig = levels.get(level.toLowerCase());
+            if (levelConfig != null && levelConfig.containsKey("resolveThreshold")) {
+                Object threshold = levelConfig.get("resolveThreshold");
+                if (threshold instanceof Number) {
+                    return new BigDecimal(threshold.toString());
+                }
+            }
+        } catch (Exception e) {
+            log.error("복구 임계치 추출 실패: level={}", level, e);
+        }
+        return null; // 기본값 없음 (shouldResolveAlarm에서 처리)
+    }
+
+    /**
+     * 복구 지속 시간 추출 (히스테리시스)
+     */
+    private int getResolveDuration(String levelsJson, String level) {
+        try {
+            Map<String, Map<String, Object>> levels = parseJsonLevels(levelsJson);
+            Map<String, Object> levelConfig = levels.get(level.toLowerCase());
+            if (levelConfig != null && levelConfig.containsKey("resolveDurationMin")) {
+                return ((Number) levelConfig.get("resolveDurationMin")).intValue();
+            }
+        } catch (Exception e) {
+            log.error("복구 지속 시간 추출 실패: level={}", level, e);
+        }
+        return 0; // 기본값 없음 (shouldResolveAlarm에서 3분으로 설정)
+    }
+
+    /**
+     * 쿨다운 체크
+     * - 같은 레벨의 알람이 최근 cooldownMin 분 내에 발생했는지 확인
+     * - 레벨 변경 시에는 쿨다운 무시 (중요한 변화이므로)
+     */
+    private boolean isInCooldown(AlarmRule rule, String level) {
+        try {
+            int cooldownMin = getCooldown(rule.getLevels(), level);
+            if (cooldownMin <= 0) {
+                return false; // 쿨다운이 설정되지 않았으면 쿨다운 없음
+            }
+
+            // 마지막 알람 발생 시간 조회
+            OffsetDateTime lastFiredAt = alarmFeedMapper.selectLastFiredAtByRuleId(rule.getAlarmRuleId());
+            if (lastFiredAt == null) {
+                return false; // 이전 알람이 없으면 쿨다운 없음
+            }
+
+            OffsetDateTime now = OffsetDateTime.now();
+            OffsetDateTime cooldownEnd = lastFiredAt.plusMinutes(cooldownMin);
+
+            boolean inCooldown = now.isBefore(cooldownEnd);
+            if (inCooldown) {
+                long remainingMinutes = java.time.Duration.between(now, cooldownEnd).toMinutes();
+                log.debug("쿨다운 중: ruleId={}, level={}, 남은 시간={}분", 
+                        rule.getAlarmRuleId(), level, remainingMinutes);
+            }
+
+            return inCooldown;
+
+        } catch (Exception e) {
+            log.error("쿨다운 체크 실패: ruleId={}, level={}", rule.getAlarmRuleId(), level, e);
+            return false; // 에러 발생 시 쿨다운 없음으로 처리
+        }
+    }
+
+    /**
+     * 쿨다운 시간 추출
+     */
+    private int getCooldown(String levelsJson, String level) {
+        try {
+            Map<String, Map<String, Object>> levels = parseJsonLevels(levelsJson);
+            Map<String, Object> levelConfig = levels.get(level.toLowerCase());
+            if (levelConfig != null && levelConfig.containsKey("cooldownMin")) {
+                return ((Number) levelConfig.get("cooldownMin")).intValue();
+            }
+        } catch (Exception e) {
+            log.error("쿨다운 시간 추출 실패: level={}", level, e);
+        }
+        return 0; // 기본값: 쿨다운 없음
     }
 }

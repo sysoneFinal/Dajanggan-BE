@@ -77,4 +77,7 @@ public interface AlarmFeedMapper {
     );
 
     Long selectLatestFeedIdByTrackingId(Long alarmTrackingId);
+
+    // 마지막 알람 발생 시간 조회 (쿨다운 체크용)
+    OffsetDateTime selectLastFiredAtByRuleId(@Param("alarmRuleId") Long alarmRuleId);
 }

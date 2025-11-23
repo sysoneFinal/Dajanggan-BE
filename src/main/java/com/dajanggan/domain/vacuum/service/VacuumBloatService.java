@@ -1,11 +1,17 @@
 package com.dajanggan.domain.vacuum.service;
 
+import com.dajanggan.domain.instance.domain.Database;
+import com.dajanggan.domain.instance.domain.Instance;
+import com.dajanggan.domain.instance.repository.DatabaseRepository;
+import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDto;
 import com.dajanggan.domain.vacuum.dto.agg.VacuumAgg5mDto;
 import com.dajanggan.domain.vacuum.dto.raw.VacuumRawMetricDto;
 import com.dajanggan.domain.vacuum.repository.VacuumBloatRepository;
+import com.dajanggan.infrastructure.datasource.DataSourceFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +27,9 @@ import java.util.stream.Collectors;
 public class VacuumBloatService {
 
     private final VacuumBloatRepository bloatRepository;
+    private final DatabaseRepository databaseRepository;
+    private final InstanceRepository instanceRepository;
+    private final DataSourceFactory dataSourceFactory;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("M/d");
@@ -437,13 +446,15 @@ public class VacuumBloatService {
     public VacuumBloatDto.Kpi getKpiData(Long databaseId, Long instanceId) {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime last7d = now.minusDays(7);
-        OffsetDateTime last30d = now.minusDays(30);
+        OffsetDateTime last14d = now.minusDays(14);
 
         log.info("📊 KPI 조회 시작 - databaseId: {}, instanceId: {}", databaseId, instanceId);
 
         // ✅ 5분 집계에서 KPI 요약 조회
+        // current: 최근 7일 (7일 전 ~ 현재)
+        // past: 7일 전부터 7일간 (7일 전 ~ 14일 전) - 7일 전 대비 증가량 계산
         VacuumAgg5mDto current = bloatRepository.getKpiSummary(databaseId, instanceId, last7d, now);
-        VacuumAgg5mDto past = bloatRepository.getKpiSummary(databaseId, instanceId, last30d, last30d.plusDays(7));
+        VacuumAgg5mDto past = bloatRepository.getKpiSummary(databaseId, instanceId, last14d, last7d);
 
         // ✅ total_bloat_bytes 사용 (전체 DB의 Bloat 합계)
         Long currentBloatBytes = (current != null && current.getTotalBloatBytes() != null)
@@ -471,14 +482,160 @@ public class VacuumBloatService {
             bloatGrowth = "-" + formatBytes(Math.abs(bloatGrowthBytes));
         }
 
+        // ✅ 메타데이터 조회 (실제 PostgreSQL 인스턴스에 연결하여 조회)
+        Long totalDatabaseSizeBytes = getTotalDatabaseSizeFromInstance(databaseId, instanceId);
+        Integer totalTableCount = getTotalTableCountFromInstance(databaseId, instanceId);
+
+        // ✅ Severity 계산
+        String tableBloatSeverity = calculateTableBloatSeverity(currentBloatBytes, totalDatabaseSizeBytes);
+        String criticalTableSeverity = calculateCriticalTableSeverity(criticalCount, totalTableCount);
+        String bloatGrowthSeverity = calculateBloatGrowthSeverity(bloatGrowthBytes, currentBloatBytes);
+
         log.info("📊 KPI 계산 완료 - Total: {}, Critical: {}, Growth: {}",
                 tableBloat, criticalCount, bloatGrowth);
+        log.info("📊 Severity - TableBloat: {}, CriticalTable: {}, Growth: {}",
+                tableBloatSeverity, criticalTableSeverity, bloatGrowthSeverity);
 
         return VacuumBloatDto.Kpi.builder()
                 .tableBloat(tableBloat)
                 .criticalTable(criticalCount)
                 .bloatGrowth(bloatGrowth)
+                .tableBloatSeverity(tableBloatSeverity)
+                .criticalTableSeverity(criticalTableSeverity)
+                .bloatGrowthSeverity(bloatGrowthSeverity)
+                .totalDatabaseSizeBytes(totalDatabaseSizeBytes)
+                .totalTableCount(totalTableCount)
                 .build();
+    }
+
+    /**
+     * Table Bloat Severity 계산
+     * - 전체 DB 크기 대비 비율로 판단
+     * - 10-20%: WARNING, 30% 이상: CRITICAL
+     */
+    private String calculateTableBloatSeverity(Long bloatBytes, Long totalDatabaseSizeBytes) {
+        if (totalDatabaseSizeBytes == null || totalDatabaseSizeBytes == 0) {
+            return "NORMAL"; // DB 크기를 알 수 없으면 NORMAL
+        }
+
+        double ratio = (double) bloatBytes / totalDatabaseSizeBytes * 100;
+
+        if (ratio >= 30.0) {
+            return "CRITICAL";
+        } else if (ratio >= 10.0) {
+            return "WARNING";
+        } else {
+            return "NORMAL";
+        }
+    }
+
+    /**
+     * Critical Table Severity 계산
+     * - 전체 테이블 수 대비 비율로 판단
+     * - 10% 이상: WARNING
+     */
+    private String calculateCriticalTableSeverity(Integer criticalCount, Integer totalTableCount) {
+        if (totalTableCount == null || totalTableCount == 0) {
+            return "NORMAL"; // 테이블 수를 알 수 없으면 NORMAL
+        }
+
+        double ratio = (double) criticalCount / totalTableCount * 100;
+
+        if (ratio >= 10.0) {
+            return "WARNING";
+        } else {
+            return "NORMAL";
+        }
+    }
+
+    /**
+     * Bloat Growth Severity 계산
+     * - 증가 추세가 지속적으로 우상향하면 WARNING
+     * - 현재는 단순히 증가량만 체크 (향후 추세 분석 추가 가능)
+     */
+    private String calculateBloatGrowthSeverity(Long growthBytes, Long currentBloatBytes) {
+        if (growthBytes == null || currentBloatBytes == null || currentBloatBytes == 0) {
+            return "NORMAL";
+        }
+
+        // 증가량이 현재 Bloat의 10% 이상이면 WARNING
+        double growthRatio = (double) growthBytes / currentBloatBytes * 100;
+
+        if (growthRatio >= 10.0) {
+            return "WARNING";
+        } else {
+            return "NORMAL";
+        }
+    }
+
+    /**
+     * 실제 PostgreSQL 인스턴스에 연결하여 전체 DB 크기 조회
+     */
+    private Long getTotalDatabaseSizeFromInstance(Long databaseId, Long instanceId) {
+        try {
+            Database database = databaseRepository.findById(databaseId);
+            if (database == null) {
+                log.warn("Database not found: databaseId={}", databaseId);
+                return null;
+            }
+
+            Instance instance = instanceRepository.findById(instanceId)
+                    .orElse(null);
+            if (instance == null) {
+                log.warn("Instance not found: instanceId={}", instanceId);
+                return null;
+            }
+
+            JdbcTemplate jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName());
+            String sql = "SELECT pg_database_size(current_database()) AS total_database_size_bytes";
+            
+            Long size = jdbc.queryForObject(sql, Long.class);
+            log.debug("📊 전체 DB 크기 조회: {} bytes ({}:{}:{})", 
+                    size, instance.getHost(), instance.getPort(), database.getDatabaseName());
+            return size;
+
+        } catch (Exception e) {
+            log.error("❌ 전체 DB 크기 조회 실패: databaseId={}, instanceId={}", 
+                    databaseId, instanceId, e);
+            return null;
+        }
+    }
+
+    /**
+     * 실제 PostgreSQL 인스턴스에 연결하여 전체 테이블 수 조회
+     */
+    private Integer getTotalTableCountFromInstance(Long databaseId, Long instanceId) {
+        try {
+            Database database = databaseRepository.findById(databaseId);
+            if (database == null) {
+                log.warn("Database not found: databaseId={}", databaseId);
+                return null;
+            }
+
+            Instance instance = instanceRepository.findById(instanceId)
+                    .orElse(null);
+            if (instance == null) {
+                log.warn("Instance not found: instanceId={}", instanceId);
+                return null;
+            }
+
+            JdbcTemplate jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName());
+            String sql = """
+                SELECT COUNT(*) AS total_table_count
+                FROM pg_stat_user_tables
+                WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                """;
+            
+            Integer count = jdbc.queryForObject(sql, Integer.class);
+            log.debug("📊 전체 테이블 수 조회: {} 개 ({}:{}:{})", 
+                    count, instance.getHost(), instance.getPort(), database.getDatabaseName());
+            return count;
+
+        } catch (Exception e) {
+            log.error("❌ 전체 테이블 수 조회 실패: databaseId={}, instanceId={}", 
+                    databaseId, instanceId, e);
+            return null;
+        }
     }
 
     // ========== 유틸리티 메서드 ==========

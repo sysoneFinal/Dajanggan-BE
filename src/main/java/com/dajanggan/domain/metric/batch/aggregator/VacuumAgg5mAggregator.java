@@ -72,10 +72,13 @@ public class VacuumAgg5mAggregator {
             COALESCE(AVG(tables_being_vacuumed), 0)::INTEGER as tables_being_vacuumed,
             AVG(avg_elapsed_seconds) as avg_elapsed_seconds,
             MAX(max_elapsed_seconds) as max_elapsed_seconds,
-            COALESCE(AVG(dead_tuple_increase_rate), 0)::BIGINT as dead_tuple_increase_rate,
-            COALESCE(AVG(dead_tuple_decrease_rate), 0)::BIGINT as dead_tuple_decrease_rate,
-            COALESCE(AVG(net_dead_tuple_change), 0)::BIGINT as net_dead_tuple_change,
-            AVG(avg_cost_delay_ms) as avg_cost_delay_ms,
+            -- ✅ 5분 집계에서는 이전 5분 구간과 비교하여 직접 계산
+            -- AVG 대신 SUM을 사용하여 실제 변화량 반영
+            COALESCE(SUM(dead_tuple_increase_rate), 0)::BIGINT as dead_tuple_increase_rate,
+            COALESCE(SUM(dead_tuple_decrease_rate), 0)::BIGINT as dead_tuple_decrease_rate,
+            COALESCE(SUM(net_dead_tuple_change), 0)::BIGINT as net_dead_tuple_change,
+            -- ✅ cost_delay_ms는 설정값이므로 항상 표시
+            COALESCE(AVG(avg_cost_delay_ms), 0) as avg_cost_delay_ms,
             AVG(worker_utilization_pct) as worker_utilization_pct,
             MAX(max_workers_configured) as max_workers_configured,
             COALESCE(AVG(avg_bloat_bytes), 0)::BIGINT as avg_bloat_bytes,

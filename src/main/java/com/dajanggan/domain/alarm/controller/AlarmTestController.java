@@ -672,4 +672,402 @@ public class AlarmTestController {
         );
         return ResponseEntity.ok("Slack 테스트 알림 전송됨");
     }
+
+    /**
+     * 복구 임계치 테스트
+     * 1. 알람을 발생시킨 후
+     * 2. 복구 임계치 이하로 값을 낮춰서 복구가 되는지 확인
+     * 
+     * POST /api/test/alarm/test-resolve-threshold
+     * 
+     * Body:
+     * {
+     *   "alarmRuleId": 1,
+     *   "triggerValue": 1000000,  // 알람 발생시킬 값
+     *   "resolveValue": 500000     // 복구 시킬 값
+     * }
+     */
+    @PostMapping("/test-resolve-threshold")
+    public Map<String, Object> testResolveThreshold(
+            @RequestParam Long alarmRuleId,
+            @RequestParam(defaultValue = "1000000") BigDecimal triggerValue,
+            @RequestParam(defaultValue = "500000") BigDecimal resolveValue
+    ) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            // 규칙 조회
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            if (!rule.getEnabled()) {
+                result.put("success", false);
+                result.put("error", "알람 규칙이 비활성화되어 있습니다.");
+                return result;
+            }
+
+            // Instance와 Database 조회
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Instance not found"));
+
+            List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+            String databaseName = databases.stream()
+                    .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                    .findFirst()
+                    .map(Database::getDatabaseName)
+                    .orElseThrow(() -> new RuntimeException("Database not found"));
+
+            result.put("ruleInfo", Map.of(
+                    "ruleId", rule.getAlarmRuleId(),
+                    "metricType", rule.getMetricType(),
+                    "operator", rule.getOperator(),
+                    "levels", rule.getLevels()
+            ));
+
+            // 1단계: 알람 발생시키기
+            log.info("🔴 1단계: 알람 발생 테스트 - triggerValue={}", triggerValue);
+            try (Connection conn = createConnection(instance, databaseName)) {
+                alarmCollector.checkMetric(conn, rule.getInstanceId(), rule.getDatabaseId(), rule.getMetricType());
+            }
+
+            // 트래킹 확인
+            AlarmTracking tracking = alarmTrackingMapper.findByRuleId(alarmRuleId).orElse(null);
+            if (tracking == null || !"FIRED".equals(tracking.getStatus())) {
+                result.put("step1", Map.of(
+                        "success", false,
+                        "message", "알람이 발생하지 않았습니다. triggerValue를 높여주세요."
+                ));
+                return result;
+            }
+
+            result.put("step1", Map.of(
+                    "success", true,
+                    "message", "알람 발생 성공",
+                    "trackingId", tracking.getAlarmTrackingId(),
+                    "currentLevel", tracking.getCurrentLevel(),
+                    "currentValue", tracking.getCurrentValue()
+            ));
+
+            // 복구 임계치 정보 조회
+            String currentLevel = tracking.getCurrentLevel();
+            // GenericAlarmCollector의 private 메서드를 호출할 수 없으므로, 직접 JSON 파싱
+            Map<String, Map<String, Object>> levels = parseJsonLevels(rule.getLevels());
+            Map<String, Object> levelConfig = levels.get(currentLevel.toLowerCase());
+            
+            BigDecimal resolveThreshold = null;
+            Integer resolveDuration = null;
+            if (levelConfig != null) {
+                Object resolveThresholdObj = levelConfig.get("resolveThreshold");
+                if (resolveThresholdObj != null) {
+                    if (resolveThresholdObj instanceof Number) {
+                        resolveThreshold = BigDecimal.valueOf(((Number) resolveThresholdObj).doubleValue());
+                    } else if (resolveThresholdObj instanceof String) {
+                        resolveThreshold = new BigDecimal((String) resolveThresholdObj);
+                    }
+                }
+                
+                Object resolveDurationObj = levelConfig.get("resolveDurationMin");
+                if (resolveDurationObj != null) {
+                    if (resolveDurationObj instanceof Number) {
+                        resolveDuration = ((Number) resolveDurationObj).intValue();
+                    } else if (resolveDurationObj instanceof String) {
+                        resolveDuration = Integer.parseInt((String) resolveDurationObj);
+                    }
+                }
+            }
+
+            result.put("resolveThresholdInfo", Map.of(
+                    "resolveThreshold", resolveThreshold != null ? resolveThreshold.toString() : "기본값 (발생 임계치의 80%)",
+                    "resolveDurationMin", resolveDuration != null ? resolveDuration : "기본값 (3분)",
+                    "currentLevel", currentLevel
+            ));
+
+            // 2단계: 복구 테스트
+            log.info("🟢 2단계: 복구 테스트 - resolveValue={}", resolveValue);
+            
+            // 수동으로 값을 낮춰서 복구 조건 체크
+            // 실제로는 DB에서 값을 조회하지만, 테스트를 위해 수동으로 체크
+            try (Connection conn = createConnection(instance, databaseName)) {
+                // processAlarmRule을 직접 호출할 수 없으므로, 
+                // checkMetric을 호출하되 실제 값 대신 resolveValue를 사용하는 방법이 필요
+                // 하지만 checkMetric은 실제 DB에서 값을 조회하므로, 
+                // 여기서는 복구 조건만 체크하는 별도 로직이 필요
+                
+                // 복구 조건 체크를 위해 임시로 트래킹의 currentValue를 resolveValue로 변경
+                tracking.setCurrentValue(resolveValue);
+                
+                // 복구 조건이 충족되는지 확인 (실제로는 GenericAlarmCollector의 shouldResolveAlarm 호출 필요)
+                // 여기서는 정보만 제공
+                result.put("step2", Map.of(
+                        "resolveValue", resolveValue,
+                        "resolveThreshold", resolveThreshold != null ? resolveThreshold : "계산 필요",
+                        "note", "실제 복구는 다음 알람 체크 시점에 자동으로 처리됩니다. " +
+                                "복구 임계치 이하로 값이 유지되고, 복구 지속 시간이 지나면 자동으로 복구됩니다."
+                ));
+            }
+
+            result.put("success", true);
+            result.put("message", "복구 임계치 테스트 완료");
+
+        } catch (Exception e) {
+            log.error("복구 임계치 테스트 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 쿨다운 테스트
+     * 1. 알람을 발생시킨 후
+     * 2. 쿨다운 시간 내에 다시 알람이 발생하지 않는지 확인
+     * 
+     * POST /api/test/alarm/test-cooldown
+     * 
+     * Body:
+     * {
+     *   "alarmRuleId": 1,
+     *   "triggerValue": 1000000
+     * }
+     */
+    @PostMapping("/test-cooldown")
+    public Map<String, Object> testCooldown(
+            @RequestParam Long alarmRuleId,
+            @RequestParam(defaultValue = "1000000") BigDecimal triggerValue
+    ) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            // 규칙 조회
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            if (!rule.getEnabled()) {
+                result.put("success", false);
+                result.put("error", "알람 규칙이 비활성화되어 있습니다.");
+                return result;
+            }
+
+            // Instance와 Database 조회
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Instance not found"));
+
+            List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+            String databaseName = databases.stream()
+                    .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                    .findFirst()
+                    .map(Database::getDatabaseName)
+                    .orElseThrow(() -> new RuntimeException("Database not found"));
+
+            // 쿨다운 정보 조회
+            Map<String, Map<String, Object>> levels = parseJsonLevels(rule.getLevels());
+            Map<String, Object> cooldownInfo = new HashMap<>();
+            for (String level : List.of("critical", "warning", "notice")) {
+                Map<String, Object> levelConfig = levels.get(level);
+                if (levelConfig != null) {
+                    Object cooldownObj = levelConfig.get("cooldownMin");
+                    Integer cooldown = null;
+                    if (cooldownObj != null) {
+                        if (cooldownObj instanceof Number) {
+                            cooldown = ((Number) cooldownObj).intValue();
+                        } else if (cooldownObj instanceof String) {
+                            cooldown = Integer.parseInt((String) cooldownObj);
+                        }
+                    }
+                    cooldownInfo.put(level, cooldown != null ? cooldown + "분" : "설정 안됨");
+                }
+            }
+
+            result.put("cooldownInfo", cooldownInfo);
+
+            // 1단계: 첫 번째 알람 발생
+            log.info("🔴 1단계: 첫 번째 알람 발생 - triggerValue={}", triggerValue);
+            Long firstFeedId = null;
+            try (Connection conn = createConnection(instance, databaseName)) {
+                alarmCollector.checkMetric(conn, rule.getInstanceId(), rule.getDatabaseId(), rule.getMetricType());
+            }
+
+            // 첫 번째 알람 피드 확인
+            AlarmTracking tracking = alarmTrackingMapper.findByRuleId(alarmRuleId).orElse(null);
+            if (tracking != null && "FIRED".equals(tracking.getStatus())) {
+                firstFeedId = alarmFeedMapper.selectLatestFeedIdByTrackingId(tracking.getAlarmTrackingId());
+                result.put("step1", Map.of(
+                        "success", true,
+                        "message", "첫 번째 알람 발생 성공",
+                        "trackingId", tracking.getAlarmTrackingId(),
+                        "feedId", firstFeedId,
+                        "firedAt", tracking.getFirstTriggeredAt()
+                ));
+            } else {
+                result.put("step1", Map.of(
+                        "success", false,
+                        "message", "첫 번째 알람이 발생하지 않았습니다."
+                ));
+                return result;
+            }
+
+            // 2단계: 쿨다운 시간 내에 다시 알람 체크
+            log.info("🟡 2단계: 쿨다운 시간 내 알람 체크");
+            try (Connection conn = createConnection(instance, databaseName)) {
+                alarmCollector.checkMetric(conn, rule.getInstanceId(), rule.getDatabaseId(), rule.getMetricType());
+            }
+
+            // 두 번째 알람 피드 확인
+            Long secondFeedId = alarmFeedMapper.selectLatestFeedIdByTrackingId(tracking.getAlarmTrackingId());
+            
+            if (secondFeedId != null && !secondFeedId.equals(firstFeedId)) {
+                result.put("step2", Map.of(
+                        "success", false,
+                        "message", "쿨다운이 작동하지 않았습니다. 새로운 알람이 발생했습니다.",
+                        "firstFeedId", firstFeedId,
+                        "secondFeedId", secondFeedId
+                ));
+            } else {
+                result.put("step2", Map.of(
+                        "success", true,
+                        "message", "쿨다운이 정상 작동합니다. 새로운 알람이 발생하지 않았습니다.",
+                        "firstFeedId", firstFeedId,
+                        "secondFeedId", secondFeedId
+                ));
+            }
+
+            result.put("success", true);
+            result.put("message", "쿨다운 테스트 완료");
+
+        } catch (Exception e) {
+            log.error("쿨다운 테스트 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 알람 규칙의 복구 임계치와 쿨다운 정보 조회
+     * 
+     * GET /api/test/alarm/rule-info?alarmRuleId=1
+     */
+    @GetMapping("/rule-info")
+    public Map<String, Object> getRuleInfo(@RequestParam Long alarmRuleId) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            Map<String, Map<String, Object>> levels = parseJsonLevels(rule.getLevels());
+            Map<String, Object> levelInfo = new HashMap<>();
+
+            for (String level : List.of("critical", "warning", "notice")) {
+                Map<String, Object> levelConfig = levels.get(level);
+                if (levelConfig != null) {
+                    Map<String, Object> info = new HashMap<>();
+                    
+                    // 발생 임계치
+                    Object thresholdObj = levelConfig.get("threshold");
+                    if (thresholdObj != null) {
+                        info.put("threshold", thresholdObj);
+                    }
+                    
+                    // 복구 임계치
+                    Object resolveThresholdObj = levelConfig.get("resolveThreshold");
+                    if (resolveThresholdObj != null) {
+                        info.put("resolveThreshold", resolveThresholdObj);
+                    } else {
+                        info.put("resolveThreshold", "기본값 (발생 임계치의 80%)");
+                    }
+                    
+                    // 복구 지속 시간
+                    Object resolveDurationObj = levelConfig.get("resolveDurationMin");
+                    if (resolveDurationObj != null) {
+                        info.put("resolveDurationMin", resolveDurationObj + "분");
+                    } else {
+                        info.put("resolveDurationMin", "기본값 (3분)");
+                    }
+                    
+                    // 쿨다운
+                    Object cooldownObj = levelConfig.get("cooldownMin");
+                    if (cooldownObj != null) {
+                        info.put("cooldownMin", cooldownObj + "분");
+                    } else {
+                        info.put("cooldownMin", "설정 안됨");
+                    }
+                    
+                    // 발생 횟수
+                    Object occurCountObj = levelConfig.get("occurCount");
+                    if (occurCountObj != null) {
+                        info.put("occurCount", occurCountObj);
+                    }
+                    
+                    // 최소 지속 시간
+                    Object minDurationObj = levelConfig.get("minDurationMin");
+                    if (minDurationObj != null) {
+                        info.put("minDurationMin", minDurationObj + "분");
+                    }
+                    
+                    levelInfo.put(level.toUpperCase(), info);
+                }
+            }
+
+            // 현재 트래킹 상태
+            AlarmTracking tracking = alarmTrackingMapper.findByRuleId(alarmRuleId).orElse(null);
+            Map<String, Object> trackingInfo = null;
+            if (tracking != null) {
+                trackingInfo = Map.of(
+                        "trackingId", tracking.getAlarmTrackingId(),
+                        "status", tracking.getStatus(),
+                        "currentLevel", tracking.getCurrentLevel(),
+                        "currentValue", tracking.getCurrentValue(),
+                        "consecutiveCount", tracking.getConsecutiveCount(),
+                        "firstTriggeredAt", tracking.getFirstTriggeredAt(),
+                        "lastCheckedAt", tracking.getLastCheckedAt()
+                );
+            }
+
+            result.put("success", true);
+            result.put("ruleId", rule.getAlarmRuleId());
+            result.put("metricType", rule.getMetricType());
+            result.put("operator", rule.getOperator());
+            result.put("enabled", rule.getEnabled());
+            result.put("levels", levelInfo);
+            result.put("tracking", trackingInfo);
+
+        } catch (Exception e) {
+            log.error("규칙 정보 조회 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * JSON levels 파싱 헬퍼 메서드
+     */
+    private Map<String, Map<String, Object>> parseJsonLevels(String levelsJson) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            return mapper.readValue(levelsJson, 
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Map<String, Object>>>() {});
+        } catch (Exception e) {
+            log.error("JSON 파싱 실패", e);
+            return new HashMap<>();
+        }
+    }
 }

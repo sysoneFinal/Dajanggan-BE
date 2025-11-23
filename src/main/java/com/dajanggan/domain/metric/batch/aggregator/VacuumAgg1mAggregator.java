@@ -54,7 +54,24 @@ public class VacuumAgg1mAggregator {
     @Bean
     public JdbcCursorItemReader<VacuumAgg1mDto> vacuumAgg1mReader() {
         String sql = """
-    WITH current_stats AS (
+    
+                WITH index_bloat_parsed AS (
+              SELECT
+                  database_id,
+                  instance_id,
+                  DATE_TRUNC('minute', collected_at) as collected_at,
+                  COALESCE(SUM(
+                      (SELECT SUM((elem->>'bytes')::BIGINT)
+                       FROM jsonb_array_elements(index_bloat_info::jsonb) AS elem)
+                  ), 0) AS total_index_bloat_bytes
+              FROM vacuum_raw_metrics
+              WHERE collected_at >= DATE_TRUNC('minute', NOW()) - INTERVAL '1 minute'
+                AND collected_at < DATE_TRUNC('minute', NOW())
+                AND index_bloat_info IS NOT NULL
+                AND index_bloat_info::text != '[]'
+              GROUP BY database_id, instance_id, DATE_TRUNC('minute', collected_at)
+          ),
+    current_stats AS (
         SELECT 
             database_id,
             instance_id,
@@ -63,12 +80,11 @@ public class VacuumAgg1mAggregator {
             -- ✅ 전체 세션 (dead tuple이 있는 테이블)
             COUNT(*) as total_vacuum_sessions,
             
-            -- ✅ 실행 중인 세션만 카운트 (핵심 수정!)
+            -- ✅ 실행 중인 세션만 카운트 (session_phase 기준으로 판단)
+            -- elapsed_seconds가 NULL일 수 있으므로 session_phase만으로 판단
             COUNT(*) FILTER (
                 WHERE session_phase IS NOT NULL 
                 AND session_phase != 'not_running'
-                AND elapsed_seconds IS NOT NULL
-                AND elapsed_seconds > 0
             ) as active_vacuum_sessions,
             
             -- ✅ Autovacuum 세션 (실행 중인 것만)
@@ -126,26 +142,10 @@ public class VacuumAgg1mAggregator {
            COALESCE(MAX(bloat_ratio), 0) as max_bloat_ratio,
            COUNT(*) FILTER (WHERE bloat_ratio > 0.2) as critical_bloat_tables,
            SUM(relsize_total_bytes) as total_table_size_bytes,
-           
-           -- Index Bloat 계산 (JSON 파싱)
-           COALESCE(SUM(
-               (SELECT COALESCE(SUM((elem->>'bytes')::BIGINT), 0)
-                FROM jsonb_array_elements(
-                    CASE 
-                        WHEN index_bloat_info IS NOT NULL 
-                             AND index_bloat_info != '[]' 
-                             AND index_bloat_info != ''
-                        THEN index_bloat_info::jsonb
-                        ELSE '[]'::jsonb
-                    END
-                ) AS elem
-               )
-           ), 0) as total_index_bloat_bytes,
             
             -- Worker 설정
-            AVG(autovacuum_cost_delay_ms) FILTER (
-                WHERE autovacuum_cost_delay_ms > 0
-            ) as avg_cost_delay_ms,
+            -- ✅ cost_delay_ms는 설정값이므로 항상 표시 (FILTER 제거)
+            COALESCE(AVG(autovacuum_cost_delay_ms), 0) as avg_cost_delay_ms,
             MAX(max_workers) as max_workers_configured,
             
             -- ✅ Worker 활용률 = 실행 중인 세션 / max_workers (수정!)
@@ -170,6 +170,16 @@ public class VacuumAgg1mAggregator {
         AND collected_at < DATE_TRUNC('minute', NOW())
         GROUP BY database_id, instance_id, DATE_TRUNC('minute', collected_at)
     ),
+    current_stats_with_index AS (
+        SELECT 
+            cs.*,
+            COALESCE(ibp.total_index_bloat_bytes, 0) as total_index_bloat_bytes
+        FROM current_stats cs
+        LEFT JOIN index_bloat_parsed ibp 
+            ON cs.database_id = ibp.database_id
+            AND cs.instance_id = ibp.instance_id
+            AND cs.collected_at = ibp.collected_at
+    ),
     previous_stats AS (
         SELECT 
             database_id,
@@ -179,29 +189,29 @@ public class VacuumAgg1mAggregator {
         WHERE collected_at = DATE_TRUNC('minute', NOW() - INTERVAL '1 minutes')
     )
     SELECT 
-        cs.*,
+        cswi.*,
         CASE 
             WHEN ps.prev_total_dead_tuples IS NOT NULL 
-                 AND cs.total_dead_tuples > ps.prev_total_dead_tuples
-            THEN cs.total_dead_tuples - ps.prev_total_dead_tuples
+                 AND cswi.total_dead_tuples > ps.prev_total_dead_tuples
+            THEN cswi.total_dead_tuples - ps.prev_total_dead_tuples
             ELSE 0 
         END as dead_tuple_increase_rate,
         CASE 
             WHEN ps.prev_total_dead_tuples IS NOT NULL 
-                 AND cs.total_dead_tuples < ps.prev_total_dead_tuples
-            THEN ps.prev_total_dead_tuples - cs.total_dead_tuples
+                 AND cswi.total_dead_tuples < ps.prev_total_dead_tuples
+            THEN ps.prev_total_dead_tuples - cswi.total_dead_tuples
             ELSE 0 
         END as dead_tuple_decrease_rate,
         CASE 
             WHEN ps.prev_total_dead_tuples IS NOT NULL
-            THEN cs.total_dead_tuples - ps.prev_total_dead_tuples
+            THEN cswi.total_dead_tuples - ps.prev_total_dead_tuples
             ELSE 0 
         END as net_dead_tuple_change
-    FROM current_stats cs
+    FROM current_stats_with_index cswi
     LEFT JOIN previous_stats ps 
-        ON cs.database_id = ps.database_id 
-        AND cs.instance_id = ps.instance_id
-    ORDER BY cs.database_id, cs.instance_id, cs.collected_at
+        ON cswi.database_id = ps.database_id 
+        AND cswi.instance_id = ps.instance_id
+    ORDER BY cswi.database_id, cswi.instance_id, cswi.collected_at
     """;
 
         return new JdbcCursorItemReaderBuilder<VacuumAgg1mDto>()

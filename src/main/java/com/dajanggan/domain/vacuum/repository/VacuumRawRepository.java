@@ -25,4 +25,13 @@ public interface VacuumRawRepository {
     List<Map<String, Object>> findPreviousVacuumTimes(
             @Param("databaseId") Long databaseId
     );
+
+    /**
+     * 특정 테이블의 마지막 vacuum 세션 duration 조회
+     * (session_started_at과 collected_at의 차이 또는 elapsed_seconds)
+     */
+    Integer findLastVacuumDuration(
+            @Param("databaseId") Long databaseId,
+            @Param("tableName") String tableName
+    );
 }

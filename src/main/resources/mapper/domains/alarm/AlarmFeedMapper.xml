@@ -189,6 +189,16 @@
         FROM alarm_feed
         WHERE alarm_tracking_id = #{alarmTrackingId}
         ORDER BY occurred_at DESC, alarm_feed_id DESC
-            LIMIT 1
+        LIMIT 1
+    </select>
+
+    <!-- 마지막 알람 발생 시간 조회 (쿨다운 체크용) -->
+    <select id="selectLastFiredAtByRuleId" resultType="java.time.OffsetDateTime">
+        SELECT occurred_at
+        FROM alarm_feed
+        WHERE alarm_rule_id = #{alarmRuleId}
+          AND is_resolved = false
+        ORDER BY occurred_at DESC
+        LIMIT 1
     </select>
 </mapper>

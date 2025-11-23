@@ -64,4 +64,8 @@ public class VacuumBloatRepository {
             OffsetDateTime start, OffsetDateTime end) {
         return bloatMapper.findIndexBloatData(databaseId, instanceId, start, end);
     }
+
+    // ========== 메타데이터 ==========
+    // ⚠️ 주의: 메타데이터는 Service 레벨에서 실제 PostgreSQL 인스턴스에 연결하여 조회
+    // (MyBatis Mapper는 모니터링 시스템의 메인 DB에 연결되므로 사용하지 않음)
 }
