@@ -237,6 +237,12 @@ public class GenericAlarmCollector {
         // 트래킹 조회 (rule 단위로 단일 트래킹을 가정)
         Optional<AlarmTracking> trackingOpt = alarmTrackingMapper.findByRuleId(rule.getAlarmRuleId());
         AlarmTracking tracking = trackingOpt.orElse(null);
+        
+        if (tracking != null) {
+            log.info("📋 기존 트래킹 조회: ruleId={}, trackingId={}, status={}, firstTriggered={}, consecutiveCount={}, currentLevel={}",
+                    rule.getAlarmRuleId(), tracking.getAlarmTrackingId(), tracking.getStatus(),
+                    tracking.getFirstTriggeredAt(), tracking.getConsecutiveCount(), tracking.getCurrentLevel());
+        }
 
         // 임계치 체크
         String triggeredLevel = checkThresholds(rule, currentValue);
@@ -246,37 +252,15 @@ public class GenericAlarmCollector {
             String previousLevel = tracking != null ? tracking.getCurrentLevel() : null;
             boolean levelChanged = previousLevel != null && !previousLevel.equals(triggeredLevel);
 
+
             if (tracking == null) {
                 // 트래킹이 없으면 새로 생성
                 tracking = createTracking(rule, instanceId, databaseId, currentValue, triggeredLevel);
                 log.info("🔔 알람 트래킹 시작: ruleId={}, metric={}, level={}",
                         rule.getAlarmRuleId(), metricType, triggeredLevel);
             } else {
-                // 기존 트래킹이 있으면 metric 값은 tracking 상태에 따라 처리
-                // FIRED 상태일 때는 항상 메트릭 히스토리를 저장해야 함
-                if ("FIRED".equals(tracking.getStatus())) {
-                    Long feedId = selectLatestFeedIdForTracking(tracking.getAlarmTrackingId());
-                    if (feedId != null) {
-                        log.info("📊 기존 Feed에 메트릭 히스토리 저장: feedId={}, value={}, trackingId={}", 
-                                feedId, currentValue, tracking.getAlarmTrackingId());
-                        saveMetricHistory(feedId, currentValue);
-                    } else {
-                        log.warn("⚠️ 트래킹이 FIRED 상태이지만 Feed가 없습니다. trackingId={}, ruleId={}, " +
-                                "Feed를 생성하기 위해 fireAlarm 호출", 
-                                tracking.getAlarmTrackingId(), rule.getAlarmRuleId());
-                        // Feed가 없으면 fireAlarm을 호출하여 Feed 생성 (메트릭 히스토리 저장을 위해)
-                        // 이미 FIRED 상태이지만 Feed가 없으면 생성해야 함
-                        fireAlarm(conn, rule, tracking, currentValue, triggeredLevel, metricType, false);
-                        // Feed 생성 후 다시 조회하여 메트릭 히스토리 저장
-                        feedId = selectLatestFeedIdForTracking(tracking.getAlarmTrackingId());
-                        if (feedId != null) {
-                            log.info("📊 새로 생성된 Feed에 메트릭 히스토리 저장: feedId={}, value={}", feedId, currentValue);
-                            saveMetricHistory(feedId, currentValue);
-                        } else {
-                            log.error("❌ Feed 생성 후에도 조회되지 않습니다. trackingId={}", tracking.getAlarmTrackingId());
-                        }
-                    }
-                }
+                // ✅ CRITICAL 수정: FIRED 상태에서는 메트릭 히스토리를 나중에 저장
+                // 트래킹 상태 확인만 하고, 메트릭 히스토리는 shouldFireAlarm 이후에 처리
             }
 
             // 트래킹 연속 카운트/값 업데이트
@@ -284,63 +268,152 @@ public class GenericAlarmCollector {
                 OffsetDateTime now = OffsetDateTime.now();
                 int windowMin = getWindowMin(rule.getLevels(), triggeredLevel);
                 OffsetDateTime windowStart = now.minusMinutes(windowMin);
-                
+
                 // 레벨이 변경되었으면 카운트 리셋
                 if (levelChanged) {
                     log.info("📊 알람 레벨 변경 감지: {} -> {}", previousLevel, triggeredLevel);
                     tracking.setConsecutiveCount(1);
                     tracking.setFirstTriggeredAt(now);
                 } else {
-                    // 윈도우가 지나갔으면 카운트 리셋 (윈도우 기반 체크)
-                    if (tracking.getFirstTriggeredAt().isBefore(windowStart)) {
-                        log.debug("윈도우가 지나가서 카운트 리셋: firstTriggered={}, windowStart={}, window={}분", 
-                                tracking.getFirstTriggeredAt(), windowStart, windowMin);
-                        tracking.setConsecutiveCount(1);
-                        tracking.setFirstTriggeredAt(now);
-                    } else {
-                        // 윈도우 내에서 연속 발생
+                    if ("FIRED".equals(tracking.getStatus())) {
                         tracking.setConsecutiveCount(tracking.getConsecutiveCount() + 1);
+                        log.debug("✅ FIRED 상태 유지: firstTriggered={}, consecutiveCount={}",
+                                tracking.getFirstTriggeredAt(), tracking.getConsecutiveCount());
+                    } else {
+                        if (tracking.getFirstTriggeredAt().isBefore(windowStart)) {
+                            log.debug("윈도우가 지나가서 PENDING 카운트 리셋: firstTriggered={}, windowStart={}",
+                                    tracking.getFirstTriggeredAt(), windowStart);
+                            tracking.setConsecutiveCount(1);
+                            tracking.setFirstTriggeredAt(now);
+                        } else {
+                            tracking.setConsecutiveCount(tracking.getConsecutiveCount() + 1);
+                        }
                     }
                 }
 
                 tracking.setCurrentValue(currentValue);
                 tracking.setCurrentLevel(triggeredLevel);
                 tracking.setLastCheckedAt(now);
+
+                // ✅ CRITICAL 로그 추가
+                log.info("🔄 tracking 업데이트 전: trackingId={}, status={}, count={}",
+                        tracking.getAlarmTrackingId(), tracking.getStatus(), tracking.getConsecutiveCount());
+
                 alarmTrackingMapper.updateTracking(tracking);
+
+                log.info("🔄 tracking 업데이트 후: trackingId={}, status={}, count={}",
+                        tracking.getAlarmTrackingId(), tracking.getStatus(), tracking.getConsecutiveCount());
+
+                // ✅✅✅ 여기에 추가! DB에서 최신 상태 재조회
+                tracking = alarmTrackingMapper.findByRuleId(rule.getAlarmRuleId())
+                        .orElseThrow(() -> new RuntimeException("Tracking not found after update: ruleId=" + rule.getAlarmRuleId()));
+
+                log.info("🔄 tracking 재조회 완료: trackingId={}, status={}, count={}",
+                        tracking.getAlarmTrackingId(), tracking.getStatus(), tracking.getConsecutiveCount());
             }
 
-            // 모든 레벨에서 발생 조건 확인 (NOTICE, WARNING, CRITICAL)
-            // 레벨 변경 시 무조건 알람 발생, 같은 레벨에서 처음 조건 만족 시에도 알람 발생
-            if (shouldFireAlarm(rule, tracking, triggeredLevel, previousLevel) || levelChanged) {
-                // 쿨다운 체크 (레벨 변경 시에는 쿨다운 무시)
-                if (!levelChanged && isInCooldown(rule, triggeredLevel)) {
-                    log.debug("⏸️ 쿨다운 중: 알람 발생 건너뜀 - ruleId={}, level={}, cooldown={}분",
-                            rule.getAlarmRuleId(), triggeredLevel, getCooldown(rule.getLevels(), triggeredLevel));
-                    return; // 쿨다운 중이면 알람 발생 안 함
+            // 모든 레벨에서 발생 조건 확인
+            log.info("🔍 알람 발생 조건 체크: ruleId={}, status={}, level={}, previousLevel={}, levelChanged={}, firstTriggered={}, consecutiveCount={}",
+                    rule.getAlarmRuleId(), tracking != null ? tracking.getStatus() : "null",
+                    triggeredLevel, previousLevel, levelChanged,
+                    tracking != null ? tracking.getFirstTriggeredAt() : "null",
+                    tracking != null ? tracking.getConsecutiveCount() : 0);
+
+            boolean shouldFire = shouldFireAlarm(rule, tracking, triggeredLevel, previousLevel);
+
+            log.info("🔍 shouldFireAlarm 결과: ruleId={}, shouldFire={}, levelChanged={}",
+                    rule.getAlarmRuleId(), shouldFire, levelChanged);
+
+            // ✅ shouldFire=false이고 levelChanged=false인 경우 절대 fireAlarm 호출 안 함
+            if (!shouldFire && !levelChanged) {
+                // ✅ CRITICAL 추가: FIRED 상태에서 조건 미충족이면 메트릭 히스토리만 저장
+                if ("FIRED".equals(tracking.getStatus())) {
+                    Long feedId = selectLatestFeedIdForTracking(tracking.getAlarmTrackingId());
+                    if (feedId != null) {
+                        AlarmFeed existingFeed = alarmFeedMapper.selectAlarmDetail(feedId);
+                        if (existingFeed != null && !existingFeed.getIsResolved()
+                                && existingFeed.getSeverityLevel() != null
+                                && existingFeed.getSeverityLevel().equals(triggeredLevel)) {
+                            log.info("📊 기존 Feed에 메트릭 히스토리 저장: feedId={}, value={}, trackingId={}",
+                                    feedId, currentValue, tracking.getAlarmTrackingId());
+                            saveMetricHistory(feedId, currentValue);
+                        }
+                    }
                 }
-                // 알람 발생 또는 레벨 변경
-                fireAlarm(conn, rule, tracking, currentValue, triggeredLevel, metricType, levelChanged);
+                log.info("⏸️ 알람 발생 조건 미충족: ruleId={}, shouldFire={}, levelChanged={}",
+                        rule.getAlarmRuleId(), shouldFire, levelChanged);
+                return; // early return으로 명확하게 종료
             }
+
+            // shouldFire=true 또는 levelChanged=true인 경우에만 진행
+            // ✅ 중복 Feed 체크 강화: rule 기준으로도 체크 (같은 알람은 한 번만 생성)
+            Long existingFeedId = alarmFeedMapper.selectUnresolvedFeedIdByRule(
+                    rule.getAlarmRuleId(),
+                    instanceId,
+                    databaseId,
+                    triggeredLevel
+            );
+
+            if (existingFeedId != null) {
+                log.warn("🚫 중복 Feed 방지: 같은 ruleId, instanceId, databaseId, level의 해결되지 않은 Feed가 이미 존재합니다. feedId={}, ruleId={}, level={}",
+                        existingFeedId, rule.getAlarmRuleId(), triggeredLevel);
+                // 기존 Feed에 메트릭 히스토리만 저장
+                saveMetricHistory(existingFeedId, currentValue);
+                return; // 중복이므로 알람 발생 안 함
+            }
+
+            // 쿨다운 체크 (레벨 변경 시에는 쿨다운 무시)
+            if (!levelChanged && isInCooldown(rule, triggeredLevel)) {
+                log.info("⏸️ 쿨다운 중: 알람 발생 건너뜀 - ruleId={}, level={}, cooldown={}분",
+                        rule.getAlarmRuleId(), triggeredLevel, getCooldown(rule.getLevels(), triggeredLevel));
+                return; // 쿨다운 중이면 알람 발생 안 함
+            }
+
+            // 알람 발생 또는 레벨 변경
+            log.info("🚨 알람 발생: ruleId={}, level={}, levelChanged={}, shouldFire={}",
+                    rule.getAlarmRuleId(), triggeredLevel, levelChanged, shouldFire);
+            fireAlarm(conn, rule, tracking, currentValue, triggeredLevel, metricType, levelChanged);
 
         } else {
             // 정상 범위: 히스테리시스 적용하여 복구 조건 체크
-            if (tracking != null && "FIRED".equals(tracking.getStatus())) {
-                // 이미 FIRED 였다면 복구 조건 체크 (히스테리시스)
+            log.info("📍 정상 범위 처리: metricType={}, currentValue={}, tracking={}",
+                    metricType, currentValue, tracking != null ? "존재" : "없음");
+
+            if (tracking != null) {
                 String currentLevel = tracking.getCurrentLevel();
-                if (shouldResolveAlarm(conn, rule, tracking, currentValue, currentLevel)) {
-                    // 복구 조건 충족 → 알람 해제
-                    resolveAlarm(tracking, metricType);
-                    // 트래킹 삭제
-                    alarmTrackingMapper.delete(tracking.getAlarmTrackingId());
-                } else {
-                    // 복구 조건 미충족 → 알람 유지 (히스테리시스 효과)
-                    log.debug("🔄 복구 조건 미충족: 알람 유지 (히스테리시스) - currentValue={}, resolveThreshold={}, resolveDuration={}분",
-                            currentValue, getResolveThreshold(rule.getLevels(), currentLevel), 
-                            getResolveDuration(rule.getLevels(), currentLevel));
+
+                log.info("📍 Tracking 상태: trackingId={}, status={}, level={}, value={}",
+                        tracking.getAlarmTrackingId(), tracking.getStatus(),
+                        tracking.getCurrentLevel(), tracking.getCurrentValue());
+
+                if ("FIRED".equals(tracking.getStatus())) {
+                    log.info("📍 FIRED 상태 복구 조건 체크 시작");
+
+                    if (shouldResolveAlarm(conn, rule, tracking, currentValue, currentLevel)) {
+                        log.info("✅ 복구 조건 충족: trackingId={}", tracking.getAlarmTrackingId());
+                        resolveAlarm(tracking, metricType);
+                        alarmTrackingMapper.delete(tracking.getAlarmTrackingId());
+                    } else {
+                        log.info("❌ 복구 조건 미충족: trackingId={}", tracking.getAlarmTrackingId());
+                    }
+                } else if ("PENDING".equals(tracking.getStatus()) && currentLevel != null) {
+                    log.info("📍 PENDING 상태 복구 조건 체크 시작");
+
+                    if (shouldResolveAlarm(conn, rule, tracking, currentValue, currentLevel)) {
+                        log.info("✅ PENDING 복구 조건 충족: trackingId={}", tracking.getAlarmTrackingId());
+
+                        // ✅ Feed 확인
+                        Long feedId = selectLatestFeedIdForTracking(tracking.getAlarmTrackingId());
+                        if (feedId != null) {
+                            log.warn("⚠️ PENDING에 Feed 존재: feedId={}, 해제 처리", feedId);
+                            alarmFeedMapper.resolveByFeedId(feedId);
+                        }
+
+                        alarmTrackingMapper.delete(tracking.getAlarmTrackingId());
+                    } else {
+                        log.info("❌ PENDING 복구 조건 미충족: trackingId={}", tracking.getAlarmTrackingId());
+                    }
                 }
-            } else if (tracking != null) {
-                // PENDING_FIRED 상태이거나 트래킹만 있는 경우 → 트래킹 삭제
-                alarmTrackingMapper.delete(tracking.getAlarmTrackingId());
             }
         }
     }
@@ -462,6 +535,32 @@ public class GenericAlarmCollector {
         }
 
         try {
+            // ✅ 중복 Feed 생성 방지 강화: rule 기준으로 체크 (동시성 문제 방지)
+            if (!isLevelChange) {
+                Long existingFeedId = alarmFeedMapper.selectUnresolvedFeedIdByRule(
+                        rule.getAlarmRuleId(),
+                        tracking.getInstanceId(),
+                        tracking.getDatabaseId(),
+                        level
+                );
+                
+                if (existingFeedId != null) {
+                    log.warn("🚫 fireAlarm 내부 중복 체크: 같은 ruleId, instanceId, databaseId, level의 해결되지 않은 Feed가 이미 존재합니다. feedId={}, ruleId={}, level={}",
+                            existingFeedId, rule.getAlarmRuleId(), level);
+                    // 기존 Feed에 메트릭 히스토리만 저장하고 종료
+                    saveMetricHistory(existingFeedId, currentValue);
+                    // 트래킹 상태만 업데이트
+                    tracking.setStatus("FIRED");
+                    tracking.setLastCheckedAt(OffsetDateTime.now());
+                    alarmTrackingMapper.updateTracking(tracking);
+                    return; // 중복이므로 Feed 생성 안 함
+                }
+            } else {
+                // 레벨 변경인 경우 로그만 출력
+                log.info("📈 레벨 변경으로 인한 Feed 생성: ruleId={}, 기존 level={}, 새 level={}",
+                        rule.getAlarmRuleId(), "?", level);
+            }
+
             String logMessage = isLevelChange
                     ? String.format("📈 알람 레벨 변경: %s", level)
                     : String.format("🚨 새로운 알람 발생: %s", level);
@@ -595,43 +694,54 @@ public class GenericAlarmCollector {
 
             OffsetDateTime now = OffsetDateTime.now();
             OffsetDateTime firstTriggered = tracking.getFirstTriggeredAt();
-            OffsetDateTime windowStart = now.minusMinutes(windowMin);
-            
-            // 1. 윈도우 기반 발생 횟수 체크
-            // processAlarmRule에서 이미 윈도우가 지나갔을 때 리셋하므로,
-            // 여기서는 윈도우 내에 있는지와 발생 횟수만 확인
-            if (firstTriggered.isBefore(windowStart)) {
-                log.debug("윈도우가 지나감: firstTriggered={}, windowStart={}, window={}분", 
-                        firstTriggered, windowStart, windowMin);
-                return false;
-            }
-            
-            // 윈도우 내에서 발생 횟수 체크
+
+            log.info("🔍 shouldFireAlarm 상세 체크: ruleId={}, status={}, level={}, previousLevel={}, " +
+                            "requiredCount={}, requiredDuration={}, consecutiveCount={}, firstTriggered={}",
+                    rule.getAlarmRuleId(), tracking.getStatus(), level, previousLevel,
+                    requiredCount, requiredDuration, tracking.getConsecutiveCount(), firstTriggered);
+
+            // 1. 발생 횟수 체크
             if (tracking.getConsecutiveCount() < requiredCount) {
-                log.debug("윈도우 내 발생 횟수 부족: {}/{} (윈도우: {}분)", 
+                log.info("❌ 발생 횟수 부족: {}/{} (윈도우: {}분)",
                         tracking.getConsecutiveCount(), requiredCount, windowMin);
                 return false;
             }
 
             // 2. 최소 지속 시간 체크
-            long durationMinutes = java.time.Duration.between(firstTriggered, now).toMinutes();
-            if (durationMinutes < requiredDuration) {
-                log.debug("지속 시간 부족: {}분/{}분", durationMinutes, requiredDuration);
-                return false;
+            if (requiredDuration > 0) {
+                long durationMinutes = java.time.Duration.between(firstTriggered, now).toMinutes();
+                long durationSeconds = java.time.Duration.between(firstTriggered, now).getSeconds();
+                log.info("⏱️ 지속 시간 체크: duration={}분 ({}초), required={}분",
+                        durationMinutes, durationSeconds, requiredDuration);
+                if (durationMinutes < requiredDuration) {
+                    log.info("❌ 지속 시간 부족: {}분/{}분", durationMinutes, requiredDuration);
+                    return false;
+                }
             }
 
-            // 3. 이미 발생한 알람인지 체크
-            // - 레벨이 변경되었으면 무조건 알람 발생 (levelChanged로 처리되므로 여기서는 false 반환하지 않음)
-            // - 같은 레벨에서 이미 FIRED 상태이고, 이전 레벨과 현재 레벨이 같으면 알람을 다시 발생시키지 않음
-            // - 같은 레벨에서 처음 조건을 만족하면 알람 발생
-            if ("FIRED".equals(tracking.getStatus()) && previousLevel != null && level.equals(previousLevel)) {
-                // 같은 레벨에서 이미 FIRED 상태면 알람을 다시 발생시키지 않음
-                log.debug("같은 레벨에서 이미 알람 발생: level={}, previousLevel={}, status=FIRED", level, previousLevel);
-                return false;
+            // ✅ CRITICAL 수정: FIRED 상태 체크를 먼저 수행
+            if ("FIRED".equals(tracking.getStatus())) {
+                String currentTrackingLevel = tracking.getCurrentLevel();
+                if (currentTrackingLevel != null && level.equals(currentTrackingLevel)) {
+                    // FIRED 상태이고 같은 레벨이면 무조건 false 반환
+                    log.info("❌ 이미 FIRED 상태: level={}, currentTrackingLevel={}, status=FIRED",
+                            level, currentTrackingLevel);
+                    return false;
+                }
             }
 
-            log.debug("✅ 알람 발생 조건 충족: level={}, count={}/{}, duration={}분/{}분, window={}분", 
-                    level, tracking.getConsecutiveCount(), requiredCount, durationMinutes, requiredDuration, windowMin);
+            // 3. PENDING 상태에서 조건을 만족하면 FIRED로 전환
+            if ("PENDING".equals(tracking.getStatus())) {
+                long durationMinutes = requiredDuration > 0 ? java.time.Duration.between(firstTriggered, now).toMinutes() : 0;
+                log.info("✅ PENDING → FIRED 전환 조건 충족: level={}, count={}/{}, duration={}분/{}분, status=PENDING",
+                        level, tracking.getConsecutiveCount(), requiredCount, durationMinutes, requiredDuration);
+                return true;
+            }
+
+            // 4. 기타 상태 (RESOLVED 등)
+            long durationMinutes = requiredDuration > 0 ? java.time.Duration.between(firstTriggered, now).toMinutes() : 0;
+            log.info("✅ 알람 발생 조건 충족: level={}, count={}/{}, duration={}분/{}분, status={}",
+                    level, tracking.getConsecutiveCount(), requiredCount, durationMinutes, requiredDuration, tracking.getStatus());
             return true;
 
         } catch (Exception e) {
@@ -902,9 +1012,11 @@ public class GenericAlarmCollector {
                 return false; // 쿨다운이 설정되지 않았으면 쿨다운 없음
             }
 
-            // 마지막 알람 발생 시간 조회
-            OffsetDateTime lastFiredAt = alarmFeedMapper.selectLastFiredAtByRuleId(rule.getAlarmRuleId());
+            // 마지막 알람 발생 시간 조회 (같은 레벨만, 해결되지 않은 Feed만)
+            OffsetDateTime lastFiredAt = alarmFeedMapper.selectLastFiredAtByRuleId(
+                    rule.getAlarmRuleId(), level);
             if (lastFiredAt == null) {
+                log.debug("쿨다운 체크: 이전 알람 없음 - ruleId={}, level={}", rule.getAlarmRuleId(), level);
                 return false; // 이전 알람이 없으면 쿨다운 없음
             }
 
@@ -913,9 +1025,12 @@ public class GenericAlarmCollector {
 
             boolean inCooldown = now.isBefore(cooldownEnd);
             if (inCooldown) {
-                long remainingMinutes = java.time.Duration.between(now, cooldownEnd).toMinutes();
-                log.debug("쿨다운 중: ruleId={}, level={}, 남은 시간={}분", 
-                        rule.getAlarmRuleId(), level, remainingMinutes);
+                long remainingSeconds = java.time.Duration.between(now, cooldownEnd).getSeconds();
+                log.info("⏸️ 쿨다운 중: ruleId={}, level={}, lastFiredAt={}, 남은 시간={}초 ({}분)", 
+                        rule.getAlarmRuleId(), level, lastFiredAt, remainingSeconds, cooldownMin);
+            } else {
+                log.debug("쿨다운 종료: ruleId={}, level={}, lastFiredAt={}, cooldownEnd={}", 
+                        rule.getAlarmRuleId(), level, lastFiredAt, cooldownEnd);
             }
 
             return inCooldown;

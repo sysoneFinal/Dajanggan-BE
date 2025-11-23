@@ -15,6 +15,7 @@
         d.database_name AS databaseName,
         ar.metric_type AS metricType,
         at.current_value AS currentValue,
+        at.current_level AS currentLevel,
         at.consecutive_count AS consecutiveCount,
         at.status,
         at.first_triggered_at AS firstTriggeredAt,
@@ -44,6 +45,7 @@
             last_checked_at AS lastCheckedAt,
             consecutive_count AS consecutiveCount,
             current_value AS currentValue,
+            current_level AS currentLevel,
             status,
             created_at AS createdAt,
             updated_at AS updatedAt
@@ -61,6 +63,7 @@
             last_checked_at,
             consecutive_count,
             current_value,
+            current_level,
             status,
             created_at,
             updated_at
@@ -72,6 +75,7 @@
                      #{lastCheckedAt},
                      #{consecutiveCount},
                      #{currentValue},
+                     #{currentLevel},
                      #{status}::alert_status,
                      NOW(),
                      NOW()
@@ -82,11 +86,26 @@
     <update id="updateTracking">
         UPDATE alarm_tracking
         SET
+        <!-- ✅ 조건부 업데이트 추가 -->
+        <choose>
+            <when test="status == 'PENDING'">
+                first_triggered_at = #{firstTriggeredAt},
+            </when>
+        </choose>
         last_checked_at = #{lastCheckedAt},
         consecutive_count = #{consecutiveCount},
         current_value = #{currentValue},
+        current_level = #{currentLevel},
         status = #{status}::alert_status,
         updated_at = NOW()
+        WHERE alarm_tracking_id = #{alarmTrackingId}
+    </update>
+
+
+    <update id="resetFirstTriggeredAt">
+        UPDATE alarm_tracking
+        SET first_triggered_at = #{firstTriggeredAt},
+            updated_at = NOW()
         WHERE alarm_tracking_id = #{alarmTrackingId}
     </update>
 
@@ -110,6 +129,7 @@
             last_checked_at AS lastCheckedAt,
             consecutive_count AS consecutiveCount,
             current_value AS currentValue,
+            current_level AS currentLevel,
             status,
             created_at AS createdAt,
             updated_at AS updatedAt

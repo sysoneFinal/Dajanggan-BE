@@ -1,5 +1,6 @@
 package com.dajanggan.domain.alarm.controller;
 
+import com.dajanggan.domain.alarm.service.AlarmMetricsCollector;
 import com.dajanggan.domain.alarm.service.GenericAlarmCollector;
 import com.dajanggan.domain.alarm.repository.AlarmRuleMapper;
 import com.dajanggan.domain.alarm.repository.AlarmTrackingMapper;
@@ -26,6 +27,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,30 @@ public class AlarmTestController {
     private final MetricConfig metricConfig;
     private final SlackNotificationService slackNotificationService;
 
+    private final AlarmMetricsCollector alarmMetricsCollector;  // ✅ 추가
+
+
+    /**
+     * 테스트 모드 활성화/비활성화
+     *
+     * POST /api/test/alarm/test-mode?enabled=true
+     */
+    @PostMapping("/test-mode")
+    public Map<String, Object> setTestMode(@RequestParam boolean enabled) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            alarmMetricsCollector.setTestMode(enabled);
+            result.put("success", true);
+            result.put("testMode", enabled);
+            result.put("message", enabled ?
+                    "테스트 모드 활성화: 스케줄러가 일시 중지됩니다" :
+                    "테스트 모드 비활성화: 스케줄러가 정상 작동합니다");
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+        return result;
+    }
     /**
      * 특정 지표에 대해 즉시 알람 체크 실행
      *
@@ -146,13 +172,16 @@ public class AlarmTestController {
 
             try (Connection conn = createConnection(instance, databaseName)) {
                 String[] metrics = {
-                        "dead_tuples",
-                        "bloat_size",
-                        "unused_indexes",
-                        "connection_count",
+                        "autovacuum_worker_utilization",
+                        "transaction_age",
+                        "wraparound_progress",
                         "long_running_queries",
-                        "cache_hit_ratio",
-                        "sequential_scans"
+                        "lock_waits",
+                        "long_idle_sessions",
+                        "blocking_sessions",
+                        "slow_query_spike",
+                        "avg_execution_spike",
+                        "qps_spike"
                 };
 
                 for (String metric : metrics) {
@@ -306,6 +335,232 @@ public class AlarmTestController {
 
         } catch (Exception e) {
             log.error("테스트 규칙 생성 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 테스트용으로 임계치를 낮춘 규칙 생성 (autovacuum_worker_utilization 등 퍼센트 지표용)
+     *
+     * POST /api/test/alarm/create-test-rule-percent?instanceId=1&databaseId=1&metricType=autovacuum_worker_utilization
+     */
+    @PostMapping("/create-test-rule-percent")
+    public Map<String, Object> createTestRuleForPercentMetric(
+            @RequestParam Long instanceId,
+            @RequestParam Long databaseId,
+            @RequestParam(defaultValue = "autovacuum_worker_utilization") String metricType
+    ) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            // 퍼센트 지표용 임계치 (0-100 범위)
+            AlarmRule testRule = AlarmRule.builder()
+                    .instanceId(instanceId)
+                    .databaseId(databaseId)
+                    .metricType(metricType)
+                    .operator("gt")
+                    .enabled(true)
+                    .levels("""
+                        {
+                            "critical": {
+                                "threshold": 80,
+                                "occurCount": 1,
+                                "minDurationMin": 1,
+                                "resolveThreshold": 70,
+                                "resolveDurationMin": 2,
+                                "cooldownMin": 5
+                            },
+                            "warning": {
+                                "threshold": 60,
+                                "occurCount": 1,
+                                "minDurationMin": 1,
+                                "resolveThreshold": 50,
+                                "resolveDurationMin": 2,
+                                "cooldownMin": 5
+                            },
+                            "notice": {
+                                "threshold": 40,
+                                "occurCount": 1,
+                                "minDurationMin": 1,
+                                "resolveThreshold": 30,
+                                "resolveDurationMin": 2,
+                                "cooldownMin": 5
+                            }
+                        }
+                        """)
+                    .build();
+
+            alarmRuleMapper.insertRule(testRule);
+
+            result.put("success", true);
+            result.put("message", "테스트 규칙 생성 완료 (퍼센트 지표용)");
+            result.put("ruleId", testRule.getAlarmRuleId());
+            result.put("thresholds", Map.of(
+                    "CRITICAL", 80,
+                    "WARNING", 60,
+                    "NOTICE", 40
+            ));
+
+            log.info("✅ 테스트 규칙 생성 (퍼센트): ruleId={}, metric={}, thresholds={}",
+                    testRule.getAlarmRuleId(), metricType, Map.of("CRITICAL", 80, "WARNING", 60, "NOTICE", 40));
+
+        } catch (Exception e) {
+            log.error("테스트 규칙 생성 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 기존 규칙의 임계치를 테스트용으로 임시 수정
+     * 
+     * POST /api/test/alarm/adjust-thresholds-for-test?alarmRuleId=1
+     */
+    @PostMapping("/adjust-thresholds-for-test")
+    public Map<String, Object> adjustThresholdsForTest(
+            @RequestParam Long alarmRuleId,
+            @RequestParam(required = false) Double criticalThreshold,
+            @RequestParam(required = false) Double warningThreshold,
+            @RequestParam(required = false) Double noticeThreshold
+    ) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            Map<String, Map<String, Object>> levels = parseJsonLevels(rule.getLevels());
+            
+            // 현재 값 확인
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Instance not found"));
+
+            List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+            String databaseName = databases.stream()
+                    .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                    .findFirst()
+                    .map(Database::getDatabaseName)
+                    .orElseThrow(() -> new RuntimeException("Database not found"));
+
+            BigDecimal currentValue = null;
+            try (Connection conn = createConnection(instance, databaseName)) {
+                String sql = metricConfig.getMetricQuery(rule.getMetricType());
+                if (sql != null) {
+                    boolean needsParams = sql.contains("?");
+                    if (needsParams) {
+                        try (var pstmt = conn.prepareStatement(sql)) {
+                            pstmt.setLong(1, rule.getInstanceId());
+                            pstmt.setLong(2, rule.getDatabaseId());
+                            try (var rs = pstmt.executeQuery()) {
+                                if (rs.next()) {
+                                    currentValue = rs.getBigDecimal(1);
+                                }
+                            }
+                        }
+                    } else {
+                        try (var stmt = conn.createStatement();
+                             var rs = stmt.executeQuery(sql)) {
+                            if (rs.next()) {
+                                currentValue = rs.getBigDecimal(1);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 현재 값보다 약간 높은 값으로 임계치 설정 (테스트용)
+            if (currentValue != null) {
+                double current = currentValue.doubleValue();
+                
+                // autovacuum_worker_utilization 같은 퍼센트 지표인 경우
+                if (rule.getMetricType().contains("utilization") || rule.getMetricType().contains("ratio") || 
+                    rule.getMetricType().contains("progress")) {
+                    // 퍼센트 값이므로 0-100 범위
+                    if (criticalThreshold == null) criticalThreshold = Math.min(current + 10, 100.0);
+                    if (warningThreshold == null) warningThreshold = Math.min(current + 5, 95.0);
+                    if (noticeThreshold == null) noticeThreshold = Math.min(current + 2, 90.0);
+                } else {
+                    // 일반 지표
+                    if (criticalThreshold == null) criticalThreshold = current * 1.1;
+                    if (warningThreshold == null) warningThreshold = current * 1.05;
+                    if (noticeThreshold == null) noticeThreshold = current * 1.02;
+                }
+            } else {
+                // 현재 값을 알 수 없는 경우 기본값 사용
+                if (criticalThreshold == null) criticalThreshold = 80.0;
+                if (warningThreshold == null) warningThreshold = 60.0;
+                if (noticeThreshold == null) noticeThreshold = 40.0;
+            }
+
+            // levels 업데이트
+            for (String level : List.of("critical", "warning", "notice")) {
+                Map<String, Object> levelConfig = levels.get(level);
+                if (levelConfig != null) {
+                    double threshold = switch (level) {
+                        case "critical" -> criticalThreshold;
+                        case "warning" -> warningThreshold;
+                        case "notice" -> noticeThreshold;
+                        default -> 0.0;
+                    };
+                    
+                    levelConfig.put("threshold", threshold);
+                    
+                    // 복구 임계치도 자동 설정 (발생 임계치의 80%)
+                    if (rule.getOperator().equals("gt") || rule.getOperator().equals("gte")) {
+                        levelConfig.put("resolveThreshold", threshold * 0.8);
+                    } else {
+                        levelConfig.put("resolveThreshold", threshold * 1.2);
+                    }
+                    
+                    // 테스트용으로 발생 조건 완화
+                    levelConfig.put("occurCount", 1);
+                    levelConfig.put("minDurationMin", 1);
+                    levelConfig.put("resolveDurationMin", 2);
+                    levelConfig.put("cooldownMin", 5);
+                }
+            }
+
+            // JSON으로 변환
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String levelsJson = mapper.writeValueAsString(levels);
+
+            // 규칙 업데이트
+            AlarmRule updatedRule = AlarmRule.builder()
+                    .alarmRuleId(alarmRuleId)
+                    .levels(levelsJson)
+                    .enabled(rule.getEnabled())
+                    .aggregationType(rule.getAggregationType())
+                    .operator(rule.getOperator())
+                    .build();
+
+            alarmRuleMapper.updateRuleLevels(updatedRule);
+
+            result.put("success", true);
+            result.put("message", "임계치가 테스트용으로 수정되었습니다.");
+            result.put("ruleId", alarmRuleId);
+            result.put("currentValue", currentValue != null ? currentValue.toString() : "N/A");
+            result.put("newThresholds", Map.of(
+                    "CRITICAL", criticalThreshold,
+                    "WARNING", warningThreshold,
+                    "NOTICE", noticeThreshold
+            ));
+            result.put("note", "테스트 후 원래 값으로 복구하세요.");
+
+            log.info("✅ 임계치 수정: ruleId={}, currentValue={}, newThresholds={}",
+                    alarmRuleId, currentValue, Map.of("CRITICAL", criticalThreshold, "WARNING", warningThreshold, "NOTICE", noticeThreshold));
+
+        } catch (Exception e) {
+            log.error("임계치 수정 실패", e);
             result.put("success", false);
             result.put("error", e.getMessage());
         }
@@ -1052,6 +1307,774 @@ public class AlarmTestController {
             log.error("규칙 정보 조회 실패", e);
             result.put("success", false);
             result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 현재 지표 값 조회 (테스트용)
+     * 
+     * GET /api/test/alarm/current-value?alarmRuleId=1
+     */
+    @GetMapping("/current-value")
+    public Map<String, Object> getCurrentValue(@RequestParam Long alarmRuleId) {
+        Map<String, Object> result = new HashMap<>();
+
+        try {
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            // Instance와 Database 조회
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Instance not found"));
+
+            List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+            String databaseName = databases.stream()
+                    .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                    .findFirst()
+                    .map(Database::getDatabaseName)
+                    .orElseThrow(() -> new RuntimeException("Database not found"));
+
+            // 규칙 정보 파싱
+            Map<String, Map<String, Object>> levels = parseJsonLevels(rule.getLevels());
+            
+            // 임계치 정보 추출
+            Map<String, Object> thresholdInfo = new HashMap<>();
+            for (String level : List.of("critical", "warning", "notice")) {
+                Map<String, Object> levelConfig = levels.get(level);
+                if (levelConfig != null) {
+                    Object thresholdObj = levelConfig.get("threshold");
+                    if (thresholdObj != null) {
+                        thresholdInfo.put(level.toUpperCase(), thresholdObj);
+                    }
+                }
+            }
+
+            // 현재 지표 값 조회
+            BigDecimal currentValue = null;
+            try (Connection conn = createConnection(instance, databaseName)) {
+                // GenericAlarmCollector의 collectMetricValue를 직접 호출할 수 없으므로
+                // MetricConfig를 사용하여 쿼리 실행
+                String sql = metricConfig.getMetricQuery(rule.getMetricType());
+                if (sql != null) {
+                    boolean needsParams = sql.contains("?");
+                    if (needsParams) {
+                        try (var pstmt = conn.prepareStatement(sql)) {
+                            pstmt.setLong(1, rule.getInstanceId());
+                            pstmt.setLong(2, rule.getDatabaseId());
+                            try (var rs = pstmt.executeQuery()) {
+                                if (rs.next()) {
+                                    currentValue = rs.getBigDecimal(1);
+                                }
+                            }
+                        }
+                    } else {
+                        try (var stmt = conn.createStatement();
+                             var rs = stmt.executeQuery(sql)) {
+                            if (rs.next()) {
+                                currentValue = rs.getBigDecimal(1);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 임계치와 비교
+            Map<String, Object> comparison = new HashMap<>();
+            String operator = rule.getOperator();
+            for (String level : List.of("CRITICAL", "WARNING", "NOTICE")) {
+                Object thresholdObj = thresholdInfo.get(level);
+                if (thresholdObj != null && currentValue != null) {
+                    BigDecimal threshold = null;
+                    if (thresholdObj instanceof Number) {
+                        threshold = BigDecimal.valueOf(((Number) thresholdObj).doubleValue());
+                    } else if (thresholdObj instanceof String) {
+                        threshold = new BigDecimal((String) thresholdObj);
+                    }
+                    
+                    if (threshold != null) {
+                        boolean triggered = compareValue(currentValue, threshold, operator);
+                        comparison.put(level, Map.of(
+                                "threshold", threshold,
+                                "currentValue", currentValue,
+                                "operator", operator,
+                                "triggered", triggered,
+                                "message", triggered 
+                                    ? String.format("✅ 임계치 초과: %s %s %s", currentValue, operator, threshold)
+                                    : String.format("❌ 임계치 미달: %s %s %s", currentValue, operator, threshold)
+                        ));
+                    }
+                }
+            }
+
+            result.put("success", true);
+            result.put("ruleId", rule.getAlarmRuleId());
+            result.put("metricType", rule.getMetricType());
+            result.put("operator", operator);
+            result.put("currentValue", currentValue);
+            result.put("thresholds", thresholdInfo);
+            result.put("comparison", comparison);
+
+        } catch (Exception e) {
+            log.error("현재 지표 값 조회 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 값 비교 헬퍼 메서드
+     */
+    private boolean compareValue(BigDecimal current, BigDecimal threshold, String operator) {
+        if (current == null || threshold == null || operator == null) return false;
+
+        int cmp = current.compareTo(threshold);
+        return switch (operator) {
+            case "gt" -> cmp > 0;
+            case "gte" -> cmp >= 0;
+            case "lt" -> cmp < 0;
+            case "lte" -> cmp <= 0;
+            case "eq" -> cmp == 0;
+            default -> false;
+        };
+    }
+
+    /**
+     * 통합 테스트: 복구 임계치 + 쿨다운
+     * 
+     * POST /api/test/alarm/test-all?alarmRuleId=1
+     * 
+     * 전체 테스트 시나리오:
+     * 1. 현재 지표 값 확인
+     * 2. 알람 발생 확인
+     * 3. 쿨다운 작동 확인
+     * 4. 복구 임계치 작동 확인
+     */
+    @PostMapping("/test-all")
+    public Map<String, Object> testAll(
+            @RequestParam Long alarmRuleId
+    ) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> testSteps = new ArrayList<>();
+
+        try {
+            // 규칙 조회
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            if (!rule.getEnabled()) {
+                result.put("success", false);
+                result.put("error", "알람 규칙이 비활성화되어 있습니다.");
+                return result;
+            }
+
+            // Instance와 Database 조회
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Instance not found"));
+
+            List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+            String databaseName = databases.stream()
+                    .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                    .findFirst()
+                    .map(Database::getDatabaseName)
+                    .orElseThrow(() -> new RuntimeException("Database not found"));
+
+            // 규칙 정보 파싱
+            Map<String, Map<String, Object>> levels = parseJsonLevels(rule.getLevels());
+            
+            result.put("ruleInfo", Map.of(
+                    "ruleId", rule.getAlarmRuleId(),
+                    "metricType", rule.getMetricType(),
+                    "operator", rule.getOperator(),
+                    "enabled", rule.getEnabled()
+            ));
+
+            // ========== 테스트 0: 현재 지표 값 확인 ==========
+            log.info("📊 테스트 0: 현재 지표 값 확인");
+            BigDecimal currentValue = null;
+            try (Connection conn = createConnection(instance, databaseName)) {
+                String sql = metricConfig.getMetricQuery(rule.getMetricType());
+                if (sql != null) {
+                    boolean needsParams = sql.contains("?");
+                    if (needsParams) {
+                        try (var pstmt = conn.prepareStatement(sql)) {
+                            pstmt.setLong(1, rule.getInstanceId());
+                            pstmt.setLong(2, rule.getDatabaseId());
+                            try (var rs = pstmt.executeQuery()) {
+                                if (rs.next()) {
+                                    currentValue = rs.getBigDecimal(1);
+                                }
+                            }
+                        }
+                    } else {
+                        try (var stmt = conn.createStatement();
+                             var rs = stmt.executeQuery(sql)) {
+                            if (rs.next()) {
+                                currentValue = rs.getBigDecimal(1);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 임계치 정보 추출
+            Map<String, Object> thresholdInfo = new HashMap<>();
+            for (String level : List.of("critical", "warning", "notice")) {
+                Map<String, Object> levelConfig = levels.get(level);
+                if (levelConfig != null) {
+                    Object thresholdObj = levelConfig.get("threshold");
+                    if (thresholdObj != null) {
+                        thresholdInfo.put(level.toUpperCase(), thresholdObj);
+                    }
+                }
+            }
+
+            testSteps.add(Map.of(
+                    "step", 0,
+                    "name", "현재 지표 값 확인",
+                    "success", currentValue != null,
+                    "message", currentValue != null 
+                        ? String.format("현재 지표 값: %s", currentValue)
+                        : "지표 값을 조회할 수 없습니다.",
+                    "currentValue", currentValue != null ? currentValue.toString() : "N/A",
+                    "thresholds", thresholdInfo,
+                    "operator", rule.getOperator()
+            ));
+
+            // ========== 테스트 1: 알람 발생 ==========
+            log.info("🔴 테스트 1: 알람 발생 확인");
+            try (Connection conn = createConnection(instance, databaseName)) {
+                alarmCollector.checkMetric(conn, rule.getInstanceId(), rule.getDatabaseId(), rule.getMetricType());
+            }
+
+            AlarmTracking tracking = alarmTrackingMapper.findByRuleId(alarmRuleId).orElse(null);
+            if (tracking == null || !"FIRED".equals(tracking.getStatus())) {
+                // 왜 알람이 발생하지 않았는지 상세 분석
+                Map<String, Object> analysis = new HashMap<>();
+                if (currentValue != null) {
+                    for (String level : List.of("CRITICAL", "WARNING", "NOTICE")) {
+                        Object thresholdObj = thresholdInfo.get(level);
+                        if (thresholdObj != null) {
+                            BigDecimal threshold = null;
+                            if (thresholdObj instanceof Number) {
+                                threshold = BigDecimal.valueOf(((Number) thresholdObj).doubleValue());
+                            } else if (thresholdObj instanceof String) {
+                                threshold = new BigDecimal((String) thresholdObj);
+                            }
+                            
+                            if (threshold != null) {
+                                boolean triggered = compareValue(currentValue, threshold, rule.getOperator());
+                                analysis.put(level, Map.of(
+                                        "threshold", threshold,
+                                        "triggered", triggered,
+                                        "reason", triggered 
+                                            ? "임계치를 초과했지만 발생 조건(occurCount, minDurationMin)을 만족하지 않았을 수 있습니다."
+                                            : String.format("현재 값(%s)이 임계치(%s)를 초과하지 않습니다.", currentValue, threshold)
+                                ));
+                            }
+                        }
+                    }
+                }
+                
+                testSteps.add(Map.of(
+                        "step", 1,
+                        "name", "알람 발생 확인",
+                        "success", false,
+                        "message", "알람이 발생하지 않았습니다. 현재 지표 값이 임계치를 초과하지 않거나, 발생 조건을 만족하지 않았을 수 있습니다.",
+                        "currentValue", currentValue != null ? currentValue.toString() : "N/A",
+                        "analysis", analysis,
+                        "suggestion", "임계치를 낮추거나, 수동 알람 발생 엔드포인트(/api/test/alarm/trigger-manual)를 사용하여 테스트하세요."
+                ));
+                result.put("testSteps", testSteps);
+                result.put("success", false);
+                return result;
+            }
+
+            Long firstFeedId = alarmFeedMapper.selectLatestFeedIdByTrackingId(tracking.getAlarmTrackingId());
+            testSteps.add(Map.of(
+                    "step", 1,
+                    "name", "알람 발생 확인",
+                    "success", true,
+                    "message", "알람이 정상적으로 발생했습니다.",
+                    "trackingId", tracking.getAlarmTrackingId(),
+                    "feedId", firstFeedId,
+                    "currentLevel", tracking.getCurrentLevel(),
+                    "currentValue", tracking.getCurrentValue(),
+                    "firedAt", tracking.getFirstTriggeredAt()
+            ));
+
+            String currentLevel = tracking.getCurrentLevel();
+            Map<String, Object> levelConfig = levels.get(currentLevel.toLowerCase());
+            
+            // ========== 테스트 2: 쿨다운 확인 ==========
+            log.info("🟡 테스트 2: 쿨다운 확인");
+            Integer cooldownMin = null;
+            if (levelConfig != null) {
+                Object cooldownObj = levelConfig.get("cooldownMin");
+                if (cooldownObj != null) {
+                    if (cooldownObj instanceof Number) {
+                        cooldownMin = ((Number) cooldownObj).intValue();
+                    } else if (cooldownObj instanceof String) {
+                        cooldownMin = Integer.parseInt((String) cooldownObj);
+                    }
+                }
+            }
+
+            if (cooldownMin != null && cooldownMin > 0) {
+                // 쿨다운 시간 내에 다시 알람 체크
+                try (Connection conn = createConnection(instance, databaseName)) {
+                    alarmCollector.checkMetric(conn, rule.getInstanceId(), rule.getDatabaseId(), rule.getMetricType());
+                }
+
+                Long secondFeedId = alarmFeedMapper.selectLatestFeedIdByTrackingId(tracking.getAlarmTrackingId());
+                
+                if (secondFeedId != null && !secondFeedId.equals(firstFeedId)) {
+                    testSteps.add(Map.of(
+                            "step", 2,
+                            "name", "쿨다운 확인",
+                            "success", false,
+                            "message", String.format("쿨다운이 작동하지 않았습니다. 쿨다운 시간(%d분) 내에 새로운 알람이 발생했습니다.", cooldownMin),
+                            "cooldownMin", cooldownMin,
+                            "firstFeedId", firstFeedId,
+                            "secondFeedId", secondFeedId
+                    ));
+                } else {
+                    testSteps.add(Map.of(
+                            "step", 2,
+                            "name", "쿨다운 확인",
+                            "success", true,
+                            "message", String.format("쿨다운이 정상 작동합니다. 쿨다운 시간(%d분) 내에 새로운 알람이 발생하지 않았습니다.", cooldownMin),
+                            "cooldownMin", cooldownMin,
+                            "firstFeedId", firstFeedId,
+                            "secondFeedId", secondFeedId
+                    ));
+                }
+            } else {
+                testSteps.add(Map.of(
+                        "step", 2,
+                        "name", "쿨다운 확인",
+                        "success", true,
+                        "message", "쿨다운이 설정되지 않았습니다. (정상)",
+                        "cooldownMin", "설정 안됨"
+                ));
+            }
+
+            // ========== 테스트 3: 복구 임계치 확인 ==========
+            log.info("🟢 테스트 3: 복구 임계치 확인");
+            BigDecimal resolveThreshold = null;
+            Integer resolveDurationMin = null;
+            
+            if (levelConfig != null) {
+                Object resolveThresholdObj = levelConfig.get("resolveThreshold");
+                if (resolveThresholdObj != null) {
+                    if (resolveThresholdObj instanceof Number) {
+                        resolveThreshold = BigDecimal.valueOf(((Number) resolveThresholdObj).doubleValue());
+                    } else if (resolveThresholdObj instanceof String) {
+                        resolveThreshold = new BigDecimal((String) resolveThresholdObj);
+                    }
+                }
+                
+                Object resolveDurationObj = levelConfig.get("resolveDurationMin");
+                if (resolveDurationObj != null) {
+                    if (resolveDurationObj instanceof Number) {
+                        resolveDurationMin = ((Number) resolveDurationObj).intValue();
+                    } else if (resolveDurationObj instanceof String) {
+                        resolveDurationMin = Integer.parseInt((String) resolveDurationObj);
+                    }
+                }
+            }
+
+            // 발생 임계치도 조회
+            BigDecimal fireThreshold = null;
+            Object thresholdObj = levelConfig != null ? levelConfig.get("threshold") : null;
+            if (thresholdObj != null) {
+                if (thresholdObj instanceof Number) {
+                    fireThreshold = BigDecimal.valueOf(((Number) thresholdObj).doubleValue());
+                } else if (thresholdObj instanceof String) {
+                    fireThreshold = new BigDecimal((String) thresholdObj);
+                }
+            }
+
+            // 복구 임계치가 없으면 기본값 계산 (발생 임계치의 80%)
+            if (resolveThreshold == null && fireThreshold != null) {
+                if (rule.getOperator().equals("gt") || rule.getOperator().equals("gte")) {
+                    resolveThreshold = fireThreshold.multiply(new BigDecimal("0.8"));
+                } else {
+                    resolveThreshold = fireThreshold.multiply(new BigDecimal("1.2"));
+                }
+            }
+
+            if (resolveDurationMin == null || resolveDurationMin <= 0) {
+                resolveDurationMin = 3; // 기본값
+            }
+
+            testSteps.add(Map.of(
+                    "step", 3,
+                    "name", "복구 임계치 확인",
+                    "success", true,
+                    "message", "복구 임계치 정보를 확인했습니다. 실제 복구는 지표 값이 복구 임계치 이하로 떨어지고, 복구 지속 시간이 지나면 자동으로 복구됩니다.",
+                    "fireThreshold", fireThreshold != null ? fireThreshold.toString() : "N/A",
+                    "resolveThreshold", resolveThreshold != null ? resolveThreshold.toString() : "기본값 (발생 임계치의 80%)",
+                    "resolveDurationMin", resolveDurationMin + "분",
+                    "currentLevel", currentLevel,
+                    "note", String.format("현재 값이 %s 이하로 떨어지고, %d분 이상 유지되면 자동으로 복구됩니다.", 
+                            resolveThreshold != null ? resolveThreshold.toString() : "복구 임계치", resolveDurationMin)
+            ));
+
+            // ========== 테스트 4: 트래킹 상태 확인 ==========
+            log.info("📊 테스트 4: 트래킹 상태 확인");
+            tracking = alarmTrackingMapper.findByRuleId(alarmRuleId).orElse(null);
+            if (tracking != null) {
+                testSteps.add(Map.of(
+                        "step", 4,
+                        "name", "트래킹 상태 확인",
+                        "success", true,
+                        "message", "트래킹 상태를 확인했습니다.",
+                        "status", tracking.getStatus(),
+                        "currentLevel", tracking.getCurrentLevel(),
+                        "currentValue", tracking.getCurrentValue(),
+                        "consecutiveCount", tracking.getConsecutiveCount(),
+                        "firstTriggeredAt", tracking.getFirstTriggeredAt(),
+                        "lastCheckedAt", tracking.getLastCheckedAt()
+                ));
+            } else {
+                testSteps.add(Map.of(
+                        "step", 4,
+                        "name", "트래킹 상태 확인",
+                        "success", false,
+                        "message", "트래킹이 존재하지 않습니다."
+                ));
+            }
+
+            result.put("success", true);
+            result.put("message", "전체 테스트 완료");
+            result.put("testSteps", testSteps);
+            result.put("summary", Map.of(
+                    "totalSteps", testSteps.size(),
+                    "passedSteps", testSteps.stream().mapToInt(s -> (Boolean) s.get("success") ? 1 : 0).sum(),
+                    "failedSteps", testSteps.stream().mapToInt(s -> (Boolean) s.get("success") ? 0 : 1).sum()
+            ));
+
+        } catch (Exception e) {
+            log.error("통합 테스트 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+            result.put("testSteps", testSteps);
+        }
+
+        return result;
+    }
+
+    /**
+     * 특정 metricType의 모든 활성화된 규칙 조회 (디버깅용)
+     */
+    @GetMapping("/list-rules-by-metric")
+    public Map<String, Object> listRulesByMetric(
+            @RequestParam String metricType
+    ) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 모든 활성화된 규칙 조회 (instanceId/databaseId 필터 없이)
+            List<com.dajanggan.domain.alarm.dto.AlarmRuleDto.RuleListRaw> allRules = 
+                    alarmRuleMapper.selectRuleList(null, null, metricType, true);
+            
+            result.put("success", true);
+            result.put("metricType", metricType);
+            result.put("totalCount", allRules != null ? allRules.size() : 0);
+            
+            List<Map<String, Object>> rules = new ArrayList<>();
+            if (allRules != null) {
+                for (com.dajanggan.domain.alarm.dto.AlarmRuleDto.RuleListRaw rule : allRules) {
+                    Map<String, Object> ruleInfo = new HashMap<>();
+                    ruleInfo.put("ruleId", rule.getAlarmRuleId());
+                    ruleInfo.put("instanceId", rule.getInstanceId());
+                    ruleInfo.put("databaseId", rule.getDatabaseId());
+                    ruleInfo.put("enabled", rule.getEnabled());
+                    ruleInfo.put("metricType", rule.getMetricType());
+                    rules.add(ruleInfo);
+                }
+            }
+            result.put("rules", rules);
+            
+            log.info("📋 규칙 조회: metricType={}, 개수={}", metricType, rules.size());
+            
+        } catch (Exception e) {
+            log.error("규칙 조회 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 특정 instanceId/databaseId에 대해 조회되는 규칙 확인 (디버깅용)
+     */
+    @GetMapping("/check-rules-for-instance")
+    public Map<String, Object> checkRulesForInstance(
+            @RequestParam Long instanceId,
+            @RequestParam Long databaseId,
+            @RequestParam String metricType
+    ) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // findActiveRules로 조회되는 규칙
+            List<AlarmRule> activeRules = alarmRuleMapper.findActiveRules(instanceId, databaseId, metricType);
+            
+            result.put("success", true);
+            result.put("instanceId", instanceId);
+            result.put("databaseId", databaseId);
+            result.put("metricType", metricType);
+            result.put("foundCount", activeRules != null ? activeRules.size() : 0);
+            
+            List<Map<String, Object>> rules = new ArrayList<>();
+            if (activeRules != null) {
+                for (AlarmRule rule : activeRules) {
+                    Map<String, Object> ruleInfo = new HashMap<>();
+                    ruleInfo.put("ruleId", rule.getAlarmRuleId());
+                    ruleInfo.put("instanceId", rule.getInstanceId());
+                    ruleInfo.put("databaseId", rule.getDatabaseId());
+                    ruleInfo.put("enabled", rule.getEnabled());
+                    rules.add(ruleInfo);
+                }
+            }
+            result.put("rules", rules);
+            
+            // 모든 활성화된 규칙도 조회 (비교용)
+            List<com.dajanggan.domain.alarm.dto.AlarmRuleDto.RuleListRaw> allRules = 
+                    alarmRuleMapper.selectRuleList(null, null, metricType, true);
+            result.put("totalActiveRules", allRules != null ? allRules.size() : 0);
+            
+            log.info("🔍 규칙 체크: instanceId={}, databaseId={}, metricType={}, 조회된 규칙={}개, 전체 활성 규칙={}개",
+                    instanceId, databaseId, metricType, 
+                    activeRules != null ? activeRules.size() : 0,
+                    allRules != null ? allRules.size() : 0);
+            
+        } catch (Exception e) {
+            log.error("규칙 체크 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 수동으로 값을 설정하여 알람 체크 (플러핑/쿨다운 테스트용)
+     * 
+     * POST /api/test/alarm/check-with-value?alarmRuleId=1&value=100
+     */
+    @PostMapping("/check-with-value")
+    public Map<String, Object> checkAlarmWithValue(
+            @RequestParam Long alarmRuleId,
+            @RequestParam BigDecimal value
+    ) {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> steps = new ArrayList<>();
+
+        try {
+            // 규칙 조회
+            AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
+            if (rule == null) {
+                result.put("success", false);
+                result.put("error", "알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
+                return result;
+            }
+
+            if (!rule.getEnabled()) {
+                result.put("success", false);
+                result.put("error", "알람 규칙이 비활성화되어 있습니다.");
+                return result;
+            }
+
+            // Instance와 Database 조회
+            Instance instance = instanceRepository.findAllWithSecrets(List.of(rule.getInstanceId())).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Instance not found"));
+
+            List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(rule.getInstanceId());
+            String databaseName = databases.stream()
+                    .filter(db -> db.getDatabaseId().equals(rule.getDatabaseId()))
+                    .findFirst()
+                    .map(Database::getDatabaseName)
+                    .orElseThrow(() -> new RuntimeException("Database not found"));
+
+            steps.add(Map.of(
+                    "step", 1,
+                    "name", "규칙 조회",
+                    "success", true,
+                    "message", String.format("규칙 조회 완료: ruleId=%d, metricType=%s", 
+                            rule.getAlarmRuleId(), rule.getMetricType())
+            ));
+
+            // DB 연결 (실제 쿼리는 실행하지 않고 Connection만 생성)
+            try (Connection conn = createConnection(instance, databaseName)) {
+                steps.add(Map.of(
+                        "step", 2,
+                        "name", "DB 연결",
+                        "success", true,
+                        "message", "DB 연결 성공"
+                ));
+
+                // 수동으로 설정한 값으로 알람 체크
+                log.info("🧪 수동 값으로 알람 체크: ruleId={}, value={}, metricType={}",
+                        alarmRuleId, value, rule.getMetricType());
+
+                // processAlarmRule 직접 호출
+                alarmCollector.processAlarmRule(
+                        conn,
+                        rule,
+                        value,
+                        rule.getInstanceId(),
+                        rule.getDatabaseId(),
+                        rule.getMetricType()
+                );
+
+                steps.add(Map.of(
+                        "step", 3,
+                        "name", "알람 체크 실행",
+                        "success", true,
+                        "message", String.format("수동 값(%s)으로 알람 체크 완료", value)
+                ));
+
+                // 트래킹 상태 확인
+                AlarmTracking tracking = alarmTrackingMapper.findByRuleId(alarmRuleId).orElse(null);
+                if (tracking != null) {
+                    // 규칙의 발생 조건 확인
+                    Map<String, Map<String, Object>> levels = parseJsonLevels(rule.getLevels());
+                    String currentLevel = tracking.getCurrentLevel();
+                    Map<String, Object> levelConfig = levels.get(currentLevel != null ? currentLevel.toLowerCase() : "critical");
+                    
+                    int requiredCount = levelConfig != null ? 
+                            ((Number) levelConfig.getOrDefault("occurCount", 1)).intValue() : 1;
+                    int requiredDuration = levelConfig != null ? 
+                            ((Number) levelConfig.getOrDefault("minDurationMin", 1)).intValue() : 1;
+                    
+                    // 지속 시간 계산
+                    long durationSeconds = 0;
+                    long durationMinutes = 0;
+                    if (tracking.getFirstTriggeredAt() != null) {
+                        durationSeconds = java.time.Duration.between(
+                                tracking.getFirstTriggeredAt(), 
+                                OffsetDateTime.now()
+                        ).getSeconds();
+                        durationMinutes = durationSeconds / 60;
+                    }
+                    
+                    String statusMessage = String.format(
+                            "트래킹 상태: %s, 레벨: %s, 값: %s, 연속 횟수: %d/%d, 지속 시간: %d분 (%d초)/%d분",
+                            tracking.getStatus(),
+                            tracking.getCurrentLevel(),
+                            tracking.getCurrentValue(),
+                            tracking.getConsecutiveCount(),
+                            requiredCount,
+                            durationMinutes,
+                            durationSeconds,
+                            requiredDuration
+                    );
+                    
+                    // Feed가 생성되지 않은 이유 분석
+                    String feedReason = "";
+                    if ("PENDING".equals(tracking.getStatus())) {
+                        if (tracking.getConsecutiveCount() < requiredCount) {
+                            feedReason = String.format("발생 횟수 부족 (%d/%d)", 
+                                    tracking.getConsecutiveCount(), requiredCount);
+                        } else if (durationMinutes < requiredDuration) {
+                            feedReason = String.format("지속 시간 부족 (%d분/%d분)", 
+                                    durationMinutes, requiredDuration);
+                        } else {
+                            feedReason = "조건을 만족했지만 Feed가 생성되지 않음 (쿨다운 또는 기타 이유)";
+                        }
+                    }
+                    
+                    Map<String, Object> trackingInfo = new HashMap<>();
+                    trackingInfo.put("status", tracking.getStatus());
+                    trackingInfo.put("level", tracking.getCurrentLevel());
+                    trackingInfo.put("value", tracking.getCurrentValue());
+                    trackingInfo.put("consecutiveCount", tracking.getConsecutiveCount());
+                    trackingInfo.put("firstTriggered", tracking.getFirstTriggeredAt());
+                    trackingInfo.put("requiredCount", requiredCount);
+                    trackingInfo.put("requiredDuration", requiredDuration);
+                    trackingInfo.put("durationSeconds", durationSeconds);
+                    trackingInfo.put("durationMinutes", durationMinutes);
+                    if (!feedReason.isEmpty()) {
+                        trackingInfo.put("feedNotCreatedReason", feedReason);
+                    }
+                    
+                    steps.add(Map.of(
+                            "step", 4,
+                            "name", "트래킹 상태 확인",
+                            "success", true,
+                            "message", statusMessage,
+                            "tracking", trackingInfo
+                    ));
+                } else {
+                    steps.add(Map.of(
+                            "step", 4,
+                            "name", "트래킹 상태 확인",
+                            "success", true,
+                            "message", "트래킹이 없습니다 (임계치 미달 또는 정상 범위)"
+                    ));
+                }
+
+                // Feed 확인
+                if (tracking != null) {
+                    Long feedId = alarmFeedMapper.selectLatestFeedIdByTrackingId(tracking.getAlarmTrackingId());
+                    if (feedId != null) {
+                        AlarmFeed feed = alarmFeedMapper.selectAlarmDetail(feedId);
+                        steps.add(Map.of(
+                                "step", 5,
+                                "name", "Feed 확인",
+                                "success", true,
+                                "message", String.format("Feed 생성됨: feedId=%d, severity=%s, resolved=%s",
+                                        feedId, feed.getSeverityLevel(), feed.getIsResolved()),
+                                "feed", Map.of(
+                                        "feedId", feedId,
+                                        "severity", feed.getSeverityLevel(),
+                                        "resolved", feed.getIsResolved(),
+                                        "occurredAt", feed.getOccurredAt()
+                                )
+                        ));
+                    } else {
+                        steps.add(Map.of(
+                                "step", 5,
+                                "name", "Feed 확인",
+                                "success", true,
+                                "message", "Feed가 아직 생성되지 않았습니다 (PENDING 상태 또는 조건 미충족)"
+                        ));
+                    }
+                }
+
+                result.put("success", true);
+                result.put("message", "수동 값으로 알람 체크 완료");
+                result.put("ruleId", alarmRuleId);
+                result.put("value", value);
+                result.put("metricType", rule.getMetricType());
+                result.put("testSteps", steps);
+
+            } catch (SQLException e) {
+                log.error("DB 연결 실패", e);
+                result.put("success", false);
+                result.put("error", "DB 연결 실패: " + e.getMessage());
+                result.put("testSteps", steps);
+            }
+
+        } catch (Exception e) {
+            log.error("수동 알람 체크 실패", e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+            result.put("testSteps", steps);
         }
 
         return result;

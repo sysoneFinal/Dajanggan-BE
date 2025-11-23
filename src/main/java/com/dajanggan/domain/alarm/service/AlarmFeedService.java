@@ -333,6 +333,7 @@ public class AlarmFeedService {
 
             log.info("🔌 관련 객체 생성용 DB 연결: instanceId={}, databaseId={}", 
                     feed.getInstanceId(), feed.getDatabaseId());
+            log.debug("📝 실행할 쿼리: {}", sql);
 
             try (Connection conn = DriverManager.getConnection(url, userName, password);
                  Statement stmt = conn.createStatement();
@@ -348,8 +349,13 @@ public class AlarmFeedService {
                     generated.add(raw);
                 }
 
-                log.info("✅ 관련 객체 동적 생성 완료: alarmFeedId={}, 생성된 개수={}", 
-                        feed.getAlarmFeedId(), generated.size());
+                if (generated.isEmpty()) {
+                    log.warn("⚠️ 관련 객체 쿼리 결과가 0개입니다: alarmFeedId={}, metricType={}", 
+                            feed.getAlarmFeedId(), metricType);
+                } else {
+                    log.info("✅ 관련 객체 동적 생성 완료: alarmFeedId={}, 생성된 개수={}", 
+                            feed.getAlarmFeedId(), generated.size());
+                }
 
                 // 생성된 객체를 DB에 저장 (선택사항)
                 if (!generated.isEmpty()) {
@@ -374,8 +380,8 @@ public class AlarmFeedService {
      * 동적으로 생성된 관련 객체를 DB에 저장
      */
     @Transactional
-    private void saveRelatedObjectsToDb(Long alarmFeedId, Long alarmRuleId, 
-                                       List<AlarmFeedDto.RelatedObjectRaw> relatedObjects) {
+    protected void saveRelatedObjectsToDb(Long alarmFeedId, Long alarmRuleId,
+                                          List<AlarmFeedDto.RelatedObjectRaw> relatedObjects) {
         try {
             for (AlarmFeedDto.RelatedObjectRaw raw : relatedObjects) {
                 alarmFeedMapper.insertRelatedObject(
