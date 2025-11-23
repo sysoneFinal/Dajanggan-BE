@@ -45,4 +45,24 @@ public class ExplainAnalyzeResult {
      * (향후 확장 가능)
      */
     private Integer rowsReturned;
+
+    // ⭐ 추가된 필드들
+
+    /**
+     * 메모리 사용량 (MB)
+     * Buffers 정보에서 파싱
+     */
+    private Double memoryUsageMb;
+
+    /**
+     * I/O 블록 수 (총합)
+     * shared hit + read + written 합계
+     */
+    private Integer ioBlocks;
+
+    /**
+     * CPU 사용률 (%)
+     * 추정값 또는 시스템에서 제공하는 경우
+     */
+    private Double cpuUsagePercent;
 }

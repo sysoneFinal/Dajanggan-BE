@@ -5,6 +5,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 
 /**
@@ -29,7 +30,7 @@ public class QuerySuggestion {
     private BigDecimal expectedImprovementPercent;
     private Integer queriesPerTransaction;
     private Integer transactionId;
-    private ZonedDateTime createdAt;
+    private LocalDateTime createdAt;
 
     // AI 캐싱 관련 필드 추가
     private String aiModel;           // 사용된 AI 모델 (예: gpt-4)
@@ -39,7 +40,7 @@ public class QuerySuggestion {
     // 생성 시점에 자동으로 createdAt 설정
     public void onCreate() {
         if (this.createdAt == null) {
-            this.createdAt = ZonedDateTime.now();
+            this.createdAt = LocalDateTime.now();
         }
     }
 }

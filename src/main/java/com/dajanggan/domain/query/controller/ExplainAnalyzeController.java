@@ -141,6 +141,12 @@ public class ExplainAnalyzeController {
 
         } catch (Exception e) {
             log.error("❌ AI 분석 실패", e);
+            log.error("예외 타입: {}", e.getClass().getName());
+            log.error("예외 메시지: {}", e.getMessage());
+            if (e.getCause() != null) {
+                log.error("원인 예외: {}", e.getCause().getMessage());
+            }
+            
             response.put("success", false);
             response.put("message", "AI 분석 실패: " + e.getMessage());
             return ResponseEntity.ok(response);

@@ -16,10 +16,6 @@ import java.util.stream.Collectors;
 
 /**
  * 쿼리 메트릭스 원시 데이터 서비스 구현체
- * Singleton으로 관리됨 (Spring의 기본 빈 스코프)
- *
- * ✅ 수정사항:
- * - getQueryMetricsByDatabaseIdAndDays 메서드 추가
  *
  * @author 이해든
  */
@@ -31,10 +27,7 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
 
     private final QueryMetricsRawRepository queryMetricsRawRepository;
 
-    /**
-     * 생성자 주입 (권장 방식)
-     * Spring이 자동으로 Singleton으로 관리
-     */
+
     public QueryMetricsRawServiceImpl(QueryMetricsRawRepository queryMetricsRawRepository) {
         this.queryMetricsRawRepository = queryMetricsRawRepository;
         logger.info("QueryMetricsRawServiceImpl 인스턴스 생성됨 (Singleton)");
@@ -121,7 +114,7 @@ public class QueryMetricsRawServiceImpl implements QueryMetricsRawService {
     }
 
     /**
-     * ✅ 신규: 데이터베이스 ID와 기간으로 쿼리 메트릭스 조회
+     * 데이터베이스 ID와 기간으로 쿼리 메트릭스 조회
      */
     @Override
     public List<QueryMetricsRawDto> getQueryMetricsByDatabaseIdAndDays(Long databaseId, Integer days) {

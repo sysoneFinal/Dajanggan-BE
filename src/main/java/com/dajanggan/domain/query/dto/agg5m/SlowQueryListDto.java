@@ -17,4 +17,9 @@ public class SlowQueryListDto {
     private Double executionTimeMs;
     private String username;
     private String queryType;
+
+    // 리소스 사용량 정보 추가
+    private Double cpuUsagePercent;
+    private Double memoryUsageMb;
+    private Integer ioBlocks;
 }

@@ -22,6 +22,7 @@ public class QueryRawRepositoryImpl {
     /**
      * 대상 PostgreSQL 인스턴스의 쿼리 메트릭 조회
      * pg_stat_statements와 pg_stat_activity 조인하여 CPU/메모리 정보 포함
+     * ⭐ 파라미터($1, $2, ...) 있는 쿼리는 수집하지 않음
      */
     public List<QueryRawMetricDto> getQueryMetrics(JdbcTemplate jdbcTemplate) {
         String sql = """
@@ -63,6 +64,7 @@ public class QueryRawRepositoryImpl {
                   AND s.query NOT LIKE '%테이블%'
                   AND s.query NOT LIKE '%데이터%'
                   AND s.query NOT LIKE '%파티션%'
+                  AND s.query NOT LIKE '%$%'  -- ⭐ 파라미터($1, $2, ...) 있는 쿼리 제외
                   AND s.calls > 0
             )
             SELECT 

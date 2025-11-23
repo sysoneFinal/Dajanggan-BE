@@ -72,7 +72,7 @@
             LIMIT 1
     </select>
 
-    <!-- 슬로우 쿼리 리스트 최신 10개 -->
+    <!-- 슬로우 쿼리 리스트 최신 10개 - CPU, 메모리, I/O 정보 추가 -->
     <select id="findSlowQueryList" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.SlowQueryListDto">
         SELECT
             query_metric_id AS queryMetricId,
@@ -81,7 +81,10 @@
             short_query AS shortQuery,
             execution_time_ms AS executionTimeMs,
             username,
-            query_type AS queryType
+            query_type AS queryType,
+            cpu_usage_percent AS cpuUsagePercent,
+            memory_usage_mb AS memoryUsageMb,
+            io_blocks AS ioBlocks
         FROM query_metrics_raw
         WHERE instance_id = #{instanceId}
           AND database_id = #{databaseId}

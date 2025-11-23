@@ -1,5 +1,7 @@
 package com.dajanggan.domain.query.service;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
@@ -8,8 +10,8 @@ import com.dajanggan.domain.query.dto.ExplainAnalyzeResult;
 import com.dajanggan.infrastructure.datasource.DataSourceFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.regex.Matcher;
@@ -45,6 +47,49 @@ public class ExplainAnalyzeService {
         log.info("🔍 쿼리 분석 시작");
         log.info("  - Database ID: {}", databaseId);
 
+        // ✅ EXPLAIN이 이미 붙어있으면 제거
+        String cleanedQuery = query.trim();
+        String upperQuery = cleanedQuery.toUpperCase();
+
+        if (upperQuery.startsWith("EXPLAIN")) {
+            log.warn("  ⚠️ 쿼리에 이미 EXPLAIN이 포함되어 있습니다. 제거합니다.");
+            log.warn("  원본 쿼리 미리보기: {}", cleanedQuery.substring(0, Math.min(100, cleanedQuery.length())));
+
+            // EXPLAIN (...) 부분 제거
+            // 1. "EXPLAIN (ANALYZE TRUE, BUFFERS TRUE, FORMAT TEXT) SELECT ..." 형태
+            // 2. "EXPLAIN SELECT ..." 형태
+
+            // 괄호가 있는 경우: EXPLAIN (...) 찾기
+            int parenStart = cleanedQuery.indexOf('(');
+            int parenEnd = -1;
+
+            if (parenStart > 0 && parenStart < 20) {  // EXPLAIN 바로 뒤에 괄호가 있는 경우
+                int depth = 0;
+                for (int i = parenStart; i < cleanedQuery.length(); i++) {
+                    if (cleanedQuery.charAt(i) == '(') depth++;
+                    else if (cleanedQuery.charAt(i) == ')') {
+                        depth--;
+                        if (depth == 0) {
+                            parenEnd = i;
+                            break;
+                        }
+                    }
+                }
+
+                if (parenEnd > parenStart) {
+                    // EXPLAIN (...) 이후부터 추출
+                    cleanedQuery = cleanedQuery.substring(parenEnd + 1).trim();
+                }
+            } else {
+                // 괄호가 없는 경우: "EXPLAIN " 이후부터
+                cleanedQuery = cleanedQuery.substring(7).trim();  // "EXPLAIN" = 7글자
+            }
+
+            log.info("  ✅ 정제된 쿼리: {}", cleanedQuery.substring(0, Math.min(80, cleanedQuery.length())));
+        }
+
+        query = cleanedQuery; // 정제된 쿼리로 교체
+
         // 1. Database 정보 조회
         Database database = databaseRepository.findById(databaseId);
         if (database == null) {
@@ -68,7 +113,7 @@ public class ExplainAnalyzeService {
         log.info("  🔗 데이터베이스 연결 성공");
 
         // 4. 시스템 뷰 쿼리 판별
-        String upperQuery = query.toUpperCase();
+        upperQuery = query.toUpperCase();  // 정제된 쿼리로 다시 판별
         boolean isSystemViewQuery = query.toLowerCase().contains("pg_stat_") ||
                 query.toLowerCase().contains("pg_class") ||
                 query.toLowerCase().contains("pg_locks") ||
@@ -126,6 +171,11 @@ public class ExplainAnalyzeService {
 
         String explainPlan = resultBuilder.toString();
 
+        // ⭐ 메모리/IO 정보 파싱
+        Double memoryUsageMb = parseMemoryUsage(explainPlan);
+        Integer ioBlocks = parseIoBlocks(explainPlan);
+        Double cpuUsagePercent = parseCpuUsage(explainPlan, executionTimeMs);
+
         log.info("  ✅ EXPLAIN ANALYZE 실행 완료");
         if (executionTimeMs != null) {
             log.info("  ⏱️  Execution Time: {}ms", executionTimeMs);
@@ -133,12 +183,21 @@ public class ExplainAnalyzeService {
         if (planningTimeMs != null) {
             log.info("  ⏱️  Planning Time: {}ms", planningTimeMs);
         }
+        if (memoryUsageMb != null) {
+            log.info("  💾 Memory Usage: {}MB", String.format("%.2f", memoryUsageMb));
+        }
+        if (ioBlocks != null) {
+            log.info("  💿 I/O Blocks: {}", ioBlocks);
+        }
 
         return ExplainAnalyzeResult.builder()
                 .executionMode("실제 실행")
                 .explainPlan(explainPlan)
                 .executionTimeMs(executionTimeMs)
                 .planningTimeMs(planningTimeMs)
+                .memoryUsageMb(memoryUsageMb)        // ⭐ 추가
+                .ioBlocks(ioBlocks)                  // ⭐ 추가
+                .cpuUsagePercent(cpuUsagePercent)    // ⭐ 추가
                 .build();
     }
 
@@ -155,7 +214,7 @@ public class ExplainAnalyzeService {
             resultBuilder.append("ℹ️  추정치 (실제 실행 없음)\n\n");
             resultBuilder.append("이 쿼리는 실제로 실행하지 않고 추정한 실행 계획입니다.\n");
             resultBuilder.append("(DML 쿼리, 파라미터 포함 쿼리, 복잡한 시스템 쿼리 등)\n\n");
-            resultBuilder.append("──────────────────────────────────────────────────\n\n");
+            resultBuilder.append("────────────────────────────────────────────────\n\n");
 
             for (String line : resultLines) {
                 resultBuilder.append(line).append("\n");
@@ -170,6 +229,9 @@ public class ExplainAnalyzeService {
                     .explainPlan(explainPlan)
                     .executionTimeMs(null)
                     .planningTimeMs(null)
+                    .memoryUsageMb(null)      // ⭐ 추정치에서는 null
+                    .ioBlocks(null)            // ⭐ 추정치에서는 null
+                    .cpuUsagePercent(null)     // ⭐ 추정치에서는 null
                     .build();
 
         } catch (Exception e) {
@@ -196,65 +258,167 @@ public class ExplainAnalyzeService {
     }
 
     /**
-     * 시스템 뷰 쿼리 실제 실행 후 결과 표시
+     * ⭐ 메모리 사용량 파싱 (MB)
+     * "Buffers: shared hit=12345 read=678" -> 메모리 사용량 계산
+     * PostgreSQL에서 1 block = 8KB
+     */
+    private Double parseMemoryUsage(String explainPlan) {
+        try {
+            // "Buffers: shared hit=X read=Y written=Z" 패턴 찾기
+            Pattern hitPattern = Pattern.compile("shared hit=(\\d+)");
+            Pattern readPattern = Pattern.compile("shared.*?read=(\\d+)");
+            Pattern writtenPattern = Pattern.compile("shared.*?written=(\\d+)");
+
+            int totalBlocks = 0;
+
+            // shared hit 파싱
+            Matcher hitMatcher = hitPattern.matcher(explainPlan);
+            while (hitMatcher.find()) {
+                totalBlocks += Integer.parseInt(hitMatcher.group(1));
+            }
+
+            // shared read 파싱
+            Matcher readMatcher = readPattern.matcher(explainPlan);
+            while (readMatcher.find()) {
+                totalBlocks += Integer.parseInt(readMatcher.group(1));
+            }
+
+            // shared written 파싱
+            Matcher writtenMatcher = writtenPattern.matcher(explainPlan);
+            while (writtenMatcher.find()) {
+                totalBlocks += Integer.parseInt(writtenMatcher.group(1));
+            }
+
+            if (totalBlocks > 0) {
+                // 1 block = 8KB, MB로 변환
+                return (totalBlocks * 8.0) / 1024.0;
+            }
+        } catch (Exception e) {
+            log.warn("메모리 사용량 파싱 실패: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * ⭐ I/O 블록 수 파싱 (개선 버전)
+     * Buffers: shared hit=12345 read=678 written=90 형식을 모두 파싱
+     */
+    private Integer parseIoBlocks(String explainPlan) {
+        if (explainPlan == null || explainPlan.isEmpty()) {
+            return null;
+        }
+
+        try {
+            int totalBlocks = 0;
+
+            // "Buffers:"로 시작하는 모든 라인 찾기
+            Pattern bufferLinePattern = Pattern.compile("Buffers:.*");
+            Matcher bufferLineMatcher = bufferLinePattern.matcher(explainPlan);
+
+            while (bufferLineMatcher.find()) {
+                String bufferLine = bufferLineMatcher.group();
+                log.debug("Buffers 라인 발견: {}", bufferLine);
+
+                // shared hit, read, written 각각 파싱
+                totalBlocks += extractBufferValue(bufferLine, "hit");
+                totalBlocks += extractBufferValue(bufferLine, "read");
+                totalBlocks += extractBufferValue(bufferLine, "written");
+                totalBlocks += extractBufferValue(bufferLine, "dirtied");
+                totalBlocks += extractBufferValue(bufferLine, "shared written");
+                totalBlocks += extractBufferValue(bufferLine, "local hit");
+                totalBlocks += extractBufferValue(bufferLine, "local read");
+                totalBlocks += extractBufferValue(bufferLine, "local written");
+                totalBlocks += extractBufferValue(bufferLine, "temp read");
+                totalBlocks += extractBufferValue(bufferLine, "temp written");
+            }
+
+            if (totalBlocks > 0) {
+                log.info("  💿 총 I/O 블록 수: {}", totalBlocks);
+                return totalBlocks;
+            }
+
+            log.warn("  ⚠️ I/O 블록 정보를 찾을 수 없음");
+            return 0;  // null 대신 0 반환
+
+        } catch (Exception e) {
+            log.warn("I/O 블록 파싱 실패: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Buffers 라인에서 특정 키워드의 값 추출
+     * 예: "shared hit=12345" -> 12345
+     */
+    private int extractBufferValue(String bufferLine, String keyword) {
+        try {
+            // \b는 단어 경계 - "hit"만 매칭하고 "dirtied"는 안 매칭
+            String regex = "\\b" + keyword + "\\s*=\\s*(\\d+)";
+            Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(bufferLine);
+
+            int total = 0;
+            while (matcher.find()) {
+                int value = Integer.parseInt(matcher.group(1));
+                total += value;
+                log.debug("    - {}: {}", keyword, value);
+            }
+            return total;
+        } catch (Exception e) {
+            log.debug("    - {} 파싱 실패: {}", keyword, e.getMessage());
+        }
+        return 0;
+    }
+
+    /**
+     * ⭐ CPU 사용률 추정 (실행 시간 기반)
+     */
+    private Double parseCpuUsage(String explainPlan, Double executionTimeMs) {
+        if (executionTimeMs == null || executionTimeMs == 0) {
+            return null;
+        }
+
+        // 실행 시간이 길수록 CPU 사용률이 높다고 가정
+        // 100ms = 10%, 1000ms = 50%, 5000ms = 90%
+        double cpuPercent = Math.min(90.0, (executionTimeMs / 100.0) * 10);
+
+        return cpuPercent;
+    }
+
+    /**
+     * 시스템 뷰 쿼리 실제 실행 및 결과 표시
      */
     private ExplainAnalyzeResult executeAndShowResults(JdbcTemplate jdbcTemplate, String query) {
         try {
             long startTime = System.currentTimeMillis();
 
-            // 실제 쿼리 실행 (최대 10개 행만)
-            String limitedQuery = query;
-            if (!query.toUpperCase().contains("LIMIT")) {
-                limitedQuery = query + " LIMIT 10";
-            }
-
-            List<java.util.Map<String, Object>> results = jdbcTemplate.queryForList(limitedQuery);
+            List<String> results = jdbcTemplate.queryForList(query, String.class);
 
             long executionTime = System.currentTimeMillis() - startTime;
 
             StringBuilder resultBuilder = new StringBuilder();
-            resultBuilder.append("📊 시스템 통계 쿼리 - 실제 실행 결과\n\n");
-            resultBuilder.append("이 쿼리는 시스템 통계 뷰를 조회하므로 EXPLAIN ANALYZE가 필요 없습니다.\n");
-            resultBuilder.append("대신 실제 실행 결과를 보여드립니다.\n\n");
-            resultBuilder.append("──────────────────────────────────────────────────\n\n");
-            resultBuilder.append(String.format("실행 시간: %dms\n", executionTime));
-            resultBuilder.append(String.format("반환된 행 수: %d행\n\n", results.size()));
+            resultBuilder.append("📊 시스템 뷰 쿼리 실행 결과\n\n");
+            resultBuilder.append(String.format("실행 시간: %d ms\n", executionTime));
+            resultBuilder.append(String.format("결과 행 수: %d\n\n", results.size()));
+            resultBuilder.append("────────────────────────────────────────────────\n\n");
 
-            if (results.isEmpty()) {
-                resultBuilder.append("조회 결과가 없습니다.\n");
-            } else {
-                // 컬럼명 표시
-                java.util.Map<String, Object> firstRow = results.get(0);
-                for (String columnName : firstRow.keySet()) {
-                    resultBuilder.append(String.format("%-30s", columnName));
-                }
-                resultBuilder.append("\n");
-                resultBuilder.append("─".repeat(30 * firstRow.size())).append("\n");
-
-                // 데이터 표시
-                for (java.util.Map<String, Object> row : results) {
-                    for (Object value : row.values()) {
-                        String valueStr = value != null ? value.toString() : "NULL";
-                        if (valueStr.length() > 28) {
-                            valueStr = valueStr.substring(0, 25) + "...";
-                        }
-                        resultBuilder.append(String.format("%-30s", valueStr));
-                    }
-                    resultBuilder.append("\n");
-                }
-
-                if (results.size() >= 10) {
-                    resultBuilder.append("\n... (최대 10개 행만 표시)\n");
-                }
+            int displayLimit = 50;
+            for (int i = 0; i < Math.min(results.size(), displayLimit); i++) {
+                resultBuilder.append(results.get(i)).append("\n");
             }
 
-            log.info("  ✅ 시스템 쿼리 실행 완료: {}ms, {}행", executionTime, results.size());
+            if (results.size() > displayLimit) {
+                resultBuilder.append(String.format("\n... (%d개 행 더 있음)\n", results.size() - displayLimit));
+            }
 
             return ExplainAnalyzeResult.builder()
                     .executionMode("시스템 통계 조회")
                     .explainPlan(resultBuilder.toString())
                     .executionTimeMs((double) executionTime)
                     .planningTimeMs(null)
+                    .memoryUsageMb(null)       // ⭐ 시스템 쿼리는 메모리 정보 없음
+                    .ioBlocks(null)             // ⭐ 시스템 쿼리는 IO 정보 없음
+                    .cpuUsagePercent(null)      // ⭐ 시스템 쿼리는 CPU 정보 없음
                     .build();
 
         } catch (Exception e) {
@@ -301,7 +465,7 @@ public class ExplainAnalyzeService {
                         "%s 실행 계획을 생성할 수 없습니다.\n\n" +
                         "💡 해결 방법\n\n" +
                         "%s\n\n" +
-                        "🔍 요청된 쿼리\n\n" +
+                        "📝 요청된 쿼리\n\n" +
                         "%s\n\n" +
                         "🔧 기술 상세\n\n" +
                         "오류: %s",
@@ -313,6 +477,9 @@ public class ExplainAnalyzeService {
                 .explainPlan(failureMessage)
                 .executionTimeMs(null)
                 .planningTimeMs(null)
+                .memoryUsageMb(null)       // ⭐ 에러 시에는 null
+                .ioBlocks(null)             // ⭐ 에러 시에는 null
+                .cpuUsagePercent(null)      // ⭐ 에러 시에는 null
                 .build();
     }
 }
