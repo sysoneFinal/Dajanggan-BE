@@ -35,62 +35,83 @@ public class VacuumMetricsCollector {
     private final VacuumHistoryMapper vacuumHistoryMapper;
     private final DataSourceFactory dataSourceFactory;
 
-    public void collect(Instance instance, Database database, OffsetDateTime collectedAt) {
-        log.info("🧹 [VACUUM] ===== 수집 시작 ===== ");
-        log.info("🧹 [VACUUM] DB: {}, Instance: {}:{}",
+
+    public void collect(Instance instance, Database database, String decryptedPassword, OffsetDateTime collectedAt) {
+        long startTime = System.currentTimeMillis();
+        log.debug("🧹 [VACUUM] 수집 시작 - DB: {}, Instance: {}:{}",
                 database.getDatabaseName(), instance.getHost(), instance.getPort());
 
         JdbcTemplate jdbc;
         try {
-            jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName());
-            log.info("🧹 [VACUUM] JdbcTemplate 생성 성공");
+            jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName(), decryptedPassword);
         } catch (Exception e) {
-            log.error("🧹 [VACUUM] ❌ JdbcTemplate 생성 실패", e);
+            long totalTime = System.currentTimeMillis() - startTime;
+            log.error("❌ [VACUUM] {}:{}/{} - JdbcTemplate 생성 실패 ({}ms)",
+                    instance.getHost(), instance.getPort(), database.getDatabaseName(), totalTime);
             throw e;
         }
 
+        collectInternal(jdbc, database, instance, collectedAt, startTime);
+    }
+
+    private void collectInternal(JdbcTemplate jdbc, Database database, Instance instance,
+                                 OffsetDateTime collectedAt, long startTime) {
         try {
-            log.info("🧹 [VACUUM] 쿼리 실행 중...");
-
+            // 쿼리 실행
+            long queryStartTime = System.currentTimeMillis();
             List<VacuumRawMetricDto> vacuumMetrics = getVacuumMetrics(jdbc, database, instance, collectedAt);
-
-            log.info("🧹 [VACUUM] 쿼리 결과: {} 건", vacuumMetrics.size());
-
-            if (!vacuumMetrics.isEmpty()) {
-                VacuumRawMetricDto first = vacuumMetrics.get(0);
-                log.info("🧹 [VACUUM] 샘플 데이터: table={}, bloat_bytes={}, bloat_ratio={}",
-                        first.getTableName(), first.getBloatBytes(), first.getBloatRatio());
-            }
+            long queryTime = System.currentTimeMillis() - queryStartTime;
 
             if (vacuumMetrics.isEmpty()) {
-                log.warn("🧹 [VACUUM] 수집된 데이터 없음");
+                long totalTime = System.currentTimeMillis() - startTime;
+                log.debug("🧹 [VACUUM] {}:{}/{} - 수집된 데이터 없음 ({}ms)",
+                        instance.getHost(), instance.getPort(), database.getDatabaseName(), totalTime);
                 return;
             }
 
-            // 완료된 vacuum 세션 감지 및 저장
+            // 완료된 vacuum 세션 감지
+            long detectStartTime = System.currentTimeMillis();
             List<VacuumRawMetricDto> completedSessions = detectCompletedVacuumSessions(
-                    database, instance, vacuumMetrics);  // ✅ instance 파라미터 추가
+                    database, instance, vacuumMetrics);
+            long detectTime = System.currentTimeMillis() - detectStartTime;
 
             if (!completedSessions.isEmpty()) {
-                log.info("🧹 [VACUUM] 완료된 vacuum 세션 {} 건 감지", completedSessions.size());
+                log.debug("🧹 [VACUUM] 완료된 vacuum 세션 {} 건 감지 ({}ms)",
+                        completedSessions.size(), detectTime);
                 vacuumMetrics.addAll(completedSessions);
             }
 
+            // 저장
+            long saveStartTime = System.currentTimeMillis();
             vacuumRawRepository.insertVacuumMetrics(vacuumMetrics);
-            log.info("🧹 [VACUUM] ✅ {} 건 저장 완료 (실행 중: {}, 완료: {})",
+            long saveTime = System.currentTimeMillis() - saveStartTime;
+            long totalTime = System.currentTimeMillis() - startTime;
+
+            log.info("📊 [VACUUM] {}:{}/{} - {} 건 수집 완료 (총: {}ms | 조회: {}ms, 감지: {}ms, 저장: {}ms) [실행중: {}, 완료: {}]",
+                    instance.getHost(),
+                    instance.getPort(),
+                    database.getDatabaseName(),
                     vacuumMetrics.size(),
+                    totalTime,
+                    queryTime,
+                    detectTime,
+                    saveTime,
                     vacuumMetrics.size() - completedSessions.size(),
                     completedSessions.size());
 
         } catch (Exception e) {
-            log.error("🧹 [VACUUM] ❌ 수집 실패: {}", e.getMessage(), e);
-            throw e;
+            long totalTime = System.currentTimeMillis() - startTime;
+            log.error("❌ [VACUUM] {}:{}/{} - 수집 실패 ({}ms): {}",
+                    instance.getHost(),
+                    instance.getPort(),
+                    database.getDatabaseName(),
+                    totalTime,
+                    e.getMessage());
+            throw new RuntimeException("Vacuum 메트릭 수집 실패", e);
         }
     }
 
     // VacuumMetricsCollector.java - getVacuumMetrics 메서드의 SQL 수정
-// VacuumMetricsCollector.java - getVacuumMetrics 메서드의 SQL 수정
-
     private List<VacuumRawMetricDto> getVacuumMetrics(
             JdbcTemplate jdbc,
             Database database,

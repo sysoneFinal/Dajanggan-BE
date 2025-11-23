@@ -31,15 +31,8 @@ mybatis:
 
 logging:
   level:
-#    com.dajanggan: DEBUG
-#    com.dajanggan.domain.engine: DEBUG
-#    org.apache.ibatis: DEBUG
-#    com.zaxxer.hikari: INFO
-    org.springframework.web: DEBUG
-
-    com.zaxxer.hikari: DEBUG     # HikariCP 연결 로그
-    org.apache.ibatis: DEBUG     # MyBatis 실행 로그
-    org.mybatis: DEBUG
-
-    com.dajanggan: DEBUG         # 네 프로젝트 전체
-    com.dajanggan.domain.engine: DEBUG
+    root: INFO                           # 기본은 INFO
+    com.dajanggan: INFO                  # 전체 INFO
+    com.dajanggan.domain.metric.collector: DEBUG  # 수집기만 DEBUG
+    org.apache.ibatis: WARN
+    com.zaxxer.hikari: WARN
