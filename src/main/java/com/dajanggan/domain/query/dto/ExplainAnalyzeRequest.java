@@ -7,6 +7,11 @@ import lombok.AllArgsConstructor;
 /**
  * EXPLAIN ANALYZE 요청 DTO
  *
+ * 기능:
+ * - 클라이언트로부터 쿼리 분석 요청을 받는 데이터 객체
+ * - databaseId: 분석할 데이터베이스 식별자
+ * - query: 분석 대상 SQL 쿼리문
+ *
  * @author 이해든
  */
 @Data
@@ -14,13 +19,6 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class ExplainAnalyzeRequest {
 
-    /**
-     * 데이터베이스 ID
-     */
     private Long databaseId;
-
-    /**
-     * 분석할 SQL 쿼리
-     */
     private String query;
 }

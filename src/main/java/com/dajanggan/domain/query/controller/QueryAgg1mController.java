@@ -33,26 +33,20 @@ public class QueryAgg1mController {
     private final QueryAgg1mService queryAgg1mService;
 
     /**
-     * 헬스 체크 API
-     * GET /api/query-agg-1m/health
+     * 헬스 체크
      */
     @GetMapping("/health")
-    @Operation(summary = "헬스 체크", description = "API 서버 상태 확인")
+    @Operation(summary = "헬스 체크")
     public ResponseEntity<Map<String, Object>> healthCheck() {
-        log.info("GET /api/query-agg-1m/health");
-
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
         response.put("message", "Query Aggregation 1m API is running");
         response.put("timestamp", System.currentTimeMillis());
-
         return ResponseEntity.ok(response);
     }
 
     /**
-     * 🆕 요약 데이터 조회 (최근 5분 집계)
-     * GET /api/query-agg-1m/summary?instanceId={instanceId}&databaseId={databaseId}
-     *
+     * 요약 데이터 조회 (최근 5분 집계)
      * QueryOverview의 요약 카드(TPS, QPS, 세션수, 응답시간) 데이터 제공
      */
     @GetMapping("/summary")
@@ -74,13 +68,10 @@ public class QueryAgg1mController {
             response.put("data", data);
             response.put("message", "조회 성공");
 
-            log.info("✅ 요약 데이터 조회 완료 - TPS: {}, QPS: {}",
-                    data.getCurrentTps(), data.getCurrentQps());
-
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ 요약 데이터 조회 중 오류 발생", e);
+            log.error("요약 데이터 조회 실패", e);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
@@ -91,9 +82,7 @@ public class QueryAgg1mController {
     }
 
     /**
-     * 🆕 트렌드 데이터 조회 (최근 N시간)
-     * GET /api/query-agg-1m/trend?instanceId={instanceId}&databaseId={databaseId}&hours={hours}
-     *
+     * 트렌드 데이터 조회 (최근 N시간)
      * QueryOverview의 TPS/QPS 차트 데이터 제공
      */
     @GetMapping("/trend")
@@ -118,12 +107,10 @@ public class QueryAgg1mController {
             response.put("data", data);
             response.put("message", "조회 성공");
 
-            log.info("✅ 트렌드 데이터 조회 완료 - 데이터 포인트: {}", data.getTotalDataPoints());
-
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ 트렌드 데이터 조회 중 오류 발생", e);
+            log.error("트렌드 데이터 조회 실패", e);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
@@ -134,8 +121,8 @@ public class QueryAgg1mController {
     }
 
     /**
-     * 🆕 Top Query 조회 (리소스별)
-     * GET /api/query-agg-1m/top-queries?instanceId={instanceId}&databaseId={databaseId}&orderBy={orderBy}&limit={limit}
+     * Top Query 조회 (리소스별)
+     * CPU, 메모리, I/O, 실행시간 기준 Top-N 쿼리 조회
      */
     @GetMapping("/top-queries")
     @Operation(summary = "Top Query 조회",
@@ -162,11 +149,10 @@ public class QueryAgg1mController {
             response.put("count", data.size());
             response.put("message", "조회 성공");
 
-            log.info("✅ Top Query 조회 완료 - {}개", data.size());
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ Top Query 조회 중 오류 발생", e);
+            log.error("Top Query 조회 실패", e);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
@@ -178,7 +164,7 @@ public class QueryAgg1mController {
 
     /**
      * 현재 리소스 메트릭 조회
-     * GET /api/query-agg-1m/resources/current
+     * 현재 시스템의 CPU, Memory, Disk I/O 사용률 조회
      */
     @GetMapping("/resources/current")
     @Operation(summary = "현재 리소스 메트릭 조회",
@@ -194,15 +180,10 @@ public class QueryAgg1mController {
             response.put("data", metrics);
             response.put("message", "조회 성공");
 
-            log.info("✅ 리소스 메트릭 조회 완료 - CPU: {}%, Memory: {}%, Disk: {}%",
-                    metrics.get("cpuUsagePercent"),
-                    metrics.get("memoryUsagePercent"),
-                    metrics.get("diskIoUsagePercent"));
-
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ 리소스 메트릭 조회 실패", e);
+            log.error("리소스 메트릭 조회 실패", e);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
@@ -214,7 +195,7 @@ public class QueryAgg1mController {
 
     /**
      * 과거 리소스 데이터 수동 업데이트
-     * POST /api/query-agg-1m/resources/update-past?days=7
+     * 최근 N일 동안의 NULL 리소스 데이터를 채움
      */
     @PostMapping("/resources/update-past")
     @Operation(summary = "과거 리소스 데이터 업데이트",
@@ -234,12 +215,10 @@ public class QueryAgg1mController {
             response.put("updatedCount", updated);
             response.put("days", days);
 
-            log.info("✅ 과거 리소스 데이터 업데이트 완료: {} 건", updated);
-
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ 과거 리소스 데이터 업데이트 실패", e);
+            log.error("과거 리소스 데이터 업데이트 실패", e);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);

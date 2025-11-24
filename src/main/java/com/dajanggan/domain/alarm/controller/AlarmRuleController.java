@@ -17,7 +17,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/alarms/rules")
 @RequiredArgsConstructor
-public class AlarmRuleController {
+public class          AlarmRuleController {
 
     private final AlarmRuleService alarmRuleService;
 

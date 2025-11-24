@@ -1,15 +1,24 @@
 package com.dajanggan.domain.query.dto;
 
 import com.dajanggan.domain.query.domain.QueryMetricsRaw;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 /**
  * 쿼리 메트릭스 응답 DTO
- * instance_id 포함
+ *
+ * 기능:
+ * - QueryMetricsRaw 엔티티를 API 응답용 DTO로 변환
+ * - instance_id 포함하여 다중 인스턴스 지원
+ * - 정적 팩토리 메서드(from)로 Entity -> DTO 변환
  *
  * @author 이해든
  */
+@Data
+@NoArgsConstructor
 public class QueryMetricsRawDto {
 
     private Long queryMetricId;
@@ -36,11 +45,11 @@ public class QueryMetricsRawDto {
     private Integer cpuRank;
     private Integer memoryRank;
 
-    public QueryMetricsRawDto() {
-    }
-
     /**
      * Entity를 DTO로 변환하는 정적 팩토리 메서드
+     *
+     * @param entity QueryMetricsRaw 엔티티
+     * @return QueryMetricsRawDto 또는 null
      */
     public static QueryMetricsRawDto from(QueryMetricsRaw entity) {
         if (entity == null) {
@@ -73,190 +82,5 @@ public class QueryMetricsRawDto {
         dto.setMemoryRank(entity.getMemoryRank());
 
         return dto;
-    }
-
-    // Getter/Setter
-    public Long getQueryMetricId() {
-        return queryMetricId;
-    }
-
-    public void setQueryMetricId(Long queryMetricId) {
-        this.queryMetricId = queryMetricId;
-    }
-
-    public Long getInstanceId() {
-        return instanceId;
-    }
-
-    public void setInstanceId(Long instanceId) {
-        this.instanceId = instanceId;
-    }
-
-    public Long getDatabaseId() {
-        return databaseId;
-    }
-
-    public void setDatabaseId(Long databaseId) {
-        this.databaseId = databaseId;
-    }
-
-    public OffsetDateTime getCollectedAt() {
-        return collectedAt;
-    }
-
-    public void setCollectedAt(OffsetDateTime collectedAt) {
-        this.collectedAt = collectedAt;
-    }
-
-    public String getQueryId() {
-        return queryId;
-    }
-
-    public void setQueryId(String queryId) {
-        this.queryId = queryId;
-    }
-
-    public String getQueryHash() {
-        return queryHash;
-    }
-
-    public void setQueryHash(String queryHash) {
-        this.queryHash = queryHash;
-    }
-
-    public String getQueryText() {
-        return queryText;
-    }
-
-    public void setQueryText(String queryText) {
-        this.queryText = queryText;
-    }
-
-    public String getShortQuery() {
-        return shortQuery;
-    }
-
-    public void setShortQuery(String shortQuery) {
-        this.shortQuery = shortQuery;
-    }
-
-    public String getQueryType() {
-        return queryType;
-    }
-
-    public void setQueryType(String queryType) {
-        this.queryType = queryType;
-    }
-
-    public Integer getExecutionCount() {
-        return executionCount;
-    }
-
-    public void setExecutionCount(Integer executionCount) {
-        this.executionCount = executionCount;
-    }
-
-    public Long getIoBlocks() {
-        return ioBlocks;
-    }
-
-    public void setIoBlocks(Long ioBlocks) {
-        this.ioBlocks = ioBlocks;
-    }
-
-    public String getExplainPlan() {
-        return explainPlan;
-    }
-
-    public void setExplainPlan(String explainPlan) {
-        this.explainPlan = explainPlan;
-    }
-
-    public BigDecimal getPlanningTimeMs() {
-        return planningTimeMs;
-    }
-
-    public void setPlanningTimeMs(BigDecimal planningTimeMs) {
-        this.planningTimeMs = planningTimeMs;
-    }
-
-    public BigDecimal getExecutionTimeMs() {
-        return executionTimeMs;
-    }
-
-    public void setExecutionTimeMs(BigDecimal executionTimeMs) {
-        this.executionTimeMs = executionTimeMs;
-    }
-
-    public BigDecimal getCpuUsagePercent() {
-        return cpuUsagePercent;
-    }
-
-    public void setCpuUsagePercent(BigDecimal cpuUsagePercent) {
-        this.cpuUsagePercent = cpuUsagePercent;
-    }
-
-    public BigDecimal getMemoryUsageMb() {
-        return memoryUsageMb;
-    }
-
-    public void setMemoryUsageMb(BigDecimal memoryUsageMb) {
-        this.memoryUsageMb = memoryUsageMb;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getApplicationName() {
-        return applicationName;
-    }
-
-    public void setApplicationName(String applicationName) {
-        this.applicationName = applicationName;
-    }
-
-    public String getClientAddr() {
-        return clientAddr;
-    }
-
-    public void setClientAddr(String clientAddr) {
-        this.clientAddr = clientAddr;
-    }
-
-    public String getState() {
-        return state;
-    }
-
-    public void setState(String state) {
-        this.state = state;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(OffsetDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public Integer getCpuRank() {
-        return cpuRank;
-    }
-
-    public void setCpuRank(Integer cpuRank) {
-        this.cpuRank = cpuRank;
-    }
-
-    public Integer getMemoryRank() {
-        return memoryRank;
-    }
-
-    public void setMemoryRank(Integer memoryRank) {
-        this.memoryRank = memoryRank;
     }
 }

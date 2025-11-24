@@ -40,10 +40,10 @@ public class VacuumMetricsCollector {
     private final VacuumEventDetector vacuumEventDetector;
     private final EventService eventService;
 
-    public void collect(Instance instance, Database database, OffsetDateTime collectedAt) {
+    public void collect(Instance instance, Database database, String decryptedPassword, OffsetDateTime collectedAt) {
         log.info("🧹 [VACUUM] ===== 수집 시작 ===== ");
         log.info("🧹 [VACUUM] DB: {}, Instance: {}:{}",
-                database.getDatabaseName(), instance.getHost(), instance.getPort());
+                database.getDatabaseName(), instance.getHost(), instance.getPort(), decryptedPassword);
 
         JdbcTemplate jdbc;
         try {
