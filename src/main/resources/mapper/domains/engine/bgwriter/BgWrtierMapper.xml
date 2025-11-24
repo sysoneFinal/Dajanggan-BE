@@ -7,189 +7,428 @@
 
     <!-- Backend Flush 비율 조회 -->
     <select id="selectBackendFlushRatio" resultType="map">
+        WITH bgwriter_delta AS (
+            SELECT
+                buffers_clean,
+                buffers_backend,
+                COALESCE(
+                    CASE 
+                        WHEN buffers_clean - LAG(buffers_clean) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN buffers_clean
+                        ELSE buffers_clean - LAG(buffers_clean) OVER (ORDER BY collected_at)
+                    END, 
+                    buffers_clean
+                ) AS delta_clean,
+                COALESCE(
+                    CASE 
+                        WHEN buffers_backend - LAG(buffers_backend) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN buffers_backend
+                        ELSE buffers_backend - LAG(buffers_backend) OVER (ORDER BY collected_at)
+                    END, 
+                    buffers_backend
+                ) AS delta_backend
+            FROM bgwriter_raw
+            WHERE instance_id = #{instanceId}
+            ORDER BY collected_at DESC
+            LIMIT 2
+        )
         SELECT
-            avg_backend_flush_ratio as value,
-            total_buffers_clean as buffersclean,
-            total_buffers_backend as buffersbackend
-        FROM bgwriter_agg_1m
-        WHERE instance_id = #{instanceId}
-        ORDER BY collected_at DESC
-        LIMIT 1
+            CASE 
+                WHEN (SUM(delta_clean) + SUM(delta_backend)) > 0 
+                THEN ROUND(100.0 * SUM(delta_backend) / (SUM(delta_clean) + SUM(delta_backend)), 2)
+                ELSE 0.0
+            END as value,
+            COALESCE(SUM(delta_clean), 0) as buffersclean,
+            COALESCE(SUM(delta_backend), 0) as buffersbackend
+        FROM bgwriter_delta
     </select>
 
-    <!-- Clean Rate 시계열 데이터 조회 -->
+    <!-- Clean Rate 시계열 데이터 조회 (bgwriter_agg_1m 사용) -->
     <select id="selectCleanRateTimeSeries" resultType="map">
         SELECT
-            TO_CHAR(collected_at, 'HH24:MI') as time_label,
-            avg_clean_rate as clean_rate
-        FROM
-        <choose>
-            <when test="intervalMinutes == 1">
-                bgwriter_agg_1m
-            </when>
-            <when test="intervalMinutes == 5">
-                bgwriter_agg_5m
-            </when>
-            <when test="intervalMinutes == 30">
-                bgwriter_agg_5m
-            </when>
-            <otherwise>
-                bgwriter_agg_1m
-            </otherwise>
-        </choose>
+            TO_CHAR(collected_at, 'HH24:MI') AS time_label,
+            COALESCE(ROUND(AVG(avg_clean_rate)::numeric, 2), 0.0) AS clean_rate
+        FROM bgwriter_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        GROUP BY collected_at
         ORDER BY collected_at
     </select>
 
-    <!-- Buffer Flush 비율 시계열 데이터 조회 -->
+    <!-- Buffer Flush 비율 시계열 데이터 조회 (bgwriter_agg_1m 사용) -->
     <select id="selectBufferFlushRatioTimeSeries" resultType="map">
+        WITH bgwriter_delta AS (
+            SELECT
+                collected_at,
+                total_buffers_clean,
+                total_buffers_backend,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_clean
+                        ELSE total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_clean
+                ) AS delta_clean,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_backend - LAG(total_buffers_backend) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_backend
+                        ELSE total_buffers_backend - LAG(total_buffers_backend) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_backend
+                ) AS delta_backend
+            FROM bgwriter_agg_1m
+            WHERE instance_id = #{instanceId}
+            AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        )
         SELECT
-            TO_CHAR(collected_at, 'HH24:MI') as time_label,
-            total_buffers_backend as backend,
-            total_buffers_clean as clean
-        FROM
-        <choose>
-            <when test="intervalMinutes == 1">
-                bgwriter_agg_1m
-            </when>
-            <when test="intervalMinutes == 5">
-                bgwriter_agg_5m
-            </when>
-            <when test="intervalMinutes == 30">
-                bgwriter_agg_5m
-            </when>
-            <otherwise>
-                bgwriter_agg_1m
-            </otherwise>
-        </choose>
-        WHERE instance_id = #{instanceId}
-          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+            TO_CHAR(collected_at, 'HH24:MI') AS time_label,
+            COALESCE(delta_backend, 0) AS backend,
+            COALESCE(delta_clean, 0) AS clean
+        FROM bgwriter_delta
         ORDER BY collected_at
     </select>
 
-    <!-- Maxwritten Clean 시계열 데이터 조회 -->
+    <!-- Maxwritten Clean 시계열 데이터 조회 (bgwriter_agg_1m 사용) -->
     <select id="selectMaxwrittenCleanTimeSeries" resultType="map">
+        WITH bgwriter_delta AS (
+            SELECT
+                collected_at,
+                total_maxwritten_clean,
+                COALESCE(
+                    CASE 
+                        WHEN total_maxwritten_clean - LAG(total_maxwritten_clean) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_maxwritten_clean
+                        ELSE total_maxwritten_clean - LAG(total_maxwritten_clean) OVER (ORDER BY collected_at)
+                    END, 
+                    total_maxwritten_clean
+                ) AS delta_maxwritten
+            FROM bgwriter_agg_1m
+            WHERE instance_id = #{instanceId}
+            AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        )
         SELECT
-            TO_CHAR(collected_at, 'HH24:MI') as time_label,
-            total_maxwritten_clean as maxwritten_clean
-        FROM
-        <choose>
-            <when test="intervalMinutes == 1">
-                bgwriter_agg_1m
-            </when>
-            <when test="intervalMinutes == 5">
-                bgwriter_agg_5m
-            </when>
-            <when test="intervalMinutes == 30">
-                bgwriter_agg_5m
-            </when>
-            <otherwise>
-                bgwriter_agg_1m
-            </otherwise>
-        </choose>
-        WHERE instance_id = #{instanceId}
-          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+            TO_CHAR(collected_at, 'HH24:MI') AS time_label,
+            COALESCE(delta_maxwritten, 0) AS maxwritten_clean
+        FROM bgwriter_delta
         ORDER BY collected_at
     </select>
 
-    <!-- BGWriter vs Checkpoint 비교 데이터 조회 -->
+    <!-- BGWriter vs Checkpoint 비교 데이터 조회 (bgwriter_agg_1m, checkpoint_agg_1m 사용) -->
     <select id="selectBgwriterVsCheckpointTimeSeries" resultType="map">
+        WITH bgwriter_delta AS (
+            SELECT
+                collected_at,
+                total_buffers_clean,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_clean
+                        ELSE total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_clean
+                ) AS delta_clean
+            FROM bgwriter_agg_1m
+            WHERE instance_id = #{instanceId}
+            AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        checkpoint_delta AS (
+            SELECT
+                collected_at,
+                total_buffers_checkpoint,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_checkpoint - LAG(total_buffers_checkpoint) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_checkpoint
+                        ELSE total_buffers_checkpoint - LAG(total_buffers_checkpoint) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_checkpoint
+                ) AS delta_buffers
+            FROM checkpoint_agg_1m
+            WHERE instance_id = #{instanceId}
+            AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        )
         SELECT
-            TO_CHAR(b.collected_at, 'HH24:MI') as time_label,
-            b.total_buffers_clean as bgwriter,
-            c.total_buffers_checkpoint as checkpoint
-        FROM
-        <choose>
-            <when test="intervalMinutes == 1">
-                bgwriter_agg_1m b
-                LEFT JOIN checkpoint_agg_1m c ON b.instance_id = c.instance_id
-                    AND DATE_TRUNC('minute', b.collected_at) = DATE_TRUNC('minute', c.collected_at)
-            </when>
-            <when test="intervalMinutes == 5">
-                bgwriter_agg_5m b
-                LEFT JOIN checkpoint_agg_5m c ON b.instance_id = c.instance_id
-                    AND DATE_TRUNC('minute', b.collected_at) = DATE_TRUNC('minute', c.collected_at)
-            </when>
-            <otherwise>
-                bgwriter_agg_1m b
-                LEFT JOIN checkpoint_agg_1m c ON b.instance_id = c.instance_id
-                    AND DATE_TRUNC('minute', b.collected_at) = DATE_TRUNC('minute', c.collected_at)
-            </otherwise>
-        </choose>
-        WHERE b.instance_id = #{instanceId}
-          AND b.collected_at >= #{startTime} AND b.collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY b.collected_at
+            TO_CHAR(COALESCE(b.collected_at, c.collected_at), 'HH24:MI') AS time_label,
+            COALESCE(b.delta_clean, 0) AS bgwriter,
+            COALESCE(c.delta_buffers, 0) AS checkpoint
+        FROM bgwriter_delta b
+        FULL OUTER JOIN checkpoint_delta c ON b.collected_at = c.collected_at
+        ORDER BY COALESCE(b.collected_at, c.collected_at)
     </select>
 
-    <!-- Buffer 재사용률 시계열 데이터 조회 -->
+    <!-- Buffer 재사용률 시계열 데이터 조회 (bgwriter_agg_1m 사용) -->
     <select id="selectBufferReuseRateTimeSeries" resultType="map">
+        WITH bgwriter_delta AS (
+            SELECT
+                collected_at,
+                total_buffers_clean,
+                total_buffers_backend,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_clean
+                        ELSE total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_clean
+                ) AS delta_clean,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_backend - LAG(total_buffers_backend) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_backend
+                        ELSE total_buffers_backend - LAG(total_buffers_backend) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_backend
+                ) AS delta_backend
+            FROM bgwriter_agg_1m
+            WHERE instance_id = #{instanceId}
+            AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        )
         SELECT
-            TO_CHAR(collected_at, 'HH24:MI') as time_label,
-            100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as reuse_rate
-        FROM
-        <choose>
-            <when test="intervalMinutes == 1">
-                bgwriter_agg_1m
-            </when>
-            <when test="intervalMinutes == 5">
-                bgwriter_agg_5m
-            </when>
-            <when test="intervalMinutes == 30">
-                bgwriter_agg_5m
-            </when>
-            <otherwise>
-                bgwriter_agg_1m
-            </otherwise>
-        </choose>
-        WHERE instance_id = #{instanceId}
-          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+            TO_CHAR(collected_at, 'HH24:MI') AS time_label,
+            COALESCE(ROUND(100.0 * delta_clean / NULLIF(delta_clean + delta_backend, 0), 2), 0.0) AS reuse_rate
+        FROM bgwriter_delta
         ORDER BY collected_at
     </select>
 
     <!-- 최근 통계 조회 -->
+    <!-- 
+        Summary Cards 지표:
+        1. BGWriter 활동률: (100 - avg_backend_flush_ratio) - BGWriter가 얼마나 활동하는지 (Backend Flush 비율의 역)
+           - Backend Flush 비율이 낮을수록 BGWriter가 더 활동한다는 의미
+           - 최근 5분 평균: AVG(avg_backend_flush_ratio) 사용
+        2. Clean Buffer 재사용률: total_buffers_clean / (total_buffers_clean + total_buffers_backend) * 100
+           - 최근 5분 평균: 각 항목의 평균을 계산한 후 비율 계산
+        3. Backend Fsync 발생: 최근 1시간 합계 (5분 집계 데이터 사용)
+           - SUM(total_backend_fsync) 사용
+        4. Checkpoint에 의한 BGWriter 중단: 현재 구현 불가 (Checkpoint 모듈과 연동 필요)
+           - 임시로 0 반환 (추후 구현 필요)
+    -->
     <select id="selectRecentStats" resultType="map">
+        WITH bgwriter_delta AS (
+            SELECT
+                collected_at,
+                buffers_clean,
+                buffers_backend,
+                buffers_backend_fsync,
+                COALESCE(
+                    CASE 
+                        WHEN buffers_clean - LAG(buffers_clean) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN buffers_clean
+                        ELSE buffers_clean - LAG(buffers_clean) OVER (ORDER BY collected_at)
+                    END, 
+                    buffers_clean
+                ) AS delta_clean,
+                COALESCE(
+                    CASE 
+                        WHEN buffers_backend - LAG(buffers_backend) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN buffers_backend
+                        ELSE buffers_backend - LAG(buffers_backend) OVER (ORDER BY collected_at)
+                    END, 
+                    buffers_backend
+                ) AS delta_backend,
+                COALESCE(
+                    CASE 
+                        WHEN buffers_backend_fsync - LAG(buffers_backend_fsync) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN buffers_backend_fsync
+                        ELSE buffers_backend_fsync - LAG(buffers_backend_fsync) OVER (ORDER BY collected_at)
+                    END, 
+                    buffers_backend_fsync
+                ) AS delta_fsync
+            FROM bgwriter_raw
+            WHERE instance_id = #{instanceId}
+            AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '1 hour'
+            AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+        ),
+        recent_5min AS (
+            SELECT * FROM bgwriter_delta
+            WHERE collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
+        )
         SELECT
-            avg_backend_flush_ratio as bgwriteractivityrate,
-            100.0 * total_buffers_clean / NULLIF(total_buffers_clean + total_buffers_backend, 0) as cleanbufferreuserate,
-            total_backend_fsync as backendfsynccount,
-            0.0 as bufferpoolusagerate,
-            0 as checkpointinterruptioncount,
-            0.0 as dirtybufferaccumulationrate
-        FROM bgwriter_agg_1m
-        WHERE instance_id = #{instanceId}
-          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
-        ORDER BY collected_at DESC
-        LIMIT 1
+            -- BGWriter 활동률: (100 - Backend Flush 비율) - BGWriter가 얼마나 활동하는지
+            COALESCE(
+                100.0 - (100.0 * SUM(delta_backend) / NULLIF(SUM(delta_clean) + SUM(delta_backend), 0)),
+                0.0
+            ) as bgwriteractivityrate,
+            
+            -- Clean Buffer 재사용률: BGWriter가 쓴 버퍼 / 전체 버퍼 * 100
+            COALESCE(
+                100.0 * SUM(delta_clean) / NULLIF(SUM(delta_clean) + SUM(delta_backend), 0),
+                0.0
+            ) as cleanbufferreuserate,
+            
+            -- Backend Fsync 발생: 최근 1시간 합계
+            COALESCE(SUM(delta_fsync), 0) as backendfsynccount,
+            
+            -- Checkpoint에 의한 BGWriter 중단: 현재 구현 불가 (Checkpoint 모듈과 연동 필요)
+            -- 임시로 0 반환 (추후 구현 필요)
+            0 as checkpointinterruptioncount
+        FROM recent_5min
+    </select>
+
+    <!-- 최근 통계 조회 (15분, bgwriter_agg_1m 사용) -->
+    <select id="selectRecentStats15m" resultType="map">
+        WITH bgwriter_delta AS (
+            SELECT
+                collected_at,
+                total_buffers_clean,
+                total_buffers_backend,
+                total_backend_fsync,
+                avg_backend_flush_ratio,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_clean
+                        ELSE total_buffers_clean - LAG(total_buffers_clean) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_clean
+                ) AS delta_clean,
+                COALESCE(
+                    CASE 
+                        WHEN total_buffers_backend - LAG(total_buffers_backend) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_buffers_backend
+                        ELSE total_buffers_backend - LAG(total_buffers_backend) OVER (ORDER BY collected_at)
+                    END, 
+                    total_buffers_backend
+                ) AS delta_backend,
+                COALESCE(
+                    CASE 
+                        WHEN total_backend_fsync - LAG(total_backend_fsync) OVER (ORDER BY collected_at) <![CDATA[ < ]]> 0 
+                        THEN total_backend_fsync
+                        ELSE total_backend_fsync - LAG(total_backend_fsync) OVER (ORDER BY collected_at)
+                    END, 
+                    total_backend_fsync
+                ) AS delta_fsync
+            FROM bgwriter_agg_1m
+            WHERE instance_id = #{instanceId}
+            AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        )
+        SELECT
+            -- BGWriter 활동률: (100 - Backend Flush 비율) - BGWriter가 얼마나 활동하는지
+            COALESCE(
+                100.0 - AVG(avg_backend_flush_ratio),
+                0.0
+            ) as bgwriteractivityrate,
+            
+            -- Clean Buffer 재사용률: BGWriter가 쓴 버퍼 / 전체 버퍼 * 100
+            COALESCE(
+                100.0 * SUM(delta_clean) / NULLIF(SUM(delta_clean) + SUM(delta_backend), 0),
+                0.0
+            ) as cleanbufferreuserate,
+            
+            -- Backend Fsync 발생: 최근 15분 합계
+            COALESCE(SUM(delta_fsync), 0) as backendfsynccount,
+            
+            -- Checkpoint에 의한 BGWriter 중단: 현재 구현 불가 (Checkpoint 모듈과 연동 필요)
+            -- 임시로 0 반환 (추후 구현 필요)
+            0 as checkpointinterruptioncount
+        FROM bgwriter_delta
     </select>
 
     <!-- BGWriter 리스트 데이터 조회 -->
     <select id="selectBgWriterList" resultType="map">
+        WITH bgwriter_with_delta AS (
+            SELECT
+                r.bgwriter_raw_id,
+                r.collected_at,
+                r.buffers_alloc,
+                r.buffers_clean,
+                r.buffers_backend,
+                r.buffers_backend_fsync,
+                r.maxwritten_clean,
+                -- 이전 행과 비교하여 증분 계산
+                COALESCE(
+                    CASE 
+                        WHEN r.buffers_clean - LAG(r.buffers_clean) OVER (ORDER BY r.collected_at) <![CDATA[ < ]]> 0 
+                        THEN r.buffers_clean  -- stats_reset 발생 시 현재 값 사용
+                        ELSE r.buffers_clean - LAG(r.buffers_clean) OVER (ORDER BY r.collected_at)
+                    END, 
+                    r.buffers_clean  -- 첫 번째 행은 현재 값 사용
+                ) AS delta_buffers_clean,
+                COALESCE(
+                    CASE 
+                        WHEN r.buffers_backend - LAG(r.buffers_backend) OVER (ORDER BY r.collected_at) <![CDATA[ < ]]> 0 
+                        THEN r.buffers_backend
+                        ELSE r.buffers_backend - LAG(r.buffers_backend) OVER (ORDER BY r.collected_at)
+                    END, 
+                    r.buffers_backend
+                ) AS delta_buffers_backend,
+                COALESCE(
+                    CASE 
+                        WHEN r.buffers_backend_fsync - LAG(r.buffers_backend_fsync) OVER (ORDER BY r.collected_at) <![CDATA[ < ]]> 0 
+                        THEN r.buffers_backend_fsync
+                        ELSE r.buffers_backend_fsync - LAG(r.buffers_backend_fsync) OVER (ORDER BY r.collected_at)
+                    END, 
+                    r.buffers_backend_fsync
+                ) AS delta_buffers_backend_fsync,
+                COALESCE(
+                    CASE 
+                        WHEN r.maxwritten_clean - LAG(r.maxwritten_clean) OVER (ORDER BY r.collected_at) <![CDATA[ < ]]> 0 
+                        THEN r.maxwritten_clean
+                        ELSE r.maxwritten_clean - LAG(r.maxwritten_clean) OVER (ORDER BY r.collected_at)
+                    END, 
+                    r.maxwritten_clean
+                ) AS delta_maxwritten_clean
+            FROM bgwriter_raw r
+            WHERE r.instance_id = #{instanceId}
+            AND r.collected_at >= #{startTime} AND r.collected_at <![CDATA[ <= ]]> #{endTime}
+        ),
+        calculated_stats AS (
+            SELECT
+                bgwriter_raw_id,
+                collected_at,
+                buffers_alloc,
+                delta_buffers_clean,
+                delta_buffers_backend,
+                delta_buffers_backend_fsync,
+                delta_maxwritten_clean,
+                -- Clean Rate 계산 (버퍼/초)
+                COALESCE(delta_buffers_clean / 60.0, 0.0) AS cleanRate,
+                -- Backend rate 계산 (초당)
+                COALESCE(delta_buffers_backend / 60.0, 0.0) AS backendRate,
+                -- Fsync rate 계산 (초당)
+                COALESCE(delta_buffers_backend_fsync / 60.0, 0.0) AS fsyncRate,
+                -- Maxwritten rate 계산 (분당)
+                COALESCE(delta_maxwritten_clean, 0) AS maxWrittenRate,
+                -- Backend Flush 비율 계산
+                CASE 
+                    WHEN (delta_buffers_clean + delta_buffers_backend) > 0 
+                    THEN 100.0 * delta_buffers_backend / (delta_buffers_clean + delta_buffers_backend)
+                    ELSE 0.0
+                END AS backendRatio,
+                -- 상태 판단
+                CASE 
+                    WHEN (delta_buffers_clean + delta_buffers_backend) > 0 
+                        AND (100.0 * delta_buffers_backend / (delta_buffers_clean + delta_buffers_backend)) > 50.0 
+                    THEN '위험'
+                    WHEN (delta_buffers_clean + delta_buffers_backend) > 0 
+                        AND (100.0 * delta_buffers_backend / (delta_buffers_clean + delta_buffers_backend)) > 30.0 
+                    THEN '주의'
+                    WHEN delta_maxwritten_clean > 0 
+                    THEN '주의'
+                    ELSE '정상'
+                END AS status
+            FROM bgwriter_with_delta
+        )
         SELECT
-            bgwriter_agg_id as id,
-            TO_CHAR(collected_at, 'HH24:MI') as timestamp,
-            COALESCE(total_buffers_clean + total_buffers_backend, 0) as buffersAlloc,
-            COALESCE(avg_clean_rate, 0.0) as cleanRate,
-            -- Backend rate 계산 (backend buffers / 시간 간격, 초당)
-            COALESCE(total_buffers_backend / NULLIF(60.0, 0), 0.0) as backendRate,
-            0 as checkpointBuffers,
-            COALESCE(avg_backend_flush_ratio, 0.0) as backendRatio,
-            -- Fsync rate 계산 (초당)
-            COALESCE(total_backend_fsync / NULLIF(60.0, 0), 0.0) as fsyncRate,
-            -- Maxwritten rate 계산 (분당)
-            COALESCE(total_maxwritten_clean, 0) as maxWrittenRate,
-            -- avg_cycle_time_ms 컬럼 조회
-            COALESCE(avg_cycle_time_ms, 0.0) as avgcycletime,
-            COALESCE(status, '정상') as status
-        FROM bgwriter_agg_1m
-        WHERE instance_id = #{instanceId}
-          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+            bgwriter_raw_id AS id,
+            TO_CHAR(collected_at, 'HH24:MI') AS timestamp,
+            COALESCE(buffers_alloc, 0) AS buffersAlloc,
+            COALESCE(ROUND(cleanRate::numeric, 2), 0.0) AS cleanRate,
+            COALESCE(ROUND(backendRate::numeric, 2), 0.0) AS backendRate,
+            0 AS checkpointBuffers,
+            COALESCE(ROUND(backendRatio::numeric, 2), 0.0) AS backendRatio,
+            COALESCE(ROUND(fsyncRate::numeric, 2), 0.0) AS fsyncRate,
+            COALESCE(maxWrittenRate, 0) AS maxWrittenRate,
+            0.0 AS avgcycletime,
+            COALESCE(status, '정상') AS status
+        FROM calculated_stats
         <if test="statusList != null and statusList.size() > 0">
-          AND status IN
-          <foreach collection="statusList" item="status" open="(" separator="," close=")">
-              #{status}
-          </foreach>
+            WHERE status IN
+            <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
         </if>
         ORDER BY collected_at DESC
     </select>
@@ -218,6 +457,7 @@
             avg_cycle_time_ms
         FROM bgwriter_raw
         WHERE instance_id = #{instanceId}
+          AND collected_at <![CDATA[ < ]]> #{collectedAt}
         ORDER BY collected_at DESC
         LIMIT 1
     </select>
