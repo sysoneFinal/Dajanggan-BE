@@ -45,9 +45,10 @@ public class MemoryCollectionScheduler {
     }
 
     /**
-     * 1분마다 실행 (매분 0초)
+     * 1분마다 실행 (매분 5초) - metric/batch 스타일에 맞춤
+     * 수집이 완료된 후 집계되도록 시간 조정
      */
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "5 * * * * *")
     public void collectMemoryMetrics() {
         log.info("========== Memory 메트릭 수집 시작 ==========");
 
@@ -111,20 +112,7 @@ public class MemoryCollectionScheduler {
         
         log.info("데이터 병합 완료: instanceId={}, merged={}", instanceId, mergedData.size());
 
-        // 5. 이전 Raw 데이터 조회 (relname + database_name별로)
-        List<MemoryRaw> previousRawList = memoryMapper.selectPreviousRawByRelname(instanceId);
-        log.info("이전 Raw 데이터 조회: instanceId={}, count={}", instanceId, previousRawList.size());
-        Map<String, MemoryRaw> previousRawMap = new HashMap<>();
-        for (MemoryRaw prev : previousRawList) {
-            // relname과 database_name을 조합한 키 사용
-            String relnameKey = prev.getRelname() != null ? prev.getRelname() : "";
-            String databaseKey = prev.getDatabaseName() != null ? prev.getDatabaseName() : "";
-            String key = relnameKey + "|" + databaseKey;
-            previousRawMap.put(key, prev);
-            log.debug("이전 Raw 데이터 매핑: key={}, collectedAt={}", key, prev.getCollectedAt());
-        }
-
-        // 6. Raw 데이터 생성 및 저장
+        // 5. Raw 데이터 생성 및 저장
         List<MemoryRaw> rawList = new ArrayList<>();
         for (Map.Entry<String, Map<String, Object>> entry : mergedData.entrySet()) {
             MemoryRaw raw = buildMemoryRaw(instanceId, collectedAt, entry.getValue(), databaseData);
@@ -151,6 +139,7 @@ public class MemoryCollectionScheduler {
             Map<String, Object> databaseStats = new HashMap<>();
             databaseStats.put("relname", null);  // NULL로 설정
             databaseStats.put("relkind", null);
+            // pg_stat_database 행은 버퍼 통계 없음 (0으로 설정)
             databaseStats.put("buffers", 0L);
             databaseStats.put("dirty_buffers", 0L);
             databaseStats.put("pinned_buffers", 0L);
@@ -162,6 +151,7 @@ public class MemoryCollectionScheduler {
             databaseStats.put("heap_blks_hit", blksHit);
             databaseStats.put("idx_blks_read", 0L);
             databaseStats.put("idx_blks_hit", 0L);
+            // usagecount 통계는 pg_buffercache 미사용으로 0으로 설정
             databaseStats.put("avg_usagecount", 0.0);
             databaseStats.put("max_usagecount", 0L);
             databaseStats.put("min_usagecount", 0L);
@@ -189,49 +179,8 @@ public class MemoryCollectionScheduler {
             log.warn("Raw 데이터 없음: instanceId={}, mergedData={}", instanceId, mergedData.size());
         }
 
-        // 7. Agg 데이터 생성 및 저장 (증분 계산)
-        List<MemoryAgg> aggList = new ArrayList<>();
-        Long totalBuffers = calculateTotalBuffers(rawList);
-        log.info("전체 버퍼 수 계산: instanceId={}, totalBuffers={}", instanceId, totalBuffers);
-        
-        int skippedCount = 0;
-        for (MemoryRaw currentRaw : rawList) {
-            // relname과 database_name을 조합한 키 사용
-            String relnameKey = currentRaw.getRelname() != null ? currentRaw.getRelname() : "";
-            String databaseKey = currentRaw.getDatabaseName() != null ? currentRaw.getDatabaseName() : "";
-            String key = relnameKey + "|" + databaseKey;
-            MemoryRaw previousRaw = previousRawMap.get(key);
-            
-            log.debug("Agg 데이터 생성 시도: instanceId={}, key={}, previousRaw={}", 
-                    instanceId, key, previousRaw != null ? "있음" : "없음");
-            
-            // 이전 데이터가 있을 때만 집계 데이터 생성 (더미 데이터 방지)
-            if (previousRaw != null) {
-                MemoryAgg agg = calculateAggregation(currentRaw, previousRaw, collectedAt, totalBuffers);
-                aggList.add(agg);
-                log.debug("Agg 데이터 생성 성공: instanceId={}, relname={}, cacheHitRatio={}", 
-                        instanceId, agg.getRelname(), agg.getCacheHitRatio());
-            } else {
-                skippedCount++;
-                log.debug("Agg 데이터 스킵: instanceId={}, key={}, 이전 데이터 없음", instanceId, key);
-            }
-        }
-
-        if (!aggList.isEmpty()) {
-            try {
-                memoryMapper.insertAggBatch(aggList);
-                log.info("Agg 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, aggList.size());
-            } catch (Exception e) {
-                log.error("Agg 데이터 저장 실패: instanceId={}, count={}", instanceId, aggList.size(), e);
-                throw e;
-            }
-        } else {
-            log.warn("Agg 데이터 없음: instanceId={}, raw={}, 이전 데이터 없음={}, totalBuffers={}, previousRawMap={}. 첫 번째 수집이거나 이전 데이터가 없습니다.", 
-                    instanceId, rawList.size(), skippedCount, totalBuffers, previousRawMap.size());
-        }
-
-        log.info("메트릭 처리 완료: instanceId={}, raw={}, agg={}, skipped={}", 
-                instanceId, rawList.size(), aggList.size(), skippedCount);
+        // Agg 데이터 생성은 배치로 처리
+        log.info("메트릭 처리 완료: instanceId={}, raw={}", instanceId, rawList.size());
     }
 
     /**
@@ -365,8 +314,10 @@ public class MemoryCollectionScheduler {
         return result;
     }
 
+
     /**
      * Statio 데이터 병합
+     * pg_buffercache 미사용으로 버퍼 통계는 모두 0으로 설정
      */
     private Map<String, Map<String, Object>> mergeData(
             List<Map<String, Object>> statioData) {
@@ -383,7 +334,7 @@ public class MemoryCollectionScheduler {
         for (Map<String, Object> data : statioData) {
             String relname = (String) data.get("relname");
             if (relname != null) {
-                // 기본값 추가
+                // pg_buffercache 미사용으로 버퍼 통계는 모두 0으로 설정
                 data.put("buffers", 0L);
                 data.put("dirty_buffers", 0L);
                 data.put("pinned_buffers", 0L);
@@ -419,16 +370,19 @@ public class MemoryCollectionScheduler {
         Map<String, Object> totalStats = new HashMap<>();
         totalStats.put("relname", null);  // NULL로 설정 (빈 문자열 아님)
         totalStats.put("relkind", null);
+        
+        // pg_buffercache 미사용으로 버퍼 통계는 모두 0으로 설정
         totalStats.put("buffers", 0L);
         totalStats.put("dirty_buffers", 0L);
         totalStats.put("pinned_buffers", 0L);
+        totalStats.put("avg_usagecount", 0.0);
+        totalStats.put("max_usagecount", 0L);
+        totalStats.put("min_usagecount", 0L);
+        
         totalStats.put("heap_blks_read", totalHeapBlksRead);  // 합산된 값 사용
         totalStats.put("heap_blks_hit", totalHeapBlksHit);  // 합산된 값 사용
         totalStats.put("idx_blks_read", totalIdxBlksRead);  // 합산된 값 사용
         totalStats.put("idx_blks_hit", totalIdxBlksHit);    // 합산된 값 사용
-        totalStats.put("avg_usagecount", 0.0);
-        totalStats.put("max_usagecount", 0L);
-        totalStats.put("min_usagecount", 0L);
         // database_name을 NULL로 설정하여 pg_stat_database 행과 구분
         // (buildMemoryRaw에서 databaseData를 사용하므로 명시적으로 NULL 설정 필요)
         totalStats.put("database_name", null);
@@ -478,30 +432,18 @@ public class MemoryCollectionScheduler {
                 .build();
     }
 
-    /**
-     * 전체 버퍼 수 계산
-     * pg_statio 합계 행(database_name=NULL)에서만 buffers 값을 가져옴
-     */
-    private Long calculateTotalBuffers(List<MemoryRaw> rawList) {
-        return rawList.stream()
-                .filter(r -> r.getRelname() == null && r.getDatabaseName() == null) // pg_statio 합계 row만
-                .findFirst()
-                .map(MemoryRaw::getBuffers)
-                .orElse(0L);
-    }
 
     /**
      * MemoryAgg 객체 생성 (증분 계산)
+     * pg_buffercache 미사용으로 버퍼 관련 메트릭은 0으로 설정
      */
     private MemoryAgg calculateAggregation(MemoryRaw current, MemoryRaw previous, 
                                             OffsetDateTime collectedAt, Long totalBuffers) {
-        // 버퍼 사용률
-        double bufferUsagePct = totalBuffers > 0 ? 
-                (double) current.getBuffers() / totalBuffers * 100 : 0.0;
+        // pg_buffercache 미사용으로 버퍼 사용률은 0
+        double bufferUsagePct = 0.0;
 
-        // Dirty 비율
-        double dirtyRatio = current.getBuffers() > 0 ? 
-                (double) current.getDirtyBuffers() / current.getBuffers() * 100 : 0.0;
+        // pg_buffercache 미사용으로 Dirty 비율은 0
+        double dirtyRatio = 0.0;
 
         // I/O 증분 계산
         long deltaHeapBlksRead = 0;
@@ -577,13 +519,11 @@ public class MemoryCollectionScheduler {
             }
         }
         
-        // 버퍼 재사용 점수 계산 (0~100)
-        // usagecount가 높을수록 재사용이 많이 됨 (최대 5)
-        double bufferReuseScore = current.getAvgUsagecount() != null ? 
-                Math.min(current.getAvgUsagecount() * 20, 100.0) : 0.0;
+        // pg_buffercache 미사용으로 버퍼 재사용 점수는 0
+        double bufferReuseScore = 0.0;
 
-        // 상태 판정
-        String status = determineStatus(bufferUsagePct, dirtyRatio, cacheHitRatio);
+        // 상태 판정 (버퍼 관련 메트릭 제외)
+        String status = determineStatus(cacheHitRatio);
 
         return MemoryAgg.builder()
                 .instanceId(current.getInstanceId())
@@ -618,14 +558,15 @@ public class MemoryCollectionScheduler {
 
     /**
      * 상태 판정 로직
-     * - 정상: 캐시 히트율 > 95% AND Dirty 비율 < 20%
-     * - 주의: 캐시 히트율 > 90% AND Dirty 비율 < 30%
+     * pg_buffercache 미사용으로 캐시 히트율만으로 판정
+     * - 정상: 캐시 히트율 > 95%
+     * - 주의: 캐시 히트율 > 90%
      * - 위험: 그 외
      */
-    private String determineStatus(double bufferUsagePct, double dirtyRatio, double cacheHitRatio) {
-        if (cacheHitRatio > 95 && dirtyRatio < 20) {
+    private String determineStatus(double cacheHitRatio) {
+        if (cacheHitRatio > 95) {
             return "정상";
-        } else if (cacheHitRatio > 90 && dirtyRatio < 30) {
+        } else if (cacheHitRatio > 90) {
             return "주의";
         } else {
             return "위험";

@@ -75,16 +75,12 @@
         ORDER BY instance_id
     </select>
 
-    <!-- 이전 Raw 데이터 조회 (relname + database_name별로 최신) -->
+    <!-- 이전 Raw 데이터 조회 (relname + database_name 조합별로, 특정 시간 이전의 최신 데이터) -->
     <select id="selectPreviousRawByRelname" resultMap="memoryRawResultMap">
-        SELECT DISTINCT ON (COALESCE(relname, ''), COALESCE(database_name, '')) 
-            memory_raw_id, instance_id, collected_at, relname, relkind,
-            buffers, dirty_buffers, pinned_buffers,
-            heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit,
-            avg_usagecount, max_usagecount, min_usagecount,
-            database_name, temp_files, temp_bytes, blk_read_time, blk_write_time, created_at
+        SELECT DISTINCT ON (COALESCE(relname, ''), COALESCE(database_name, '')) *
         FROM memory_raw
         WHERE instance_id = #{instanceId}
+          AND collected_at &lt; #{currentCollectedAt}
         ORDER BY COALESCE(relname, ''), COALESCE(database_name, ''), collected_at DESC
     </select>
 
@@ -215,53 +211,6 @@
             record_count = EXCLUDED.record_count
     </insert>
 
-    <!-- Memory Agg 30분 데이터 삽입 (UPSERT) -->
-    <insert id="insertAgg30m" parameterType="com.dajanggan.domain.system.memory.domain.MemoryAgg30m"
-            useGeneratedKeys="true" keyProperty="memoryAgg30mId">
-        INSERT INTO memory_agg_30m (
-            instance_id, time_bucket, relname, relkind,
-            avg_buffers, avg_buffer_usage_pct, avg_dirty_ratio, avg_pinned_buffers,
-            total_heap_blks_read, total_heap_blks_hit, total_idx_blks_read, total_idx_blks_hit,
-            avg_cache_hit_ratio, avg_usagecount, avg_buffer_reuse_score,
-            database_name, total_temp_files, total_temp_bytes,
-            avg_temp_file_rate, avg_temp_bytes_per_sec,
-            total_blk_read_time, total_blk_write_time, avg_io_wait_time_ms,
-            record_count
-        ) VALUES (
-            #{instanceId}, #{timeBucket}, #{relname}, #{relkind},
-            #{avgBuffers}, #{avgBufferUsagePct}, #{avgDirtyRatio}, #{avgPinnedBuffers},
-            #{totalHeapBlksRead}, #{totalHeapBlksHit}, #{totalIdxBlksRead}, #{totalIdxBlksHit},
-            #{avgCacheHitRatio}, #{avgUsagecount}, #{avgBufferReuseScore},
-            #{databaseName}, #{totalTempFiles}, #{totalTempBytes},
-            #{avgTempFileRate}, #{avgTempBytesPerSec},
-            #{totalBlkReadTime}, #{totalBlkWriteTime}, #{avgIoWaitTimeMs},
-            #{recordCount}
-        )
-        ON CONFLICT (instance_id, time_bucket, relname)
-        DO UPDATE SET
-            relkind = EXCLUDED.relkind,
-            avg_buffers = EXCLUDED.avg_buffers,
-            avg_buffer_usage_pct = EXCLUDED.avg_buffer_usage_pct,
-            avg_dirty_ratio = EXCLUDED.avg_dirty_ratio,
-            avg_pinned_buffers = EXCLUDED.avg_pinned_buffers,
-            total_heap_blks_read = EXCLUDED.total_heap_blks_read,
-            total_heap_blks_hit = EXCLUDED.total_heap_blks_hit,
-            total_idx_blks_read = EXCLUDED.total_idx_blks_read,
-            total_idx_blks_hit = EXCLUDED.total_idx_blks_hit,
-            avg_cache_hit_ratio = EXCLUDED.avg_cache_hit_ratio,
-            avg_usagecount = EXCLUDED.avg_usagecount,
-            avg_buffer_reuse_score = EXCLUDED.avg_buffer_reuse_score,
-            database_name = EXCLUDED.database_name,
-            total_temp_files = EXCLUDED.total_temp_files,
-            total_temp_bytes = EXCLUDED.total_temp_bytes,
-            avg_temp_file_rate = EXCLUDED.avg_temp_file_rate,
-            avg_temp_bytes_per_sec = EXCLUDED.avg_temp_bytes_per_sec,
-            total_blk_read_time = EXCLUDED.total_blk_read_time,
-            total_blk_write_time = EXCLUDED.total_blk_write_time,
-            avg_io_wait_time_ms = EXCLUDED.avg_io_wait_time_ms,
-            record_count = EXCLUDED.record_count
-    </insert>
-
     <!-- ========================================
          조회용 쿼리
          ======================================== -->
@@ -280,21 +229,19 @@
             LIMIT 1) as totalBuffers
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
     </select>
 
     <!-- Buffer Hit 비율 조회 -->
     <select id="selectBufferHitRatio" resultType="map">
         -- memory_agg_1m 테이블에서 최근 Hit 비율 조회
         SELECT
-            ROUND(CAST(AVG(cache_hit_ratio) AS NUMERIC), 2) as value,
-            COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit), 0) as hitCount,
-            COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit + delta_heap_blks_read + delta_idx_blks_read), 0) as totalCount
+            ROUND(CAST(AVG(avg_hit_ratio) AS NUMERIC), 2) as value,
+            SUM(total_heap_blks_hit) as hitCount,
+            SUM(total_heap_blks_hit + total_heap_blks_read) as totalCount
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
     </select>
 
     <!-- Shared Buffer 사용량 조회 -->
@@ -310,20 +257,18 @@
             LIMIT 1) as totalBuffers
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
     </select>
 
     <!-- Eviction Rate 시계열 데이터 조회 -->
     <select id="selectEvictionRateTimeSeries" resultType="map">
-        -- 시간대별 eviction rate 계산 (현재는 0으로 반환, 추후 eviction 데이터 수집 시 구현)
+        -- 시간대별 eviction rate 계산
         SELECT
             TO_CHAR(collected_at, 'HH24:MI') as time_label,
-            0 as eviction_count
+            total_eviction_count as eviction_count
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
         ORDER BY collected_at
     </select>
 
@@ -358,14 +303,13 @@
         -- Eviction vs Fsync 비교
         SELECT
             TO_CHAR(m.collected_at, 'HH24:MI') as time_label,
-            0 as evictions,
-            COALESCE(b.total_backend_fsync, 0) as fsyncs
+            m.total_eviction_count as evictions,
+            b.total_backend_fsync as fsyncs
         FROM memory_agg_1m m
                  LEFT JOIN bgwriter_agg_1m b ON m.instance_id = b.instance_id
             AND DATE_TRUNC('hour', m.collected_at) = DATE_TRUNC('hour', b.collected_at)
         WHERE m.instance_id = #{instanceId}
           AND m.collected_at >= #{startTime} AND m.collected_at <![CDATA[ <= ]]> #{endTime}
-        GROUP BY TO_CHAR(m.collected_at, 'HH24:MI'), m.collected_at, b.total_backend_fsync
         ORDER BY m.collected_at
     </select>
 
@@ -375,8 +319,7 @@
             SELECT SUM(avg_buffers) as total
             FROM memory_agg_1m
             WHERE instance_id = #{instanceId}
-              AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+              AND collected_at >= NOW() - INTERVAL '5 minutes'
             )
         SELECT
             relname as object_name,
@@ -394,8 +337,7 @@
             ) as buffer_count
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
         ORDER BY avg_buffers DESC
             LIMIT #{limit}
     </select>
@@ -415,8 +357,7 @@
             0.0 as checkpointInterval
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          AND collected_at >= NOW() - INTERVAL '5 minutes'
     </select>
 
     <!-- Memory 리스트 데이터 조회 -->
@@ -441,16 +382,14 @@
         ORDER BY collected_at DESC LIMIT 1) as dirtyCount,
         ROUND(CAST(avg_dirty_ratio AS NUMERIC), 2) as dirtyPercent,
         ROUND(CAST(avg_pinned_buffers AS NUMERIC), 0) as pinnedBuffers,
-        ROUND(CAST(cache_hit_ratio AS NUMERIC), 2) as hitPercent,
-        COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit + delta_heap_blks_read + delta_idx_blks_read), 0) as accessCount,
-        0 as evictionCount,
-        0.0 as avgAccessTime,
+        ROUND(CAST(avg_hit_ratio AS NUMERIC), 2) as hitPercent,
+        total_access_count as accessCount,
+        total_eviction_count as evictionCount,
+        ROUND(CAST(avg_access_time_ms AS NUMERIC), 2) as avgAccessTime,
         status
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-        AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-        AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
-        GROUP BY memory_agg_id, relname, relkind, avg_buffers, avg_buffer_usage_pct, avg_dirty_ratio, avg_pinned_buffers, cache_hit_ratio, status
+        AND collected_at >= NOW() - INTERVAL '5 minutes'
         <if test="typeList != null and typeList.size() > 0">
             AND relkind IN
             <foreach collection="typeList" item="type" open="(" close=")" separator=",">
@@ -478,24 +417,15 @@
          ======================================== -->
 
     <!-- 위젯 3: Shared Buffer Hit Ratio Widget -->
+    <!-- disk_io_agg_1m 테이블의 buffer_hit_ratio 사용으로 변경 -->
     <select id="selectSharedBufferHitWidget" resultType="map">
         SELECT
-            -- 인스턴스 단위 버퍼 캐시 히트율: SUM(blks_hit) / (SUM(blks_hit) + SUM(blks_read)) * 100
-            CASE
-                WHEN COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit + delta_heap_blks_read + delta_idx_blks_read), 0) > 0
-                THEN COALESCE(ROUND(
-                    (SUM(delta_heap_blks_hit + delta_idx_blks_hit)::numeric * 100.0) / 
-                    NULLIF(SUM(delta_heap_blks_hit + delta_idx_blks_hit + delta_heap_blks_read + delta_idx_blks_read), 0)::numeric, 
-                    2
-                ), 0)
-                ELSE 0
-            END as cache_hit_ratio,
-            COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit), 0) as total_cache_hits,
-            COALESCE(SUM(delta_heap_blks_read + delta_idx_blks_read), 0) as total_physical_reads
-        FROM memory_agg_1m
+            COALESCE(ROUND(AVG(buffer_hit_ratio)::numeric, 2), 0) as cache_hit_ratio,
+            COALESCE(SUM(delta_blks_hit), 0) as total_cache_hits,
+            COALESCE(SUM(delta_blks_read), 0) as total_physical_reads
+        FROM disk_io_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-          AND relname IS NULL
           AND database_name IS NOT NULL
     </select>
 
@@ -507,35 +437,25 @@
             COALESCE(SUM(delta_temp_bytes), 0) as total_temp_bytes
         FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND collected_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '5 minutes'
-          AND collected_at <![CDATA[ <= ]]> (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
           AND database_name IS NOT NULL
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
     </select>
 
     <!-- ========================================
          1시간 차트 조회 (memory_agg_1m)
          ======================================== -->
 
-    <!-- 차트 2: Buffer Cache Hit Chart 1h -->
+    <!-- 차트 2: Buffer Cache Hit Ratio Chart 1h -->
+    <!-- disk_io_agg_1m 테이블의 buffer_hit_ratio 사용으로 변경 -->
     <select id="selectBufferCacheHitChart1h" resultType="map">
         SELECT
-            collected_at,
-            -- 인스턴스 단위 버퍼 캐시 히트율: SUM(blks_hit) / (SUM(blks_hit) + SUM(blks_read)) * 100
-            CASE
-                WHEN COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit + delta_heap_blks_read + delta_idx_blks_read), 0) > 0
-                THEN COALESCE(ROUND(
-                    (SUM(delta_heap_blks_hit + delta_idx_blks_hit)::numeric * 100.0) / 
-                    NULLIF(SUM(delta_heap_blks_hit + delta_idx_blks_hit + delta_heap_blks_read + delta_idx_blks_read), 0)::numeric, 
-                    2
-                ), 0)
-                ELSE 0
-            END as cache_hit_ratio
-        FROM memory_agg_1m
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(ROUND(AVG(buffer_hit_ratio)::numeric, 2), 0) as cache_hit_ratio
+        FROM disk_io_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-          AND relname IS NULL
           AND database_name IS NOT NULL
-        GROUP BY collected_at
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
         ORDER BY collected_at
     </select>
 
@@ -543,123 +463,87 @@
          6시간 차트 조회 (memory_agg_5m)
          ======================================== -->
 
-    <!-- 차트 4: Temp File Chart 6h -->
+    <!-- 차트 4: Temp File Chart (최근 15분) -->
     <select id="selectTempFileChart6h" resultType="map">
         SELECT
-            time_bucket,
-            COALESCE(SUM(total_temp_files), 0) as total_temp_files,
-            COALESCE(SUM(total_temp_bytes), 0) as total_temp_bytes
-        FROM memory_agg_5m
+            collected_at,
+            COALESCE(SUM(delta_temp_files), 0) as total_temp_files,
+            COALESCE(SUM(delta_temp_bytes), 0) as total_temp_bytes
+        FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
           AND database_name IS NOT NULL
-        GROUP BY time_bucket
-        ORDER BY time_bucket
+        GROUP BY collected_at
+        ORDER BY collected_at
     </select>
 
-    <!-- 차트 5: I/O Wait Time Chart 6h -->
+    <!-- 차트 5: I/O Wait Time Chart (최근 15분) -->
     <select id="selectIoWaitTimeChart6h" resultType="map">
         SELECT
-            time_bucket,
-            COALESCE(SUM(total_blk_read_time), 0) as total_blk_read_time,
-            COALESCE(SUM(total_blk_write_time), 0) as total_blk_write_time
-        FROM memory_agg_5m
+            collected_at,
+            COALESCE(SUM(delta_blk_read_time), 0) as total_blk_read_time,
+            COALESCE(SUM(delta_blk_write_time), 0) as total_blk_write_time
+        FROM memory_agg_1m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
-        GROUP BY time_bucket
-        ORDER BY time_bucket
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        GROUP BY collected_at
+        ORDER BY collected_at
     </select>
 
     <!-- ========================================
          24시간 차트 조회 (memory_agg_30m)
          ======================================== -->
 
+    <!-- 차트 8: Top Tables by Buffer Chart 24h -->
+    <select id="selectTopTablesByBufferChart24h" resultType="map">
+        WITH buffer_usage AS (
+            SELECT
+                relname,
+                ROUND(AVG(avg_buffers)::numeric, 0) as avg_buffers,
+                ROUND(AVG(avg_buffer_usage_pct)::numeric, 2) as buffer_usage_percent
+            FROM memory_agg_5m
+            WHERE instance_id = #{instanceId}
+              AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
+              AND relname IS NOT NULL
+            GROUP BY relname
+        )
+        SELECT
+            relname,
+            avg_buffers,
+            buffer_usage_percent
+        FROM buffer_usage
+        ORDER BY avg_buffers DESC
+        LIMIT 10
+    </select>
+
     <!-- ========================================
          리스트 조회 (1개 섹션)
          ======================================== -->
 
-    <!-- memory_agg_1m 테이블 전체 레코드 수 확인 (디버깅용) -->
-    <select id="countMemoryAgg1mByInstance" resultType="java.lang.Long">
-        SELECT COUNT(*)
-        FROM memory_agg_1m
-        WHERE instance_id = #{instanceId}
-          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-    </select>
-
-    <!-- memory_agg_1m 테이블에서 relname IS NOT NULL인 레코드 수 확인 (디버깅용) -->
-    <select id="countMemoryAgg1mByInstanceWithRelname" resultType="java.lang.Long">
-        SELECT COUNT(*)
-        FROM memory_agg_1m
-        WHERE instance_id = #{instanceId}
-          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-          AND relname IS NOT NULL
-    </select>
-
     <!-- 섹션 1: 낮은 캐시 히트율 테이블 Top 20 -->
     <select id="selectLowCacheHitTop20" resultType="map">
+        <![CDATA[
         WITH cache_hit_aggregated AS (
-            -- 테이블/인덱스별 데이터 (relname IS NOT NULL)
             SELECT
+                ROW_NUMBER() OVER (ORDER BY cache_hit_ratio ASC) as rank_num,
                 relname,
-                relkind,
                 database_name,
                 ROUND(AVG(cache_hit_ratio)::numeric, 2) as cache_hit_ratio,
                 COALESCE(SUM(delta_heap_blks_read + delta_idx_blks_read), 0) as physical_reads,
                 COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit), 0) as cache_hits,
                 CASE
-                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 85 THEN '위험'
-                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 95 THEN '주의'
+                    WHEN AVG(cache_hit_ratio) < 85 THEN '위험'
+                    WHEN AVG(cache_hit_ratio) < 95 THEN '주의'
                     ELSE '정상'
                 END as status
             FROM memory_agg_1m
             WHERE instance_id = #{instanceId}
-              AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+              AND collected_at >= #{startTime} AND collected_at &lt;= #{endTime}
               AND relname IS NOT NULL
-            <if test="typeList != null and typeList.size() > 0">
-                AND relkind IN
-                <foreach collection="typeList" item="type" open="(" separator="," close=")">
-                    <choose>
-                        <when test="type == 'table'">
-                            'r'
-                        </when>
-                        <when test="type == 'index'">
-                            'i'
-                        </when>
-                    </choose>
-                </foreach>
-            </if>
-            GROUP BY relname, relkind, database_name
-            
-            UNION ALL
-            
-            -- 인스턴스 전체 통계 (relname IS NULL) - 테이블/인덱스별 데이터가 없을 때 표시
-            SELECT
-                '전체 인스턴스' as relname,
-                NULL as relkind,
-                COALESCE(MAX(database_name), '전체') as database_name,
-                ROUND(AVG(cache_hit_ratio)::numeric, 2) as cache_hit_ratio,
-                COALESCE(SUM(delta_heap_blks_read + delta_idx_blks_read), 0) as physical_reads,
-                COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit), 0) as cache_hits,
-                CASE
-                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 85 THEN '위험'
-                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 95 THEN '주의'
-                    ELSE '정상'
-                END as status
-            FROM memory_agg_1m
-            WHERE instance_id = #{instanceId}
-              AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-              AND relname IS NULL
-            GROUP BY instance_id
-            HAVING NOT EXISTS (
-                -- 테이블/인덱스별 데이터가 있는 경우 전체 통계는 제외
-                SELECT 1 FROM memory_agg_1m m2
-                WHERE m2.instance_id = memory_agg_1m.instance_id
-                  AND m2.collected_at >= #{startTime} AND m2.collected_at <![CDATA[ <= ]]> #{endTime}
-                  AND m2.relname IS NOT NULL
-            )
+            GROUP BY relname, database_name
         )
         SELECT
-            ROW_NUMBER() OVER (ORDER BY cache_hit_ratio ASC) as rank_num,
+            rank_num,
             relname,
             database_name,
             cache_hit_ratio,
@@ -675,15 +559,112 @@
                 </foreach>
             </if>
         </where>
+    ORDER BY cache_hit_ratio ASC
+    LIMIT 20
+    ]]>
+    </select>
+
+    <!-- 섹션 2: 낮은 캐시 히트율 테이블 (페이징) -->
+    <select id="selectLowCacheHitWithPaging" resultType="map">
+        WITH cache_hit_aggregated AS (
+            SELECT
+                NULL as relname,
+                database_name,
+                ROUND(AVG(cache_hit_ratio)::numeric, 2) as cache_hit_ratio,
+                COALESCE(SUM(delta_heap_blks_read + delta_idx_blks_read), 0) as physical_reads,
+                COALESCE(SUM(delta_heap_blks_hit + delta_idx_blks_hit), 0) as cache_hits,
+                CASE
+                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 85 THEN '위험'
+                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 95 THEN '주의'
+                    ELSE '정상'
+                END as status
+            FROM memory_agg_1m
+            WHERE instance_id = #{instanceId}
+              AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+              AND relname IS NULL
+              AND database_name IS NOT NULL
+            GROUP BY database_name
+        ),
+        ranked_data AS (
+            SELECT
+                ROW_NUMBER() OVER (ORDER BY cache_hit_ratio ASC) as rank_num,
+                relname,
+                database_name,
+                cache_hit_ratio,
+                physical_reads,
+                cache_hits,
+                status
+            FROM cache_hit_aggregated
+            WHERE 1=1
+            <if test="statusList != null and statusList.size() > 0">
+                AND status IN
+                <foreach collection="statusList" item="statusItem" open="(" separator="," close=")">
+                    #{statusItem}
+                </foreach>
+            </if>
+        )
+        SELECT
+            rank_num,
+            relname,
+            database_name,
+            cache_hit_ratio,
+            physical_reads,
+            cache_hits,
+            status
+        FROM ranked_data
         ORDER BY cache_hit_ratio ASC
-        LIMIT 20
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 섹션 2 총 개수 조회 -->
+    <select id="countLowCacheHitList" resultType="long">
+        WITH cache_hit_aggregated AS (
+            SELECT
+                NULL as relname,
+                database_name,
+                CASE
+                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 85 THEN '위험'
+                    WHEN AVG(cache_hit_ratio) <![CDATA[ < ]]> 95 THEN '주의'
+                    ELSE '정상'
+                END as status
+            FROM memory_agg_1m
+            WHERE instance_id = #{instanceId}
+              AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+              AND relname IS NULL
+              AND database_name IS NOT NULL
+            GROUP BY database_name
+        )
+        SELECT COUNT(*)
+        FROM cache_hit_aggregated
+        WHERE 1=1
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="statusItem" open="(" separator="," close=")">
+                #{statusItem}
+            </foreach>
+        </if>
     </select>
 
     <!-- ========================================
          LIMIT 지원 차트 쿼리
          ======================================== -->
 
-    <!-- 차트 4: Temp File Chart 6h (LIMIT) -->
+    <!-- 차트 2: Buffer Cache Hit Ratio Chart 1h (LIMIT) -->
+    <!-- disk_io_agg_1m 테이블의 buffer_hit_ratio 사용으로 변경 -->
+    <select id="selectBufferCacheHitChart1hWithLimit" resultType="map">
+        SELECT
+            TO_CHAR(collected_at, 'HH24:MI') as time_label,
+            COALESCE(ROUND(AVG(buffer_hit_ratio)::numeric, 2), 0) as cache_hit_ratio
+        FROM disk_io_agg_1m
+        WHERE instance_id = #{instanceId}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+          AND database_name IS NOT NULL
+        GROUP BY TO_CHAR(collected_at, 'HH24:MI'), collected_at
+        ORDER BY collected_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 차트 3: Temp File Chart 6h (LIMIT) -->
     <select id="selectTempFileChart6hWithLimit" resultType="map">
         SELECT
             time_bucket,

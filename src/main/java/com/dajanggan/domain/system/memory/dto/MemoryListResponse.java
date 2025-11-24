@@ -17,6 +17,9 @@ import java.util.List;
 public class MemoryListResponse {
     private List<LowCacheHitItem> lowCacheHitList;
     private Long totalCount;
+    private Integer page;
+    private Integer size;
+    private Integer totalPages;
 
     @Data
     @Builder
@@ -32,5 +35,4 @@ public class MemoryListResponse {
         private String status;
     }
 }
-
 

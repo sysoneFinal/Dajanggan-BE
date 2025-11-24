@@ -29,9 +29,10 @@ public class MemoryDashboardResponse {
     private TempFileChart6h tempFileChart6h;
     private IoWaitTimeChart6h ioWaitTimeChart6h;
     
-    // 24시간 차트 (2개)
+    // 24시간 차트 (3개)
     private OsMemoryTrendChart24h osMemoryTrend24h;
     private SwapUsageTrendChart24h swapTrend24h;
+    private TopTablesByBufferChart24h topTablesChart24h;
 
     // ========================================
     // Widget DTOs
@@ -154,6 +155,14 @@ public class MemoryDashboardResponse {
         private List<Long> swapInRate;
         private List<Long> swapOutRate;
     }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TopTablesByBufferChart24h {
+        private List<String> tableNames;
+        private List<Long> bufferCounts;
+        private List<Double> usagePercent;
+    }
 }
-
-

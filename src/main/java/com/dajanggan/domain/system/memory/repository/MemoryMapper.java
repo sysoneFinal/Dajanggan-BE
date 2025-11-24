@@ -22,9 +22,12 @@ public interface MemoryMapper {
     List<Long> selectActiveInstanceIds();
 
     /**
-     * 이전 Raw 데이터 조회 (relname + database_name별로 가장 최근)
+     * 이전 Raw 데이터 조회 (relname + database_name별로, 특정 시간 이전의 최신 데이터)
      */
-    List<MemoryRaw> selectPreviousRawByRelname(@Param("instanceId") Long instanceId);
+    List<MemoryRaw> selectPreviousRawByRelname(
+            @Param("instanceId") Long instanceId,
+            @Param("currentCollectedAt") OffsetDateTime currentCollectedAt
+    );
 
     /**
      * Memory Raw 데이터 삽입
@@ -51,11 +54,6 @@ public interface MemoryMapper {
      */
     void insertAgg5m(com.dajanggan.domain.system.memory.domain.MemoryAgg5m memoryAgg5m);
 
-    /**
-     * Memory Agg 30분 데이터 삽입
-     */
-    void insertAgg30m(com.dajanggan.domain.system.memory.domain.MemoryAgg30m memoryAgg30m);
-
     // ========================================
     // 대시보드 위젯 조회 (5개)
     // ========================================
@@ -80,7 +78,11 @@ public interface MemoryMapper {
     /**
      * Temp File Usage Widget
      */
-    Map<String, Object> selectTempFileUsageWidget(@Param("instanceId") Long instanceId);
+    Map<String, Object> selectTempFileUsageWidget(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
+    );
 
     // ========================================
     // 1시간 차트 조회 (memory_agg)
@@ -91,12 +93,22 @@ public interface MemoryMapper {
      */
 
     /**
-     * Buffer Cache Hit Chart 1h
+     * Buffer Cache Hit Ratio Chart 1h
      */
     List<Map<String, Object>> selectBufferCacheHitChart1h(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * Buffer Cache Hit Ratio Chart 1h (LIMIT)
+     */
+    List<Map<String, Object>> selectBufferCacheHitChart1hWithLimit(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("limit") Integer limit
     );
 
     // ========================================
@@ -153,32 +165,46 @@ public interface MemoryMapper {
      * Swap Usage Trend Chart 24h (OS Metric Agg - Service에서 처리)
      */
 
-    // ========================================
-    // 리스트 조회 (1개 섹션)
-    // ========================================
-
     /**
-     * memory_agg_1m 테이블 전체 레코드 수 확인 (디버깅용)
+     * Top Tables by Buffer Chart 24h
      */
-    Long countMemoryAgg1mByInstance(
+    List<Map<String, Object>> selectTopTablesByBufferChart24h(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
     );
 
-    /**
-     * memory_agg_1m 테이블에서 relname IS NOT NULL인 레코드 수 확인 (디버깅용)
-     */
-    Long countMemoryAgg1mByInstanceWithRelname(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
+    // ========================================
+    // 리스트 조회 (2개 섹션)
+    // ========================================
 
     /**
-     * 섹션 1: 낮은 캐시 히트율 테이블 Top 20
+     * 섹션 2: 낮은 캐시 히트율 테이블 Top 20
      */
     List<Map<String, Object>> selectLowCacheHitTop20(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList
+    );
+
+    /**
+     * 섹션 2: 낮은 캐시 히트율 테이블 (페이징)
+     */
+    List<Map<String, Object>> selectLowCacheHitWithPaging(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList,
+            @Param("typeList") List<String> typeList,
+            @Param("offset") Integer offset,
+            @Param("limit") Integer limit
+    );
+
+    /**
+     * 섹션 2 총 개수 조회
+     */
+    Long countLowCacheHitList(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime,
