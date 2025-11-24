@@ -31,9 +31,16 @@ public class AlarmMetricsCollector {
     private final DatabaseRepository databaseRepository;
     private final AesGcmService aesGcmService;
 
+    // ✅ 테스트 모드 플래그 추가
+    private volatile boolean testMode = false;
+
 
     @Scheduled(fixedDelay = 60000) // 1분마다
     public void collectMetrics() {
+        if (testMode) {
+            log.debug("⏸️ 테스트 모드: 스케줄러 건너뜀");
+            return;
+        }
         log.info("========== 알람 규칙 체크 시작 ==========");
 
         // 활성화된 데이터베이스 조회
@@ -80,14 +87,8 @@ public class AlarmMetricsCollector {
                 // MetricConfig에 정의된 모든 지표 체크
                 // Vacuum 관련 지표
                 checkMetricSafely(conn, instance, db, "autovacuum_worker_utilization");
-                checkMetricSafely(conn, instance, db, "blockers_per_hour");
                 checkMetricSafely(conn, instance, db, "transaction_age");
-                checkMetricSafely(conn, instance, db, "block_duration");
                 checkMetricSafely(conn, instance, db, "wraparound_progress");
-                checkMetricSafely(conn, instance, db, "total_table_bloat");
-                checkMetricSafely(conn, instance, db, "bloat_percent");
-                checkMetricSafely(conn, instance, db, "dead_tuples");
-                checkMetricSafely(conn, instance, db, "table_size");
                 
                 // 세션 관련 지표
                 checkMetricSafely(conn, instance, db, "long_running_queries");
@@ -116,6 +117,12 @@ public class AlarmMetricsCollector {
 
         log.info("========== 알람 규칙 체크 완료: 성공={}, 실패={} ==========",
                 checkedCount, failedCount);
+    }
+
+    // ✅ 테스트 모드 설정 메서드
+    public void setTestMode(boolean enabled) {
+        this.testMode = enabled;
+        log.info("🧪 테스트 모드: {}", enabled ? "활성화" : "비활성화");
     }
 
     /**

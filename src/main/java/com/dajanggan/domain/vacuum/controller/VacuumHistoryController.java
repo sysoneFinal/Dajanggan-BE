@@ -27,13 +27,22 @@ public class VacuumHistoryController {
     public ResponseEntity<List<VacuumHistoryDto.Response>> getHistory(
             @RequestParam(required = false) Long databaseId,  // databaseId 추가
             @RequestParam(required = false) Integer hours,
+            @RequestParam(required = false) Integer days,  // days 파라미터 추가
             @RequestParam(required = false) String status) {
 
-        log.info("GET /api/vacuum/history - databaseId: {}, hours: {}, status: {}",
-                databaseId, hours, status);
+        // days가 제공되면 hours로 변환 (days가 우선)
+        Integer finalHours = (days != null) ? days * 24 : hours;
+        
+        log.info("GET /api/vacuum/history - databaseId: {}, hours: {}, days: {}, finalHours: {}, status: {}",
+                databaseId, hours, days, finalHours, status);
 
-        VacuumHistoryDto.Request request = new VacuumHistoryDto.Request(databaseId, hours, status);
+        VacuumHistoryDto.Request request = new VacuumHistoryDto.Request(databaseId, finalHours, status);
         List<VacuumHistoryDto.Response> history = vacuumHistoryService.getVacuumHistory(request);
+        
+        log.info("History 조회 결과: {}건", history.size());
+        if (!history.isEmpty()) {
+            log.debug("첫 번째 History 항목: {}", history.get(0));
+        }
 
         return ResponseEntity.ok(history);
     }

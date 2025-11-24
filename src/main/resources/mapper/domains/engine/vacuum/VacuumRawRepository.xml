@@ -145,4 +145,25 @@
         ORDER BY table_name, collected_at DESC
     </select>
 
+    <!-- 특정 테이블의 마지막 vacuum 세션 duration 조회 -->
+    <select id="findLastVacuumDuration" resultType="java.lang.Integer">
+        SELECT 
+            COALESCE(
+                elapsed_seconds,
+                CASE 
+                    WHEN session_started_at IS NOT NULL AND collected_at IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (collected_at - session_started_at))::INT
+                    ELSE NULL
+                END
+            ) AS duration_seconds
+        FROM vacuum_raw_metrics
+        WHERE database_id = #{databaseId, jdbcType=BIGINT}
+          AND table_name = #{tableName, jdbcType=VARCHAR}
+          AND (session_phase IS NOT NULL AND session_phase != 'not_running'
+               OR elapsed_seconds IS NOT NULL
+               OR (session_started_at IS NOT NULL AND collected_at IS NOT NULL))
+        ORDER BY collected_at DESC
+        LIMIT 1
+    </select>
+
 </mapper>

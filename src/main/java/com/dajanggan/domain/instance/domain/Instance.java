@@ -21,11 +21,11 @@ public class Instance {
     private String secretRef;
     private String sslmode = "disable";
     private OffsetDateTime createdAt;
-    private OffsetDateTime updatedAt;
     private Boolean slackEnabled;
     private String slackChannel;
     private String slackMention;
     private String slackWebhookUrl;
+    private OffsetDateTime updatedAt;
     private String version;
 
 }

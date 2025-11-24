@@ -9,13 +9,6 @@ import java.util.List;
 
 @Mapper
 public interface VacuumHistoryMapper {
-
-    List<VacuumHistoryDto.Raw> getVacuumHistoryList(
-            @Param("databaseId") Long databaseId,
-            @Param("start") OffsetDateTime start,
-            @Param("end") OffsetDateTime end
-    );
-
     void insertVacuumHistory(@Param("history") VacuumHistoryDto.Entity history);
 
     List<VacuumHistoryDto.Entity> getVacuumHistoryFromTable(

@@ -1,5 +1,8 @@
 package com.dajanggan.domain.metric.collector;
 
+import com.dajanggan.domain.event.detector.VacuumEventDetector;
+import com.dajanggan.domain.event.dto.EventLog;
+import com.dajanggan.domain.event.service.EventService;
 import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.vacuum.dto.VacuumHistoryDto;
@@ -34,84 +37,80 @@ public class VacuumMetricsCollector {
     private final VacuumRawRepository vacuumRawRepository;
     private final VacuumHistoryMapper vacuumHistoryMapper;
     private final DataSourceFactory dataSourceFactory;
+    private final VacuumEventDetector vacuumEventDetector;
+    private final EventService eventService;
 
-
-    public void collect(Instance instance, Database database, String decryptedPassword, OffsetDateTime collectedAt) {
-        long startTime = System.currentTimeMillis();
-        log.debug("🧹 [VACUUM] 수집 시작 - DB: {}, Instance: {}:{}",
+    public void collect(Instance instance, Database database, OffsetDateTime collectedAt) {
+        log.info("🧹 [VACUUM] ===== 수집 시작 ===== ");
+        log.info("🧹 [VACUUM] DB: {}, Instance: {}:{}",
                 database.getDatabaseName(), instance.getHost(), instance.getPort());
 
         JdbcTemplate jdbc;
         try {
-            jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName(), decryptedPassword);
+            jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName());
+            log.info("🧹 [VACUUM] JdbcTemplate 생성 성공");
         } catch (Exception e) {
-            long totalTime = System.currentTimeMillis() - startTime;
-            log.error("❌ [VACUUM] {}:{}/{} - JdbcTemplate 생성 실패 ({}ms)",
-                    instance.getHost(), instance.getPort(), database.getDatabaseName(), totalTime);
+            log.error("🧹 [VACUUM] ❌ JdbcTemplate 생성 실패", e);
             throw e;
         }
 
-        collectInternal(jdbc, database, instance, collectedAt, startTime);
-    }
-
-    private void collectInternal(JdbcTemplate jdbc, Database database, Instance instance,
-                                 OffsetDateTime collectedAt, long startTime) {
+        List<VacuumRawMetricDto> vacuumMetrics;
         try {
-            // 쿼리 실행
-            long queryStartTime = System.currentTimeMillis();
-            List<VacuumRawMetricDto> vacuumMetrics = getVacuumMetrics(jdbc, database, instance, collectedAt);
-            long queryTime = System.currentTimeMillis() - queryStartTime;
+            log.info("🧹 [VACUUM] 쿼리 실행 중...");
+
+            vacuumMetrics = getVacuumMetrics(jdbc, database, instance, collectedAt);
+
+            log.info("🧹 [VACUUM] 쿼리 결과: {} 건", vacuumMetrics.size());
+
+            if (!vacuumMetrics.isEmpty()) {
+                VacuumRawMetricDto first = vacuumMetrics.get(0);
+                log.info("🧹 [VACUUM] 샘플 데이터: table={}, bloat_bytes={}, bloat_ratio={}",
+                        first.getTableName(), first.getBloatBytes(), first.getBloatRatio());
+            }
 
             if (vacuumMetrics.isEmpty()) {
-                long totalTime = System.currentTimeMillis() - startTime;
-                log.debug("🧹 [VACUUM] {}:{}/{} - 수집된 데이터 없음 ({}ms)",
-                        instance.getHost(), instance.getPort(), database.getDatabaseName(), totalTime);
+                log.warn("🧹 [VACUUM] 수집된 데이터 없음");
                 return;
             }
 
-            // 완료된 vacuum 세션 감지
-            long detectStartTime = System.currentTimeMillis();
+            // 완료된 vacuum 세션 감지 및 저장
             List<VacuumRawMetricDto> completedSessions = detectCompletedVacuumSessions(
                     database, instance, vacuumMetrics);
-            long detectTime = System.currentTimeMillis() - detectStartTime;
 
             if (!completedSessions.isEmpty()) {
-                log.debug("🧹 [VACUUM] 완료된 vacuum 세션 {} 건 감지 ({}ms)",
-                        completedSessions.size(), detectTime);
+                log.info("🧹 [VACUUM] 완료된 vacuum 세션 {} 건 감지", completedSessions.size());
                 vacuumMetrics.addAll(completedSessions);
             }
 
-            // 저장
-            long saveStartTime = System.currentTimeMillis();
             vacuumRawRepository.insertVacuumMetrics(vacuumMetrics);
-            long saveTime = System.currentTimeMillis() - saveStartTime;
-            long totalTime = System.currentTimeMillis() - startTime;
-
-            log.info("📊 [VACUUM] {}:{}/{} - {} 건 수집 완료 (총: {}ms | 조회: {}ms, 감지: {}ms, 저장: {}ms) [실행중: {}, 완료: {}]",
-                    instance.getHost(),
-                    instance.getPort(),
-                    database.getDatabaseName(),
+            log.info("🧹 [VACUUM] ✅ {} 건 저장 완료 (실행 중: {}, 완료: {})",
                     vacuumMetrics.size(),
-                    totalTime,
-                    queryTime,
-                    detectTime,
-                    saveTime,
                     vacuumMetrics.size() - completedSessions.size(),
                     completedSessions.size());
 
         } catch (Exception e) {
-            long totalTime = System.currentTimeMillis() - startTime;
-            log.error("❌ [VACUUM] {}:{}/{} - 수집 실패 ({}ms): {}",
-                    instance.getHost(),
-                    instance.getPort(),
-                    database.getDatabaseName(),
-                    totalTime,
-                    e.getMessage());
-            throw new RuntimeException("Vacuum 메트릭 수집 실패", e);
+            log.error("🧹 [VACUUM] ❌ 수집 실패: {}", e.getMessage(), e);
+            throw e;
         }
+
+        // 2. 전체 vacuum 대상으로 이벤트 감지
+        List<EventLog> events = vacuumEventDetector.detectEvents(
+                vacuumMetrics,
+                database.getDatabaseId(),
+                instance.getInstanceId(),
+                database.getDatabaseName(),
+                instance.getInstanceName()
+        );
+
+        // 3. 이벤트 저장
+        eventService.saveEvents(events);
+        log.info("🧹 [VACUUM] ✅ 이벤트 감지 및 저장 완료: {}건 (instance: {}, database: {})",
+                events.size(), instance.getInstanceName(), database.getDatabaseName());
     }
 
     // VacuumMetricsCollector.java - getVacuumMetrics 메서드의 SQL 수정
+// VacuumMetricsCollector.java - getVacuumMetrics 메서드의 SQL 수정
+
     private List<VacuumRawMetricDto> getVacuumMetrics(
             JdbcTemplate jdbc,
             Database database,
@@ -135,8 +134,20 @@ public class VacuumMetricsCollector {
         pv.index_vacuum_count,
         pv.num_dead_tuples,
         pv.pid AS vacuum_pid,
-        -- ✅ 실제 실행 시간: pg_stat_activity의 xact_start 기준
-        EXTRACT(EPOCH FROM (NOW() - act.xact_start)) AS elapsed_seconds,
+        -- ✅ 실제 실행 시간: pg_stat_activity의 xact_start 기준 (없으면 backend_start 사용)
+        COALESCE(
+            EXTRACT(EPOCH FROM (NOW() - act.xact_start)),
+            EXTRACT(EPOCH FROM (NOW() - act.backend_start))
+        ) AS elapsed_seconds,
+        -- ✅ vacuum 세션의 transaction_age (차단이 없어도 실행 중인 vacuum의 트랜잭션 경과 시간)
+        -- xact_start가 있으면 사용, 없으면 backend_start 사용 (autovacuum은 트랜잭션을 시작하지 않을 수 있음)
+        CASE 
+            WHEN act.xact_start IS NOT NULL 
+            THEN EXTRACT(EPOCH FROM (NOW() - act.xact_start))::BIGINT 
+            WHEN act.backend_start IS NOT NULL
+            THEN EXTRACT(EPOCH FROM (NOW() - act.backend_start))::BIGINT
+            ELSE NULL 
+        END AS vacuum_transaction_age,
         -- ✅ autovacuum 여부 판단
         CASE WHEN act.query LIKE 'autovacuum:%' THEN true ELSE false END AS is_autovacuum
     FROM pg_stat_progress_vacuum pv
@@ -195,29 +206,68 @@ index_bloat AS (
             jsonb_build_object(
                 'name', c.relname,
                 'bytes', pg_relation_size(i.indexrelid),
-                'ratio', 0.0
+                -- ✅ 테이블의 bloat ratio를 인덱스에도 적용
+                -- table_stats 필터 조건 때문에 일부 테이블이 누락될 수 있으므로
+                -- 직접 pg_stat_all_tables에서 조회하여 모든 테이블의 인덱스에 대해 계산
+                'ratio', COALESCE(
+                    (SELECT 
+                        CASE 
+                            WHEN st.n_live_tup + st.n_dead_tup > 0
+                            THEN (st.n_dead_tup::NUMERIC / NULLIF(st.n_live_tup + st.n_dead_tup, 0))
+                            ELSE 0.0
+                        END
+                     FROM pg_stat_all_tables st
+                     WHERE st.relid = i.indrelid
+                       AND st.schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                     LIMIT 1),
+                    0.0
+                )
             )
         ) AS index_bloat_info
     FROM pg_index i
     JOIN pg_class c ON i.indexrelid = c.oid
+    JOIN pg_class tc ON i.indrelid = tc.oid
+    JOIN pg_namespace ns ON tc.relnamespace = ns.oid
     WHERE c.relkind = 'i'
+      AND tc.relkind = 'r'
+      AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
     GROUP BY i.indrelid
 ),
 blocked_tables AS (
-    SELECT 
-        l.relation::regclass::text AS table_name,
-        l.pid AS blocker_pid,
-        l.mode AS lock_mode,
-        EXTRACT(EPOCH FROM (NOW() - act.xact_start))::INT AS blocked_seconds,
-        act.state AS query_state
-    FROM pg_locks l
-    JOIN pg_stat_activity act ON l.pid = act.pid
-    WHERE l.granted = false
-      AND l.relation IS NOT NULL
+    SELECT DISTINCT
+        waiting_l.relation::regclass::text AS table_name,
+        blocker_act.pid AS blocker_pid,
+        blocker_l.mode AS lock_mode,
+        CASE 
+            WHEN blocker_act.xact_start IS NOT NULL 
+            THEN EXTRACT(EPOCH FROM (NOW() - blocker_act.xact_start))::INT 
+            ELSE NULL 
+        END AS blocked_seconds,
+        CASE 
+            WHEN blocker_act.xact_start IS NOT NULL 
+            THEN EXTRACT(EPOCH FROM (NOW() - blocker_act.xact_start))::BIGINT 
+            ELSE NULL 
+        END AS transaction_age,
+        blocker_act.state AS query_state,
+        blocker_act.query AS blocker_query
+    FROM pg_locks waiting_l
+    JOIN pg_stat_activity waiting_act ON waiting_l.pid = waiting_act.pid
+    CROSS JOIN LATERAL (
+        SELECT unnest(pg_blocking_pids(waiting_l.pid)) AS blocker_pid
+        WHERE pg_blocking_pids(waiting_l.pid) IS NOT NULL
+          AND array_length(pg_blocking_pids(waiting_l.pid), 1) > 0
+    ) blockers
+    JOIN pg_stat_activity blocker_act ON blockers.blocker_pid = blocker_act.pid
+    LEFT JOIN pg_locks blocker_l ON blocker_act.pid = blocker_l.pid
+        AND blocker_l.relation = waiting_l.relation
+        AND blocker_l.granted = true
+    WHERE waiting_l.granted = false
+      AND waiting_l.relation IS NOT NULL
 ),
 autovacuum_settings AS (
+    -- ✅ 인스턴스 레벨 설정이므로 테이블별로 저장할 필요 없음
+    -- 단일 행으로 반환하여 모든 테이블에 동일한 값 적용
     SELECT 
-        c.oid::regclass::text AS table_name,
         COALESCE(
             (SELECT setting FROM pg_settings WHERE name = 'autovacuum_vacuum_cost_delay')::INT,
             20
@@ -226,8 +276,7 @@ autovacuum_settings AS (
             (SELECT setting FROM pg_settings WHERE name = 'autovacuum_max_workers')::INT,
             3
         ) AS max_workers
-    FROM pg_class c
-    WHERE c.relkind = 'r'
+    LIMIT 1
 ),
 wraparound_info AS (
     SELECT 
@@ -260,13 +309,16 @@ SELECT
     COALESCE(be.bloat_bytes, 0) AS bloat_bytes,
     COALESCE(be.bloat_ratio, 0.0) AS bloat_ratio,
     COALESCE(ib.index_bloat_info::TEXT, '[]') AS index_bloat_info,
-    avs.cost_delay_ms AS autovacuum_cost_delay_ms,
-    avs.max_workers,
+    (SELECT cost_delay_ms FROM autovacuum_settings) AS autovacuum_cost_delay_ms,
+    (SELECT max_workers FROM autovacuum_settings) AS max_workers,
     (SELECT COUNT(*) FROM pg_stat_progress_vacuum)::INT AS active_workers,
     bt.blocker_pid,
     bt.lock_mode AS blocker_lock_mode,
     bt.blocked_seconds,
+    -- ✅ 차단이 있으면 차단 세션의 transaction_age, 없으면 실행 중인 vacuum 세션의 transaction_age
+    COALESCE(bt.transaction_age, vp.vacuum_transaction_age) AS transaction_age,
     bt.query_state,
+    bt.blocker_query,
     CASE WHEN bt.blocker_pid IS NOT NULL THEN true ELSE false END AS is_blocked,
     wi.age_current_xid,
     wi.age_max_freeze,
@@ -279,7 +331,7 @@ FROM table_stats ts
 LEFT JOIN vacuum_progress vp ON ts.relid = vp.relid
 LEFT JOIN bloat_estimation be ON ts.relid = be.relid
 LEFT JOIN index_bloat ib ON ts.relid = ib.table_oid
-LEFT JOIN autovacuum_settings avs ON ts.schemaname || '.' || ts.relname = avs.table_name
+-- ✅ autovacuum_settings는 인스턴스 레벨이므로 JOIN 불필요 (서브쿼리로 직접 참조)
 LEFT JOIN blocked_tables bt ON ts.schemaname || '.' || ts.relname = bt.table_name
 LEFT JOIN wraparound_info wi ON ts.schemaname || '.' || ts.relname = wi.table_name
 ORDER BY ts.n_dead_tup DESC
@@ -382,6 +434,12 @@ LIMIT 1000
                 status = "주의";
             }
 
+            // 마지막 vacuum 세션의 duration 조회
+            Integer durationSeconds = vacuumRawRepository.findLastVacuumDuration(
+                    database.getDatabaseId(),
+                    current.getTableName()
+            );
+
             VacuumHistoryDto.Entity history = VacuumHistoryDto.Entity.builder()
                     .databaseId(database.getDatabaseId())
                     .instanceId(instance.getInstanceId())
@@ -389,7 +447,7 @@ LIMIT 1000
                     .schemaName(current.getSchemaName() != null ? current.getSchemaName() : "public")
                     .vacuumType(vacuumType)
                     .executedAt(executedAt)
-                    .durationSeconds(null)
+                    .durationSeconds(durationSeconds)
                     .deadTuplesBefore(current.getNDeadTup())
                     .bloatRatioBefore(current.getBloatRatio())
                     .status(status)
@@ -397,8 +455,8 @@ LIMIT 1000
 
             vacuumHistoryMapper.insertVacuumHistory(history);
 
-            log.debug("🧹 [VACUUM] vacuum_history INSERT: table={}, type={}",
-                    current.getTableName(), vacuumType);
+            log.debug("🧹 [VACUUM] vacuum_history INSERT: table={}, type={}, duration={}s",
+                    current.getTableName(), vacuumType, durationSeconds);
 
         } catch (Exception e) {
             log.error("🧹 [VACUUM] vacuum_history INSERT 실패: {}", e.getMessage());
@@ -504,6 +562,9 @@ LIMIT 1000
 
             // ✅ 실행 중인 세션 여부 확인
             boolean isRunning = sessionPhase != null && !"not_running".equals(sessionPhase);
+            
+            // ✅ elapsed_seconds는 모든 경우에 가져오기 (디버깅용)
+            Double elapsedSeconds = (Double) rs.getObject("elapsed_seconds");
 
             if (isRunning) {
                 // 실행 중이면 pg_stat_activity에서 판단한 autovacuum 여부 사용
@@ -513,7 +574,6 @@ LIMIT 1000
                 dto.setSessionStartedAt(collectedAt);
 
                 // ✅ 실제 경과 시간 (실행 중인 세션만)
-                Double elapsedSeconds = (Double) rs.getObject("elapsed_seconds");
                 dto.setElapsedSeconds(elapsedSeconds);
             } else {
                 // 실행 중이 아니면 마지막 vacuum 정보 기록
@@ -545,8 +605,21 @@ LIMIT 1000
             dto.setActiveWorkers((Integer) rs.getObject("active_workers"));
             dto.setBlockerPid((Integer) rs.getObject("blocker_pid"));
             dto.setBlockerLockMode(rs.getString("blocker_lock_mode"));
-            dto.setBlockedSeconds((Integer) rs.getObject("blocked_seconds"));
+            
+            // blocked_seconds와 transaction_age 디버깅
+            Integer blockedSeconds = (Integer) rs.getObject("blocked_seconds");
+            Long transactionAge = (Long) rs.getObject("transaction_age");
+            
+            // 디버깅: 모든 경우에 로그 출력 (sessionPhase와 elapsedSeconds는 이미 위에서 선언됨)
+            if (dto.getTableName() != null) {
+                log.debug("🔍 [VACUUM] table={}, session_phase={}, elapsed_seconds={}, transaction_age={}, blocked_seconds={}, blocker_pid={}", 
+                        dto.getTableName(), sessionPhase, elapsedSeconds, transactionAge, blockedSeconds, dto.getBlockerPid());
+            }
+            
+            dto.setBlockedSeconds(blockedSeconds);
+            dto.setTransactionAge(transactionAge);
             dto.setQueryState(rs.getString("query_state"));
+            dto.setBlockerQuery(rs.getString("blocker_query"));
             dto.setIsBlocked(rs.getBoolean("is_blocked"));
             dto.setAgeCurrentXid((Long) rs.getObject("age_current_xid"));
             dto.setAgeMaxFreeze((Long) rs.getObject("age_max_freeze"));

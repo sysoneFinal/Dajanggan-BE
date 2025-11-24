@@ -21,8 +21,6 @@ public class VacuumRiskController {
 
     private final VacuumRiskService vacuumRiskService;
 
-    /* ===================== Dashboard ===================== */
-
     @Tag(name = "Vacuum-Risk-dashboard", description = "현재 vacuum 세션 테이블을 조회합니다")
     @GetMapping("/dashboard")
     public ResponseEntity<VacuumRiskDto.Response> getDashboard(
@@ -33,9 +31,6 @@ public class VacuumRiskController {
         VacuumRiskDto.Response data = vacuumRiskService.getRiskData(databaseId, hours);
         return ResponseEntity.ok(data);
     }
-
-
-    /* ===================== Blockers Per Hour ===================== */
 
     @Tag(name = "Vacuum-Risk-blockers-per-hour", description = "시간대별 Vacuum Blockers 수를 조회합니다")
     @GetMapping("/blockers-per-hour")
@@ -60,8 +55,6 @@ public class VacuumRiskController {
     }
 
 
-    /* ===================== Top Bloat ===================== */
-
     @Tag(name = "Vacuum-Risk-top-bloat", description = "시간 구간 내 상위 테이블 Bloat 데이터를 조회합니다")
     @GetMapping("/top-bloat")
     public ResponseEntity<List<VacuumRiskDto.TopBloatRaw>> getTopBloat(
@@ -82,9 +75,6 @@ public class VacuumRiskController {
                 vacuumRiskService.getTopBloatTables(databaseId, limit, startTime, endTime)
         );
     }
-
-
-    /* ===================== Blockers Detail ===================== */
 
     @Tag(name = "Vacuum-Risk-blockers", description = "Vacuum Blockers 상세 정보를 조회합니다")
     @GetMapping("/blockers")
@@ -107,8 +97,6 @@ public class VacuumRiskController {
     }
 
 
-    /* ===================== Wraparound Progress ===================== */
-
     @Tag(name = "Vacuum-Risk-wraparound", description = "Wraparound 위험도를 조회합니다")
     @GetMapping("/wraparound")
     public ResponseEntity<List<VacuumRiskDto.WraparoundProgressRaw>> getWraparound(
@@ -129,8 +117,6 @@ public class VacuumRiskController {
         );
     }
 
-
-    /* ===================== Scatter (Tx Age vs Block Duration) ===================== */
 
     @Tag(name = "Vacuum-Risk-tx-scatter", description = "Transaction Age / Block Duration 산포도를 조회합니다")
     @GetMapping("/tx-scatter")

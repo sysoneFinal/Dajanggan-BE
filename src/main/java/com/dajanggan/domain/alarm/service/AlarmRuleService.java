@@ -68,16 +68,18 @@ public class AlarmRuleService {
                 levels = objectMapper.readValue(rule.getLevels(), AlarmRuleDto.Levels.class);
             } catch (Exception e) {
                 log.error("levels JSON 파싱 실패", e);
-                // 파싱 실패시 기본값
+                // 파싱 실패시 기본값 (히스테리시스 + 쿨다운 포함)
                 AlarmRuleDto.ThresholdLevel defaultLevel = new AlarmRuleDto.ThresholdLevel(
-                        BigDecimal.valueOf(100000), 1, 2, 15
+                        BigDecimal.valueOf(100000), 1, 2, 15,
+                        BigDecimal.valueOf(80000), 2, 60  // resolveThreshold, resolveDurationMin, cooldownMin
                 );
                 levels = new AlarmRuleDto.Levels(defaultLevel, defaultLevel, defaultLevel);
             }
         } else {
-            // levels가 null인 경우 기본값
+            // levels가 null인 경우 기본값 (히스테리시스 + 쿨다운 포함)
             AlarmRuleDto.ThresholdLevel defaultLevel = new AlarmRuleDto.ThresholdLevel(
-                    BigDecimal.valueOf(100000), 1, 2, 15
+                    BigDecimal.valueOf(100000), 1, 2, 15,
+                    BigDecimal.valueOf(80000), 2, 60  // resolveThreshold, resolveDurationMin, cooldownMin
             );
             levels = new AlarmRuleDto.Levels(defaultLevel, defaultLevel, defaultLevel);
         }
@@ -131,10 +133,15 @@ public class AlarmRuleService {
         }
 
         // 기본값 설정 (levels가 null인 경우)
+        // 히스테리시스: resolveThreshold는 발생 임계치의 80%, resolveDurationMin은 발생 지속 시간의 1.5배
+        // 쿨다운: critical은 15분, warning은 30분, notice는 60분
         if (levelsJson == null) {
-            levelsJson = "{\"notice\":{\"threshold\":100000,\"minDurationMin\":1,\"occurCount\":2,\"windowMin\":15},"
-                    + "\"warning\":{\"threshold\":500000,\"minDurationMin\":5,\"occurCount\":2,\"windowMin\":15},"
-                    + "\"critical\":{\"threshold\":1000000,\"minDurationMin\":10,\"occurCount\":1,\"windowMin\":10}}";
+            levelsJson = "{\"info\":{\"threshold\":100000,\"minDurationMin\":1,\"occurCount\":2,\"windowMin\":15,"
+                    + "\"resolveThreshold\":80000,\"resolveDurationMin\":2,\"cooldownMin\":60},"
+                    + "\"warn\":{\"threshold\":500000,\"minDurationMin\":5,\"occurCount\":2,\"windowMin\":15,"
+                    + "\"resolveThreshold\":400000,\"resolveDurationMin\":8,\"cooldownMin\":30},"
+                    + "\"critical\":{\"threshold\":1000000,\"minDurationMin\":10,\"occurCount\":1,\"windowMin\":10,"
+                    + "\"resolveThreshold\":800000,\"resolveDurationMin\":15,\"cooldownMin\":15}}";
         }
 
         AlarmRule rule = AlarmRule.builder()

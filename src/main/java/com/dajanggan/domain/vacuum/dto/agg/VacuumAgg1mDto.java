@@ -7,9 +7,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
 
-/**
- * Vacuum 1분 집계 DTO
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -21,39 +18,39 @@ public class VacuumAgg1mDto {
     private OffsetDateTime collectedAt;
 
     // Vacuum 세션 통계
-    private Integer totalVacuumSessions;      // 총 vacuum 세션 수
-    private Integer activeVacuumSessions;     // 활성 vacuum 세션 수
-    private Integer autovacuumSessions;       // autovacuum 세션 수
-    private Integer manualVacuumSessions;     // 수동 vacuum 세션 수
+    private Integer totalVacuumSessions;
+    private Integer activeVacuumSessions;
+    private Integer autovacuumSessions;
+    private Integer manualVacuumSessions;
 
     // Dead Tuple 통계
-    private Long avgDeadTuples;               // 평균 dead tuple 수
-    private Long maxDeadTuples;               // 최대 dead tuple 수
-    private Long totalDeadTuples;             // 총 dead tuple 수
-    private Long deadTupleIncreaseRate;     // 분당 증가량
-    private Long deadTupleDecreaseRate;     // 분당 처리량 (vacuum)
-    private Long netDeadTupleChange;        // 순 변화량
+    private Long avgDeadTuples;
+    private Long maxDeadTuples;
+    private Long totalDeadTuples;
+    private Long deadTupleIncreaseRate;
+    private Long deadTupleDecreaseRate;
+    private Long netDeadTupleChange;
 
 
     // 진행률 통계
-    private Double avgProgress;               // 평균 진행률 (%)
+    private Double avgProgress;
 
     // 테이블 통계
-    private Integer tablesWithDeadTuples;     // dead tuple이 있는 테이블 수
-    private Integer tablesBeingVacuumed;      // vacuum 중인 테이블 수
+    private Integer tablesWithDeadTuples;
+    private Integer tablesBeingVacuumed;
 
     // 시간 통계
-    private Double avgElapsedSeconds;         // 평균 경과 시간
-    private Double maxElapsedSeconds;         // 최대 경과 시간
+    private Double avgElapsedSeconds;
+    private Double maxElapsedSeconds;
 
     // 대기 시간 정보 (추가됨!)
-    private Double avgBlockedSeconds;        // 평균 블로킹 대기 시간
-    private Double avgCostDelayMs;           // 평균 cost delay (밀리초)
+    private Double avgBlockedSeconds;
+    private Double avgCostDelayMs;
 
 
     // Worker 통계
-    private Double workerUtilizationPct;    // Worker 활용률
-    private Integer maxWorkersConfigured;   // 설정된 최대 Worker 수
+    private Double workerUtilizationPct;
+    private Integer maxWorkersConfigured;
 
 
     //Bloat 통계
@@ -64,6 +61,9 @@ public class VacuumAgg1mDto {
     private Double maxBloatRatio;
     private Integer criticalBloatTables;
     private Long totalTableSizeBytes;
+
+    // Index Bloat 통계
+    private Long totalIndexBloatBytes;
 
     private Integer blockedVacuumCount;
     private Integer maxBlockedSeconds;
