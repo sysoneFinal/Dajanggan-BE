@@ -87,10 +87,20 @@ public class OsMetricSseService {
         }
 
         try {
-            // Redis에서 실제 저장된 메트릭 타입 조회 (CPU, MEMORY, DISK)
-            RedisOsMetricData cpuData = redisService.getLatestMetric(instanceId, "CPU");
-            RedisOsMetricData memoryData = redisService.getLatestMetric(instanceId, "MEMORY");
-            RedisOsMetricData diskData = redisService.getLatestMetric(instanceId, "DISK");
+            // Redis에서 배치로 최신 메트릭 데이터 조회 (최적화: 3번 조회 → 1번 조회)
+            Map<String, RedisOsMetricData> metricsMap = redisService.getLatestMetricsBatch(instanceId);
+            
+            RedisOsMetricData cpuData = metricsMap.get("CPU");
+            RedisOsMetricData memoryData = metricsMap.get("MEMORY");
+            RedisOsMetricData diskData = metricsMap.get("DISK");
+            
+            // 디버깅: Redis에서 가져온 데이터 확인
+            if (diskData != null) {
+                log.debug("Redis Disk 데이터 존재: instanceId={}, collectedAt={}, details={}", 
+                        instanceId, diskData.getCollectedAt(), diskData.getDetails());
+            } else {
+                log.debug("Redis Disk 데이터 없음: instanceId={}", instanceId);
+            }
 
             if (cpuData == null && memoryData == null && diskData == null) {
                 log.debug("전송할 메트릭 데이터 없음: instanceId={}", instanceId);
@@ -120,10 +130,11 @@ public class OsMetricSseService {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> loadAvgMap = (Map<String, Object>) loadAvgObj;
 
+                    // Redis에 저장된 형식: {"1m":0.01,"5m":0.1,"15m":0.07}
                     List<Double> loadAverage = List.of(
-                            toDouble(loadAvgMap.get("one")),
-                            toDouble(loadAvgMap.get("five")),
-                            toDouble(loadAvgMap.get("fifteen"))
+                            toDouble(loadAvgMap.get("1m")),    // 1분
+                            toDouble(loadAvgMap.get("5m")),    // 5분
+                            toDouble(loadAvgMap.get("15m"))    // 15분
                     );
                     response.setLoadAverage(loadAverage);
                 }
@@ -131,26 +142,180 @@ public class OsMetricSseService {
 
             // Memory 데이터 처리
             if (memoryData != null && memoryData.getDetails() != null) {
-                Object memUsage = memoryData.getDetails().get("usagePercent");
+                Map<String, Object> memoryDetails = memoryData.getDetails();
+                Object memUsage = memoryDetails.get("usagePercent");
                 if (memUsage != null) {
                     response.setMemory(toDouble(memUsage));
                 }
+                
+                // Memory 상세 정보 (total, used, available, cache) - GB 단위로 변환
+                Long memoryTotal = getLong(memoryDetails.get("total"));
+                Long memoryUsed = getLong(memoryDetails.get("used"));
+                Long memoryAvailable = getLong(memoryDetails.get("available"));
+                Long memoryCache = getLong(memoryDetails.get("cache"));
+                
+                if (memoryTotal != null && memoryTotal > 0) {
+                    // 바이트를 GB로 변환 (1024^3)
+                    double gbDivisor = 1024.0 * 1024.0 * 1024.0;
+                    response.setMemoryTotalGB(memoryTotal / gbDivisor);
+                    response.setMemoryUsedGB(memoryUsed != null ? memoryUsed / gbDivisor : 0.0);
+                    response.setMemoryAvailableGB(memoryAvailable != null ? memoryAvailable / gbDivisor : 0.0);
+                    response.setMemoryCacheGB(memoryCache != null ? memoryCache / gbDivisor : 0.0);
+                }
+                
+                // Swap 데이터 처리
+                Object swapObj = memoryDetails.get("swap");
+                
+                // 디버깅: Memory details 전체 구조 확인
+                log.info("Memory details 전체 구조: instanceId={}, memoryDetails={}", instanceId, memoryDetails);
+                log.info("Swap 객체 확인: instanceId={}, swapObj={}, swapObj type={}", 
+                        instanceId, swapObj, swapObj != null ? swapObj.getClass().getName() : "null");
+                
+                if (swapObj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> swapMap = (Map<String, Object>) swapObj;
+                    
+                    log.info("Swap Map 확인: instanceId={}, swapMap={}, swapMap keys={}", 
+                            instanceId, swapMap, swapMap.keySet());
+                    
+                    Long swapTotal = getLong(swapMap.get("total"));
+                    Long swapUsed = getLong(swapMap.get("used"));
+                    Long swapIn = getLong(swapMap.get("swapIn"));
+                    Long swapOut = getLong(swapMap.get("swapOut"));
+                    
+                    // swapIn, swapOut이 없으면 다른 키 이름으로 시도
+                    if (swapIn == null) {
+                        swapIn = getLong(swapMap.get("swapInPerSec"));
+                    }
+                    if (swapOut == null) {
+                        swapOut = getLong(swapMap.get("swapOutPerSec"));
+                    }
+                    if (swapIn == null) {
+                        swapIn = getLong(swapMap.get("in"));
+                    }
+                    if (swapOut == null) {
+                        swapOut = getLong(swapMap.get("out"));
+                    }
+                    
+                    log.info("Swap 데이터 추출: instanceId={}, swapTotal={}, swapUsed={}, swapIn={}, swapOut={}", 
+                            instanceId, swapTotal, swapUsed, swapIn, swapOut);
+                    
+                    if (swapTotal != null && swapTotal > 0) {
+                        // GB 단위로 변환
+                        response.setSwapTotalGB(swapTotal / (1024.0 * 1024.0 * 1024.0));
+                        response.setSwapUsedGB(swapUsed != null ? swapUsed / (1024.0 * 1024.0 * 1024.0) : 0.0);
+                        response.setSwapUsage((swapUsed != null ? swapUsed.doubleValue() : 0.0) / swapTotal * 100.0);
+                    } else {
+                        // Swap이 없거나 0인 경우에도 기본값 설정
+                        response.setSwapTotalGB(0.0);
+                        response.setSwapUsedGB(0.0);
+                        response.setSwapUsage(0.0);
+                    }
+                    
+                    if (swapIn != null) {
+                        response.setSwapInPerSec(swapIn);
+                    } else {
+                        response.setSwapInPerSec(0L);
+                    }
+                    if (swapOut != null) {
+                        response.setSwapOutPerSec(swapOut);
+                    } else {
+                        response.setSwapOutPerSec(0L);
+                    }
+                } else {
+                    // Swap 객체가 없는 경우 - memoryDetails에서 직접 확인
+                    log.warn("Swap 객체가 Map이 아님: instanceId={}, swapObj={}, swapObj type={}", 
+                            instanceId, swapObj, swapObj != null ? swapObj.getClass().getName() : "null");
+                    
+                    // memoryDetails에서 직접 swap 관련 필드 확인
+                    Long swapTotal = getLong(memoryDetails.get("swapTotal"));
+                    Long swapUsed = getLong(memoryDetails.get("swapUsed"));
+                    Long swapIn = getLong(memoryDetails.get("swapIn"));
+                    Long swapOut = getLong(memoryDetails.get("swapOut"));
+                    
+                    if (swapTotal == null) {
+                        swapTotal = getLong(memoryDetails.get("swap_total"));
+                    }
+                    if (swapUsed == null) {
+                        swapUsed = getLong(memoryDetails.get("swap_used"));
+                    }
+                    if (swapIn == null) {
+                        swapIn = getLong(memoryDetails.get("swap_in"));
+                    }
+                    if (swapOut == null) {
+                        swapOut = getLong(memoryDetails.get("swap_out"));
+                    }
+                    
+                    log.info("Memory details에서 직접 Swap 데이터 추출: instanceId={}, swapTotal={}, swapUsed={}, swapIn={}, swapOut={}", 
+                            instanceId, swapTotal, swapUsed, swapIn, swapOut);
+                    
+                    if (swapTotal != null && swapTotal > 0) {
+                        response.setSwapTotalGB(swapTotal / (1024.0 * 1024.0 * 1024.0));
+                        response.setSwapUsedGB(swapUsed != null ? swapUsed / (1024.0 * 1024.0 * 1024.0) : 0.0);
+                        response.setSwapUsage((swapUsed != null ? swapUsed.doubleValue() : 0.0) / swapTotal * 100.0);
+                    } else {
+                        response.setSwapTotalGB(0.0);
+                        response.setSwapUsedGB(0.0);
+                        response.setSwapUsage(0.0);
+                    }
+                    
+                    if (swapIn != null) {
+                        response.setSwapInPerSec(swapIn);
+                    } else {
+                        response.setSwapInPerSec(0L);
+                    }
+                    if (swapOut != null) {
+                        response.setSwapOutPerSec(swapOut);
+                    } else {
+                        response.setSwapOutPerSec(0L);
+                    }
+                }
+                
+                // 디버깅: Memory 상세 정보 로깅
+                log.debug("Memory SSE 데이터: instanceId={}, usagePercent={}, totalGB={}, usedGB={}, availableGB={}, cacheGB={}, swapUsage={}", 
+                        instanceId, response.getMemory(), response.getMemoryTotalGB(), 
+                        response.getMemoryUsedGB(), response.getMemoryAvailableGB(), response.getMemoryCacheGB(), response.getSwapUsage());
             }
 
             // Disk 데이터 처리
             if (diskData != null && diskData.getDetails() != null) {
                 Map<String, Object> diskDetails = diskData.getDetails();
+                log.debug("Redis에서 가져온 Disk 데이터: instanceId={}, details={}", instanceId, diskDetails);
 
-                // Disk 사용률
+                // Disk 사용률 및 파일시스템 정보
                 Object filesystem = diskDetails.get("filesystem");
+                Map<String, Object> fsMap = null;
                 if (filesystem instanceof Map) {
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> fsMap = (Map<String, Object>) filesystem;
+                    Map<String, Object> tempFsMap = (Map<String, Object>) filesystem;
+                    fsMap = tempFsMap;
                     Object fsUsage = fsMap.get("usagePercent");
                     if (fsUsage != null) {
                         response.setDiskUsage(toDouble(fsUsage));
                     }
+                    
+                    // Disk 총량, 사용량, 사용 가능량 (바이트를 GB로 변환)
+                    Object total = fsMap.get("total");
+                    Object used = fsMap.get("used");
+                    Object available = fsMap.get("available");
+                    
+                    if (total != null) {
+                        // 바이트를 GB로 변환 (1024^3)
+                        response.setDiskTotalGB(toDouble(total) / (1024.0 * 1024.0 * 1024.0));
+                    }
+                    if (used != null) {
+                        response.setDiskUsedGB(toDouble(used) / (1024.0 * 1024.0 * 1024.0));
+                    }
+                    if (available != null) {
+                        response.setDiskAvailableGB(toDouble(available) / (1024.0 * 1024.0 * 1024.0));
+                    }
                 }
+                
+                // 디버깅: Disk 상세 정보 로깅 (INFO 레벨로 변경하여 디스크 사용률 고정 문제 확인)
+                log.info("Disk SSE 데이터 전송: instanceId={}, usagePercent={}, totalGB={}, usedGB={}, availableGB={}, readMBps={}, writeMBps={}, filesystem={}", 
+                        instanceId, response.getDiskUsage(), response.getDiskTotalGB(), 
+                        response.getDiskUsedGB(), response.getDiskAvailableGB(), 
+                        response.getDiskRead(), response.getDiskWrite(), fsMap);
 
                 // Disk Read/Write 속도
                 Object readSpeed = diskDetails.get("readSpeedMBps");
@@ -173,8 +338,8 @@ public class OsMetricSseService {
                             .name("metrics")
                             .data(response));
 
-                    log.debug("SSE 데이터 전송 성공: instanceId={}, cpu={}, memory={}, loadAverage={}",
-                            instanceId, response.getCpu(), response.getMemory(), response.getLoadAverage());
+                    log.debug("SSE 데이터 전송 성공: instanceId={}, cpu={}, memory={}, swapUsage={}, loadAverage={}",
+                            instanceId, response.getCpu(), response.getMemory(), response.getSwapUsage(), response.getLoadAverage());
 
                 } catch (IOException e) {
                     log.warn("SSE 데이터 전송 실패, Emitter 제거 예정: instanceId={}", instanceId);
@@ -208,6 +373,26 @@ public class OsMetricSseService {
             }
         }
         return 0.0;
+    }
+
+    /**
+     * Object를 Long으로 변환
+     */
+    private Long getLong(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof Number) {
+            return ((Number) obj).longValue();
+        }
+        if (obj instanceof String) {
+            try {
+                return Long.parseLong((String) obj);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     /**

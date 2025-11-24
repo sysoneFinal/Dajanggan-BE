@@ -114,8 +114,13 @@ public class MemorySseService {
 
     /**
      * 5초마다 실시간 Memory 메트릭 전송
+     * 
+     * 주의: 현재 프론트엔드에서 이 엔드포인트를 사용하지 않으므로 스케줄러 비활성화
+     * 프론트엔드는 /osmetric/stream/{instanceId} 통합 SSE를 사용 중
+     * 
+     * @deprecated 프론트엔드에서 사용하지 않음. 필요시 주석 해제하여 활성화 가능
      */
-    @Scheduled(fixedRate = 5000)
+    // @Scheduled(fixedRate = 5000)
     public void sendRealtimeMetrics() {
         if (emitters.isEmpty()) {
             return;
@@ -174,14 +179,12 @@ public class MemorySseService {
         MemoryDashboardResponse.OsMemoryUsageWidget osMemoryUsage = memoryService.getOsMemoryUsageWidget(instanceId);
         MemoryDashboardResponse.SwapUsageWidget swapUsage = memoryService.getSwapUsageWidget(instanceId);
         MemoryDashboardResponse.SharedBufferHitWidget sharedBufferHit = memoryService.getSharedBufferHitWidget(instanceId);
-        MemoryDashboardResponse.BufferUsageWidget bufferUsage = memoryService.getBufferUsageWidget(instanceId);
         MemoryDashboardResponse.TempFileUsageWidget tempFileUsage = memoryService.getTempFileUsageWidget(instanceId);
 
         return RealtimeMemoryMetrics.builder()
                 .osMemoryUsage(osMemoryUsage)
                 .swapUsage(swapUsage)
                 .sharedBufferHit(sharedBufferHit)
-                .bufferUsage(bufferUsage)
                 .tempFileUsage(tempFileUsage)
                 .build();
     }

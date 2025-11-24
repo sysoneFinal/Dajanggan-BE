@@ -1,17 +1,23 @@
 package com.dajanggan.domain.system.memory.service;
 
+import com.dajanggan.domain.instance.domain.Instance;
+import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
 import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
 import com.dajanggan.domain.osmetric.service.OsMetricRedisService;
 import com.dajanggan.domain.system.memory.dto.*;
 import com.dajanggan.domain.system.memory.repository.MemoryMapper;
+import com.dajanggan.infrastructure.datasource.DataSourceFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Comparator;
@@ -35,6 +41,8 @@ public class MemoryService {
     private final MemoryMapper memoryMapper;
     private final OsMetricMapper osMetricMapper;
     private final OsMetricRedisService osMetricRedisService;
+    private final InstanceRepository instanceRepository;
+    private final DataSourceFactory dataSourceFactory;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -61,39 +69,36 @@ public class MemoryService {
                     CompletableFuture.supplyAsync(() -> getSwapUsageWidget(instanceId));
             CompletableFuture<MemoryDashboardResponse.SharedBufferHitWidget> sharedBufferHitFuture =
                     CompletableFuture.supplyAsync(() -> getSharedBufferHitWidget(instanceId));
-            CompletableFuture<MemoryDashboardResponse.BufferUsageWidget> bufferUsageFuture =
-                    CompletableFuture.supplyAsync(() -> getBufferUsageWidget(instanceId));
             CompletableFuture<MemoryDashboardResponse.TempFileUsageWidget> tempFileUsageFuture =
                     CompletableFuture.supplyAsync(() -> getTempFileUsageWidget(instanceId));
 
+            // OS Memory Usage Chart는 SSE로 실시간 데이터를 받아오므로 빈 데이터 반환
             CompletableFuture<MemoryDashboardResponse.OsMemoryUsageChart1h> osMemoryChart1hFuture =
-                    CompletableFuture.supplyAsync(() -> getOsMemoryUsageChart1h(instanceId));
+                    CompletableFuture.supplyAsync(() -> buildEmptyOsMemoryUsageChart1h());
             CompletableFuture<MemoryDashboardResponse.BufferCacheHitChart1h> bufferCacheChart1hFuture =
                     CompletableFuture.supplyAsync(() -> getBufferCacheHitChart1h(instanceId));
-            CompletableFuture<MemoryDashboardResponse.BufferUtilizationChart1h> bufferUtilChart1hFuture =
-                    CompletableFuture.supplyAsync(() -> getBufferUtilizationChart1h(instanceId));
 
             CompletableFuture<MemoryDashboardResponse.TempFileChart6h> tempFileChart6hFuture =
                     CompletableFuture.supplyAsync(() -> getTempFileChart6h(instanceId));
             CompletableFuture<MemoryDashboardResponse.IoWaitTimeChart6h> ioWaitTimeChart6hFuture =
                     CompletableFuture.supplyAsync(() -> getIoWaitTimeChart6h(instanceId));
 
+            // OS Memory Trend Chart는 SSE로 실시간 데이터를 받아오므로 빈 데이터 반환
             CompletableFuture<MemoryDashboardResponse.OsMemoryTrendChart24h> osMemoryTrend24hFuture =
-                    CompletableFuture.supplyAsync(() -> getOsMemoryTrendChart24h(instanceId));
+                    CompletableFuture.supplyAsync(() -> buildEmptyOsMemoryTrendChart24h());
+            // Swap Usage Trend Chart는 SSE로 실시간 데이터를 받아오므로 빈 데이터 반환
             CompletableFuture<MemoryDashboardResponse.SwapUsageTrendChart24h> swapTrend24hFuture =
-                    CompletableFuture.supplyAsync(() -> getSwapUsageTrendChart24h(instanceId));
-            CompletableFuture<MemoryDashboardResponse.BufferReuseScoreChart24h> bufferReuseChart24hFuture =
-                    CompletableFuture.supplyAsync(() -> getBufferReuseScoreChart24h(instanceId));
+                    CompletableFuture.supplyAsync(() -> buildEmptySwapUsageTrendChart24h());
             CompletableFuture<MemoryDashboardResponse.TopTablesByBufferChart24h> topTablesChart24hFuture =
                     CompletableFuture.supplyAsync(() -> getTopTablesByBufferChart24h(instanceId));
 
             // 모든 작업이 완료될 때까지 대기
             CompletableFuture.allOf(
                     osMemoryUsageFuture, swapUsageFuture, sharedBufferHitFuture,
-                    bufferUsageFuture, tempFileUsageFuture, osMemoryChart1hFuture,
-                    bufferCacheChart1hFuture, bufferUtilChart1hFuture, tempFileChart6hFuture,
+                    tempFileUsageFuture, osMemoryChart1hFuture,
+                    bufferCacheChart1hFuture, tempFileChart6hFuture,
                     ioWaitTimeChart6hFuture, osMemoryTrend24hFuture, swapTrend24hFuture,
-                    bufferReuseChart24hFuture, topTablesChart24hFuture
+                    topTablesChart24hFuture
             ).join();
 
             // 결과 조합
@@ -101,16 +106,13 @@ public class MemoryService {
                     .osMemoryUsage(osMemoryUsageFuture.join())
                     .swapUsage(swapUsageFuture.join())
                     .sharedBufferHit(sharedBufferHitFuture.join())
-                    .bufferUsage(bufferUsageFuture.join())
                     .tempFileUsage(tempFileUsageFuture.join())
                     .osMemoryChart1h(osMemoryChart1hFuture.join())
                     .bufferCacheChart1h(bufferCacheChart1hFuture.join())
-                    .bufferUtilChart1h(bufferUtilChart1hFuture.join())
                     .tempFileChart6h(tempFileChart6hFuture.join())
                     .ioWaitTimeChart6h(ioWaitTimeChart6hFuture.join())
                     .osMemoryTrend24h(osMemoryTrend24hFuture.join())
                     .swapTrend24h(swapTrend24hFuture.join())
-                    .bufferReuseChart24h(bufferReuseChart24hFuture.join())
                     .topTablesChart24h(topTablesChart24hFuture.join())
                     .build();
 
@@ -136,8 +138,10 @@ public class MemoryService {
     public MemoryDashboardResponse.OsMemoryUsageWidget getOsMemoryUsageWidget(Long instanceId) {
         try {
             // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-            LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
-            LocalDateTime startTime = endTime.minusMinutes(1);
+            // 시스템 시간대를 명시적으로 사용하여 UTC로 변환
+            ZonedDateTime nowZoned = ZonedDateTime.now(ZoneId.systemDefault());
+            OffsetDateTime endTime = nowZoned.plusMinutes(1).withZoneSameInstant(ZoneOffset.UTC).toOffsetDateTime();
+            OffsetDateTime startTime = endTime.minusMinutes(1);
 
             List<RedisOsMetricData> metrics = osMetricRedisService.getRecentMetricsByType(
                     instanceId, "MEMORY", startTime, endTime);
@@ -189,8 +193,10 @@ public class MemoryService {
     public MemoryDashboardResponse.SwapUsageWidget getSwapUsageWidget(Long instanceId) {
         try {
             // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-            LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
-            LocalDateTime startTime = endTime.minusMinutes(1);
+            // 시스템 시간대를 명시적으로 사용하여 UTC로 변환
+            ZonedDateTime nowZoned = ZonedDateTime.now(ZoneId.systemDefault());
+            OffsetDateTime endTime = nowZoned.plusMinutes(1).withZoneSameInstant(ZoneOffset.UTC).toOffsetDateTime();
+            OffsetDateTime startTime = endTime.minusMinutes(1);
 
             // MEMORY 타입에서 swap 정보 추출
             List<RedisOsMetricData> metrics = osMetricRedisService.getRecentMetricsByType(
@@ -248,18 +254,30 @@ public class MemoryService {
 
     /**
      * 위젯 3: Shared Buffer Hit Ratio (PostgreSQL)
+     * 최근 15분 데이터 사용
      */
     public MemoryDashboardResponse.SharedBufferHitWidget getSharedBufferHitWidget(Long instanceId) {
         try {
-            Map<String, Object> result = memoryMapper.selectSharedBufferHitWidget(instanceId);
+            // 최근 15분 데이터 조회
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
+            
+            log.debug("Shared Buffer Hit 위젯 조회: instanceId={}, startTime={}, endTime={}", 
+                    instanceId, startTime, endTime);
+            
+            Map<String, Object> result = memoryMapper.selectSharedBufferHitWidget(instanceId, startTime, endTime);
 
             if (result == null || result.isEmpty()) {
+                log.warn("Shared Buffer Hit 위젯 데이터 없음: instanceId={}", instanceId);
                 return buildEmptySharedBufferHitWidget();
             }
 
             double hitRatio = getDoubleValue(result, "cache_hit_ratio");
             long cacheHits = getLongValue(result, "total_cache_hits");
             long physicalReads = getLongValue(result, "total_physical_reads");
+
+            log.debug("Shared Buffer Hit 위젯 데이터: instanceId={}, hitRatio={}, cacheHits={}, physicalReads={}", 
+                    instanceId, hitRatio, cacheHits, physicalReads);
 
             // 상태 판정: >95% 정상, 85-95% 주의, <85% 위험
             String status = hitRatio > 95 ? "normal" : hitRatio > 85 ? "warning" : "danger";
@@ -272,52 +290,23 @@ public class MemoryService {
                     .build();
 
         } catch (Exception e) {
-            log.error("Shared Buffer Hit 위젯 조회 실패", e);
+            log.error("Shared Buffer Hit 위젯 조회 실패: instanceId={}", instanceId, e);
             return buildEmptySharedBufferHitWidget();
         }
     }
 
-    /**
-     * 위젯 4: Buffer Usage (PostgreSQL)
-     */
-    public MemoryDashboardResponse.BufferUsageWidget getBufferUsageWidget(Long instanceId) {
-        try {
-            Map<String, Object> result = memoryMapper.selectBufferUsageWidget(instanceId);
-
-            if (result == null || result.isEmpty()) {
-                return buildEmptyBufferUsageWidget();
-            }
-
-            double bufferUsagePercent = getDoubleValue(result, "buffer_usage_percent");
-            double dirtyRatio = getDoubleValue(result, "dirty_ratio");
-            double pinnedRatio = getDoubleValue(result, "pinned_ratio");
-            long usedBuffers = getLongValue(result, "used_buffers");
-            long totalBuffers = getLongValue(result, "total_buffers");
-
-            // 상태 판정: Dirty > 30% 주의, Dirty > 50% 위험
-            String status = dirtyRatio > 50 ? "danger" : dirtyRatio > 30 ? "warning" : "normal";
-
-            return MemoryDashboardResponse.BufferUsageWidget.builder()
-                    .bufferUsagePercent(bufferUsagePercent)
-                    .dirtyRatio(dirtyRatio)
-                    .pinnedRatio(pinnedRatio)
-                    .status(status)
-                    .usedBuffers(usedBuffers)
-                    .totalBuffers(totalBuffers)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Buffer Usage 위젯 조회 실패", e);
-            return buildEmptyBufferUsageWidget();
-        }
-    }
 
     /**
      * 위젯 5: Temp File Usage (PostgreSQL)
+     * 최근 15분 데이터 사용
      */
     public MemoryDashboardResponse.TempFileUsageWidget getTempFileUsageWidget(Long instanceId) {
         try {
-            Map<String, Object> result = memoryMapper.selectTempFileUsageWidget(instanceId);
+            // 최근 15분 데이터 조회
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
+            
+            Map<String, Object> result = memoryMapper.selectTempFileUsageWidget(instanceId, startTime, endTime);
 
             if (result == null || result.isEmpty()) {
                 return buildEmptyTempFileUsageWidget();
@@ -350,49 +339,18 @@ public class MemoryService {
     // ========================================
 
     /**
-     * 차트 1: OS Memory Usage (최근 10분)
-     * 1분 집계 데이터 사용
+     * 차트 1: OS Memory Usage (실시간 SSE)
+     * 
+     * 주의: 이 메서드는 더 이상 사용되지 않습니다.
+     * 프론트엔드에서 SSE로 실시간 데이터를 받아오므로 빈 데이터를 반환합니다.
+     * 
+     * @deprecated SSE로 대체됨 - buildEmptyOsMemoryUsageChart1h() 사용
      */
+    @Deprecated
     private MemoryDashboardResponse.OsMemoryUsageChart1h getOsMemoryUsageChart1h(Long instanceId) {
-        try {
-            // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusMinutes(10);
-
-            List<Map<String, Object>> metrics = osMetricMapper.selectAggregatedMetrics(
-                    instanceId, "MEMORY_USAGE", startTime, endTime);
-
-            if (metrics.isEmpty()) {
-                return buildEmptyOsMemoryUsageChart1h();
-            }
-
-            List<String> categories = metrics.stream()
-                    .map(m -> formatTime(m.get("collected_at")))
-                    .collect(Collectors.toList());
-
-            List<Double> usedGB = metrics.stream()
-                    .map(m -> getDoubleValue(m, "used") / (1024.0 * 1024.0 * 1024.0))
-                    .collect(Collectors.toList());
-
-            List<Double> cacheGB = metrics.stream()
-                    .map(m -> getDoubleValue(m, "cache") / (1024.0 * 1024.0 * 1024.0))
-                    .collect(Collectors.toList());
-
-            List<Double> bufferGB = metrics.stream()
-                    .map(m -> getDoubleValue(m, "buffer") / (1024.0 * 1024.0 * 1024.0))
-                    .collect(Collectors.toList());
-
-            return MemoryDashboardResponse.OsMemoryUsageChart1h.builder()
-                    .categories(categories)
-                    .usedGB(usedGB)
-                    .cacheGB(cacheGB)
-                    .bufferGB(bufferGB)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("OS Memory Usage Chart 1h 조회 실패", e);
-            return buildEmptyOsMemoryUsageChart1h();
-        }
+        // SSE로 실시간 데이터를 받아오므로 빈 데이터 반환
+        log.debug("OS Memory Usage Chart는 SSE로 실시간 데이터를 받아오므로 빈 데이터 반환: instanceId={}", instanceId);
+        return buildEmptyOsMemoryUsageChart1h();
     }
 
     /**
@@ -405,15 +363,22 @@ public class MemoryService {
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
             OffsetDateTime startTime = endTime.minusMinutes(15);
 
+            log.debug("Buffer Cache Hit Chart 1h 조회: instanceId={}, startTime={}, endTime={}", 
+                    instanceId, startTime, endTime);
+
             List<Map<String, Object>> results = memoryMapper.selectBufferCacheHitChart1h(
                     instanceId, startTime, endTime);
 
             if (results.isEmpty()) {
+                log.warn("Buffer Cache Hit Chart 1h 데이터 없음: instanceId={}, startTime={}, endTime={}, results.size={}", 
+                        instanceId, startTime, endTime, results.size());
                 return buildEmptyBufferCacheHitChart1h();
             }
 
-            // 시간순 정렬
-            results.sort(Comparator.comparing(r -> (String) r.get("time_label")));
+            log.debug("Buffer Cache Hit Chart 1h 데이터 조회 성공: instanceId={}, results.size={}", 
+                    instanceId, results.size());
+
+            // 쿼리에서 이미 시간순 정렬되므로 추가 정렬 불필요
 
             List<String> categories = results.stream()
                     .map(r -> formatTime(r.get("time_label")))
@@ -436,63 +401,20 @@ public class MemoryService {
         }
     }
 
-    /**
-     * 차트 3: Buffer Utilization (최근 15분)
-     * 1분 집계 데이터 사용
-     */
-    private MemoryDashboardResponse.BufferUtilizationChart1h getBufferUtilizationChart1h(Long instanceId) {
-        try {
-            // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusMinutes(15);
-
-            List<Map<String, Object>> results = memoryMapper.selectBufferUtilizationChart1h(
-                    instanceId, startTime, endTime);
-
-            if (results.isEmpty()) {
-                return buildEmptyBufferUtilizationChart1h();
-            }
-
-            // 시간순 정렬
-            results.sort(Comparator.comparing(r -> (String) r.get("time_label")));
-
-            List<String> categories = results.stream()
-                    .map(r -> formatTime(r.get("time_label")))
-                    .collect(Collectors.toList());
-
-            List<Long> dirtyBuffers = results.stream()
-                    .map(r -> getLongValue(r, "dirty_buffers"))
-                    .collect(Collectors.toList());
-
-            List<Long> pinnedBuffers = results.stream()
-                    .map(r -> getLongValue(r, "pinned_buffers"))
-                    .collect(Collectors.toList());
-
-            return MemoryDashboardResponse.BufferUtilizationChart1h.builder()
-                    .categories(categories)
-                    .dirtyBuffers(dirtyBuffers)
-                    .pinnedBuffers(pinnedBuffers)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Buffer Utilization Chart 1h 조회 실패", e);
-            return buildEmptyBufferUtilizationChart1h();
-        }
-    }
 
     // ========================================
     // 6시간 차트 (2개) - memory_agg_5m
     // ========================================
 
     /**
-     * 차트 4: Temp File Generation (6시간)
-     * 5분 집계 데이터 사용
+     * 차트 4: Temp File Generation (최근 15분)
+     * 1분 집계 데이터 사용
      */
     private MemoryDashboardResponse.TempFileChart6h getTempFileChart6h(Long instanceId) {
         try {
             // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(6);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
             List<Map<String, Object>> results = memoryMapper.selectTempFileChart6h(
                     instanceId, startTime, endTime);
@@ -501,11 +423,10 @@ public class MemoryService {
                 return buildEmptyTempFileChart6h();
             }
 
-            // 시간순 정렬
-            results.sort(Comparator.comparing(r -> (OffsetDateTime) r.get("time_bucket")));
+            // 쿼리에서 이미 시간순 정렬되므로 추가 정렬 불필요
 
             List<String> categories = results.stream()
-                    .map(r -> formatTime(r.get("time_bucket")))
+                    .map(r -> formatTime(r.get("collected_at")))
                     .collect(Collectors.toList());
 
             List<Long> tempFileCount = results.stream()
@@ -513,7 +434,7 @@ public class MemoryService {
                     .collect(Collectors.toList());
 
             List<Double> tempFileSizeMB = results.stream()
-                    .map(r -> getDoubleValue(r, "total_temp_bytes") / (1024.0 * 1024.0))
+                    .map(r -> getLongValue(r, "total_temp_bytes") / (1024.0 * 1024.0))
                     .collect(Collectors.toList());
 
             return MemoryDashboardResponse.TempFileChart6h.builder()
@@ -529,13 +450,13 @@ public class MemoryService {
     }
 
     /**
-     * 차트 5: I/O Wait Time (6시간)
-     * 5분 집계 데이터 사용
+     * 차트 5: I/O Wait Time (최근 15분)
+     * 1분 집계 데이터 사용
      */
     private MemoryDashboardResponse.IoWaitTimeChart6h getIoWaitTimeChart6h(Long instanceId) {
         try {
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(6);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
             List<Map<String, Object>> results = memoryMapper.selectIoWaitTimeChart6h(
                     instanceId, startTime, endTime);
@@ -545,10 +466,10 @@ public class MemoryService {
             }
 
             // 시간순 정렬
-            results.sort(Comparator.comparing(r -> (OffsetDateTime) r.get("time_bucket")));
+            results.sort(Comparator.comparing(r -> (OffsetDateTime) r.get("collected_at")));
 
             List<String> categories = results.stream()
-                    .map(r -> formatTime(r.get("time_bucket")))
+                    .map(r -> formatTime(r.get("collected_at")))
                     .collect(Collectors.toList());
 
             List<Double> readWaitMs = results.stream()
@@ -576,135 +497,39 @@ public class MemoryService {
     // ========================================
 
     /**
-     * 차트 6: OS Memory Trend (24시간)
-     * 30분 집계 데이터 사용
+     * 차트 6: OS Memory Trend (실시간 SSE)
+     * 
+     * 주의: 이 메서드는 더 이상 사용되지 않습니다.
+     * 프론트엔드에서 SSE로 실시간 데이터를 받아오므로 빈 데이터를 반환합니다.
+     * 
+     * @deprecated SSE로 대체됨 - buildEmptyOsMemoryTrendChart24h() 사용
      */
+    @Deprecated
     private MemoryDashboardResponse.OsMemoryTrendChart24h getOsMemoryTrendChart24h(Long instanceId) {
-        try {
-            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
-
-            List<Map<String, Object>> metrics = osMetricMapper.selectAggregatedMetrics(
-                    instanceId, "MEMORY", startTime, endTime);
-
-            if (metrics.isEmpty()) {
-                return buildEmptyOsMemoryTrendChart24h();
-            }
-
-            List<String> categories = metrics.stream()
-                    .map(m -> formatDateTime(m.get("collected_at")))
-                    .collect(Collectors.toList());
-
-            List<Double> usagePercent = metrics.stream()
-                    .map(m -> getDoubleValue(m, "usage_percent"))
-                    .collect(Collectors.toList());
-
-            return MemoryDashboardResponse.OsMemoryTrendChart24h.builder()
-                    .categories(categories)
-                    .usagePercent(usagePercent)
-                    .warningThreshold(80.0)
-                    .dangerThreshold(90.0)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("OS Memory Trend Chart 24h 조회 실패", e);
-            return buildEmptyOsMemoryTrendChart24h();
-        }
+        // SSE로 실시간 데이터를 받아오므로 빈 데이터 반환
+        log.debug("OS Memory Trend Chart는 SSE로 실시간 데이터를 받아오므로 빈 데이터 반환: instanceId={}", instanceId);
+        return buildEmptyOsMemoryTrendChart24h();
     }
 
     /**
      * 차트 7: Swap Usage Trend (24시간)
      * TODO: Agent에서 SWAP 데이터를 보내도록 수정 필요
      */
-    private MemoryDashboardResponse.SwapUsageTrendChart24h getSwapUsageTrendChart24h(Long instanceId) {
-        try {
-            // SWAP 데이터가 아직 수집되지 않으므로 빈 데이터 반환
-            log.debug("SWAP 데이터가 아직 구현되지 않음 - 빈 데이터 반환");
-            return buildEmptySwapUsageTrendChart24h();
-            
-            /* Agent에서 SWAP 데이터를 보내면 아래 코드 활성화
-            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
-
-            List<Map<String, Object>> metrics = osMetricMapper.selectAggregatedMetrics(
-                    instanceId, "SWAP", startTime, endTime);
-
-            if (metrics.isEmpty()) {
-                return buildEmptySwapUsageTrendChart24h();
-            }
-
-            List<String> categories = metrics.stream()
-                    .map(m -> formatDateTime(m.get("collected_at")))
-                    .collect(Collectors.toList());
-
-            List<Double> swapUsagePercent = metrics.stream()
-                    .map(m -> getDoubleValue(m, "usage_percent"))
-                    .collect(Collectors.toList());
-
-            List<Long> swapInRate = metrics.stream()
-                    .map(m -> getLongValue(m, "swap_in_rate"))
-                    .collect(Collectors.toList());
-
-            List<Long> swapOutRate = metrics.stream()
-                    .map(m -> getLongValue(m, "swap_out_rate"))
-                    .collect(Collectors.toList());
-
-            return MemoryDashboardResponse.SwapUsageTrendChart24h.builder()
-                    .categories(categories)
-                    .swapUsagePercent(swapUsagePercent)
-                    .swapInRate(swapInRate)
-                    .swapOutRate(swapOutRate)
-                    .build();
-            */
-
-        } catch (Exception e) {
-            log.error("Swap Usage Trend Chart 24h 조회 실패", e);
-            return buildEmptySwapUsageTrendChart24h();
-        }
-    }
-
     /**
-     * 차트 8: Buffer Reuse Score (24시간)
-     * 최근 200개 데이터 포인트로 제한
+     * Swap Usage Trend Chart (실시간 SSE)
+     * 
+     * 주의: 이 메서드는 더 이상 사용되지 않습니다.
+     * 프론트엔드에서 SSE로 실시간 데이터를 받아오므로 빈 데이터를 반환합니다.
+     * 
+     * @deprecated SSE로 대체됨 - buildEmptySwapUsageTrendChart24h() 사용
      */
-    private MemoryDashboardResponse.BufferReuseScoreChart24h getBufferReuseScoreChart24h(Long instanceId) {
-        try {
-            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
-
-            List<Map<String, Object>> results = memoryMapper.selectBufferReuseScoreChart24hWithLimit(
-                    instanceId, startTime, endTime, 200);
-
-            if (results.isEmpty()) {
-                return buildEmptyBufferReuseScoreChart24h();
-            }
-
-            // DESC로 조회했으므로 역순으로 정렬
-            Collections.reverse(results);
-
-            List<String> categories = results.stream()
-                    .map(r -> formatDateTime(r.get("time_bucket")))
-                    .collect(Collectors.toList());
-
-            List<Double> reuseScore = results.stream()
-                    .map(r -> getDoubleValue(r, "avg_buffer_reuse_score"))
-                    .collect(Collectors.toList());
-
-            List<Double> avgUsagecount = results.stream()
-                    .map(r -> getDoubleValue(r, "avg_usagecount"))
-                    .collect(Collectors.toList());
-
-            return MemoryDashboardResponse.BufferReuseScoreChart24h.builder()
-                    .categories(categories)
-                    .reuseScore(reuseScore)
-                    .avgUsagecount(avgUsagecount)
-                    .build();
-
-        } catch (Exception e) {
-            log.error("Buffer Reuse Score Chart 24h 조회 실패", e);
-            return buildEmptyBufferReuseScoreChart24h();
-        }
+    @Deprecated
+    private MemoryDashboardResponse.SwapUsageTrendChart24h getSwapUsageTrendChart24h(Long instanceId) {
+        // SSE로 실시간 데이터를 받아오므로 빈 데이터 반환
+        log.debug("Swap Usage Trend Chart는 SSE로 실시간 데이터를 받아오므로 빈 데이터 반환: instanceId={}", instanceId);
+        return buildEmptySwapUsageTrendChart24h();
     }
+
 
     /**
      * 차트 9: Top Tables by Buffer Usage (24시간)
@@ -750,31 +575,41 @@ public class MemoryService {
     // ========================================
 
     /**
-     * Memory 리스트 조회
+     * Memory 리스트 조회 (페이징 지원)
      */
-    public MemoryListResponse getMemoryList(Long instanceId, String timeRange, List<String> statusList) {
+    public MemoryListResponse getMemoryList(Long instanceId, String timeRange, List<String> statusList, Integer page, Integer size) {
         if (instanceId == null) {
             throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
         }
+
+        // 페이징 파라미터 설정 (기본값: page=0, size=20)
+        int pageNum = page != null ? page : 0;
+        int pageSize = size != null ? size : 20;
+        if (pageNum < 0) pageNum = 0;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 100) pageSize = 100; // 최대 100개로 제한
 
         OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
 
         try {
-            // 섹션 1: 높은 버퍼 사용 테이블 Top 20
-            List<MemoryListResponse.HighBufferUsageItem> highBufferUsageList =
-                    getHighBufferUsageList(instanceId, startTime, endTime, statusList);
-
-            // 섹션 2: 낮은 캐시 히트율 테이블 Top 20
+            // 섹션 2: 낮은 캐시 히트율 테이블 (페이징)
             List<MemoryListResponse.LowCacheHitItem> lowCacheHitList =
-                    getLowCacheHitList(instanceId, startTime, endTime, statusList);
+                    getLowCacheHitList(instanceId, startTime, endTime, statusList, pageNum, pageSize);
 
-            long totalCount = (long) highBufferUsageList.size() + lowCacheHitList.size();
+            // 총 개수 조회
+            long lowCacheHitTotal = countLowCacheHitList(instanceId, startTime, endTime, statusList);
+            long totalCount = lowCacheHitTotal;
+
+            // 총 페이지 수 계산
+            int totalPages = (int) Math.ceil((double) totalCount / pageSize);
 
             return MemoryListResponse.builder()
-                    .highBufferUsageList(highBufferUsageList)
                     .lowCacheHitList(lowCacheHitList)
                     .totalCount(totalCount)
+                    .page(pageNum)
+                    .size(pageSize)
+                    .totalPages(totalPages)
                     .build();
 
         } catch (Exception e) {
@@ -783,37 +618,16 @@ public class MemoryService {
         }
     }
 
-    /**
-     * 섹션 1: 높은 버퍼 사용 테이블 Top 20
-     */
-    private List<MemoryListResponse.HighBufferUsageItem> getHighBufferUsageList(
-            Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList) {
-
-        List<Map<String, Object>> results = memoryMapper.selectHighBufferUsageTop20(
-                instanceId, startTime, endTime, statusList);
-
-        return results.stream()
-                .map(r -> MemoryListResponse.HighBufferUsageItem.builder()
-                        .rankNum(getLongValue(r, "rank_num"))
-                        .tableName((String) r.get("relname"))
-                        .relkind((String) r.get("relkind"))
-                        .bufferCount(getLongValue(r, "avg_buffers"))
-                        .bufferUsagePercent(getDoubleValue(r, "buffer_usage_percent"))
-                        .dirtyRatio(getDoubleValue(r, "dirty_ratio"))
-                        .cacheHitRatio(getDoubleValue(r, "cache_hit_ratio"))
-                        .status((String) r.get("status"))
-                        .build())
-                .collect(Collectors.toList());
-    }
 
     /**
-     * 섹션 2: 낮은 캐시 히트율 테이블 Top 20
+     * 섹션 2: 낮은 캐시 히트율 테이블 (페이징)
      */
     private List<MemoryListResponse.LowCacheHitItem> getLowCacheHitList(
-            Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList) {
+            Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList, int page, int size) {
 
-        List<Map<String, Object>> results = memoryMapper.selectLowCacheHitTop20(
-                instanceId, startTime, endTime, statusList);
+        int offset = page * size;
+        List<Map<String, Object>> results = memoryMapper.selectLowCacheHitWithPaging(
+                instanceId, startTime, endTime, statusList, null, offset, size);
 
         return results.stream()
                 .map(r -> MemoryListResponse.LowCacheHitItem.builder()
@@ -826,6 +640,53 @@ public class MemoryService {
                         .status((String) r.get("status"))
                         .build())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 낮은 캐시 히트율 리스트만 조회 (페이징 없음, 전체 조회)
+     * 데이터베이스 레벨의 버퍼 캐시 히트율만 조회
+     */
+    public List<MemoryListResponse.LowCacheHitItem> getLowCacheHitListOnly(
+            Long instanceId, String timeRange, List<String> statusList, List<String> typeList) {
+        
+        if (instanceId == null) {
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
+
+        OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+        OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
+
+        try {
+            // 페이징 없이 전체 조회 (프론트엔드에서 클라이언트 사이드 페이징)
+            // typeList는 무시 (데이터베이스 레벨이므로)
+            List<Map<String, Object>> results = memoryMapper.selectLowCacheHitWithPaging(
+                    instanceId, startTime, endTime, statusList, null, 0, 10000);
+
+            return results.stream()
+                    .map(r -> MemoryListResponse.LowCacheHitItem.builder()
+                            .rankNum(getLongValue(r, "rank_num"))
+                            .tableName(null) // 데이터베이스 레벨이므로 null
+                            .databaseName((String) r.get("database_name"))
+                            .cacheHitRatio(getDoubleValue(r, "cache_hit_ratio"))
+                            .physicalReads(getLongValue(r, "physical_reads"))
+                            .cacheHits(getLongValue(r, "cache_hits"))
+                            .status((String) r.get("status"))
+                            .build())
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("낮은 캐시 히트율 리스트 조회 실패", e);
+            throw new RuntimeException("리스트 데이터 조회 중 오류 발생", e);
+        }
+    }
+
+
+    /**
+     * 섹션 2 총 개수 조회
+     */
+    private long countLowCacheHitList(
+            Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList) {
+        return memoryMapper.countLowCacheHitList(instanceId, startTime, endTime, statusList, null);
     }
 
     // ========================================
@@ -912,11 +773,6 @@ public class MemoryService {
                 .cacheHits(0L).physicalReads(0L).build();
     }
 
-    private MemoryDashboardResponse.BufferUsageWidget buildEmptyBufferUsageWidget() {
-        return MemoryDashboardResponse.BufferUsageWidget.builder()
-                .bufferUsagePercent(0.0).dirtyRatio(0.0).pinnedRatio(0.0)
-                .status("normal").usedBuffers(0L).totalBuffers(0L).build();
-    }
 
     private MemoryDashboardResponse.TempFileUsageWidget buildEmptyTempFileUsageWidget() {
         return MemoryDashboardResponse.TempFileUsageWidget.builder()
@@ -940,12 +796,6 @@ public class MemoryService {
                 .normalThreshold(95.0).build();
     }
 
-    private MemoryDashboardResponse.BufferUtilizationChart1h buildEmptyBufferUtilizationChart1h() {
-        return MemoryDashboardResponse.BufferUtilizationChart1h.builder()
-                .categories(new ArrayList<>())
-                .dirtyBuffers(new ArrayList<>())
-                .pinnedBuffers(new ArrayList<>()).build();
-    }
 
     private MemoryDashboardResponse.TempFileChart6h buildEmptyTempFileChart6h() {
         return MemoryDashboardResponse.TempFileChart6h.builder()
@@ -977,12 +827,6 @@ public class MemoryService {
                 .swapOutRate(new ArrayList<>()).build();
     }
 
-    private MemoryDashboardResponse.BufferReuseScoreChart24h buildEmptyBufferReuseScoreChart24h() {
-        return MemoryDashboardResponse.BufferReuseScoreChart24h.builder()
-                .categories(new ArrayList<>())
-                .reuseScore(new ArrayList<>())
-                .avgUsagecount(new ArrayList<>()).build();
-    }
 
     private MemoryDashboardResponse.TopTablesByBufferChart24h buildEmptyTopTablesByBufferChart24h() {
         return MemoryDashboardResponse.TopTablesByBufferChart24h.builder()

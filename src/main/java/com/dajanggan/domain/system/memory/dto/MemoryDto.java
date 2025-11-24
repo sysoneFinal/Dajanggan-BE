@@ -24,9 +24,8 @@ public class MemoryDto {
         private BufferUsageWidget bufferUsage;
         private TempFileUsageWidget tempFileUsage;
         
-        // 1시간 차트 (3개)
+        // 1시간 차트 (2개)
         private OsMemoryUsageChart1h osMemoryChart1h;
-        private BufferCacheHitChart1h bufferCacheChart1h;
         private BufferUtilizationChart1h bufferUtilChart1h;
         
         // 6시간 차트 (2개)
@@ -123,7 +122,7 @@ public class MemoryDto {
     }
 
     // ========================================
-    // 1시간 차트 (3개)
+    // 1시간 차트 (2개)
     // ========================================
 
     /**
@@ -141,21 +140,7 @@ public class MemoryDto {
     }
 
     /**
-     * 차트 2: Buffer Cache Hit Ratio (1시간)
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class BufferCacheHitChart1h {
-        private List<String> categories;    // 시간 라벨
-        private List<Double> hitRatio;      // 캐시 히트율 (%)
-        private Double warningThreshold;    // 주의 임계값 (85%)
-        private Double normalThreshold;     // 정상 임계값 (95%)
-    }
-
-    /**
-     * 차트 3: Buffer Utilization (1시간)
+     * 차트 2: Buffer Utilization (1시간)
      */
     @Data
     @Builder
@@ -286,31 +271,12 @@ public class MemoryDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ListResponse {
-        private List<HighBufferUsageItem> highBufferUsageList;     // 섹션 1
-        private List<LowCacheHitItem> lowCacheHitList;             // 섹션 2
+        private List<LowCacheHitItem> lowCacheHitList;             // 낮은 캐시 히트율 테이블
         private Long totalCount;
     }
 
     /**
-     * 섹션 1: 높은 버퍼 사용 테이블 Top 20
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class HighBufferUsageItem {
-        private Long rankNum;               // 순위
-        private String tableName;           // 테이블명
-        private String relkind;             // 객체 종류 (r=table, i=index)
-        private Long bufferCount;           // 버퍼 수
-        private Double bufferUsagePercent;  // 버퍼 사용률 (%)
-        private Double dirtyRatio;          // Dirty 비율 (%)
-        private Double cacheHitRatio;       // 캐시 히트율 (%)
-        private String status;              // 상태
-    }
-
-    /**
-     * 섹션 2: 낮은 캐시 히트율 테이블 Top 20
+     * 낮은 캐시 히트율 테이블 Top 20
      */
     @Data
     @Builder
