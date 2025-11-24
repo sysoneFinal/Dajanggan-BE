@@ -19,6 +19,10 @@ public class VacuumBloatDetailController {
 
     private final VacuumBloatDetailService vacuumBloatDetailService;
 
+    /**
+     * 전체 대시보드 데이터 조회
+     */
+
     @Tag(name = "Vacuum-bloat-detail-dashboard", description = "Bloat 추이, Dead Tuples 추이, Index Bloat 추이를 조회합니다")
     @GetMapping("/dashboard")
     public ResponseEntity<VacuumBloatDetailDto.Response> getDashboard(
@@ -35,6 +39,9 @@ public class VacuumBloatDetailController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * KPI 데이터만 조회
+     */
     @Tag(name = "Vacuum-bloat-detail-kpi", description = "Bloat, 테이블 크기, 낭비된 공간을 조회합니다")
     @GetMapping("/kpi")
     public ResponseEntity<VacuumBloatDetailDto.Kpi> getKpi(
@@ -51,6 +58,9 @@ public class VacuumBloatDetailController {
         return ResponseEntity.ok(kpi);
     }
 
+    /**
+     * 테이블 목록 조회
+     */
     @Tag(name = "Vacuum-bloat-detail-table", description = "인스턴스, 데이터베이스에 속한 테이블을 조회합니다")
     @GetMapping("/tables")
     public ResponseEntity<List<String>> getTableList(
