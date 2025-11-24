@@ -20,7 +20,9 @@ public interface DiskIoMapper {
     /**
      * 이전 Raw 데이터 조회 (backend_type별로 가장 최근 1개)
      */
-    List<DiskIoRaw> selectPreviousRawByBackendType(@Param("instanceId") Long instanceId);
+    List<DiskIoRaw> selectPreviousRawByBackendType(
+            @Param("instanceId") Long instanceId,
+            @Param("currentCollectedAt") OffsetDateTime currentCollectedAt);
 
     /**
      * Disk I/O Raw 데이터 삽입
@@ -46,11 +48,6 @@ public interface DiskIoMapper {
      * Disk I/O Agg 5분 데이터 삽입
      */
     void insertAgg5m(com.dajanggan.domain.system.disk.domain.DiskIoAgg5m diskIoAgg5m);
-
-    /**
-     * Disk I/O Agg 30분 데이터 삽입
-     */
-    void insertAgg30m(com.dajanggan.domain.system.disk.domain.DiskIoAgg30m diskIoAgg30m);
 
     /**
      * 디스크 사용률 조회
@@ -98,6 +95,24 @@ public interface DiskIoMapper {
      * 최근 통계 조회
      */
     Map<String, Object> selectRecentStats(@Param("instanceId") Long instanceId);
+
+    /**
+     * Backend Fsync 위젯 조회 (15분)
+     */
+    Map<String, Object> selectBackendFsyncWidget15m(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
+    );
+
+    /**
+     * Disk Latency 위젯 조회 (15분)
+     */
+    Map<String, Object> selectDiskLatencyWidget15m(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
+    );
 
     /**
      * Disk I/O 리스트 데이터 조회
@@ -150,92 +165,31 @@ public interface DiskIoMapper {
             @Param("endTime") OffsetDateTime endTime
     );
 
-    // ========================================
-    // 30분 집계 테이블 조회 (disk_io_agg_30m) - 24시간 차트용
-    // ========================================
-
     /**
-     * I/O Latency 시계열 데이터 조회 (30분 집계, 24시간)
+     * Checkpoint vs Backend Write 시계열 데이터 조회 (1분 집계, 15분)
      */
-    List<Map<String, Object>> selectIoLatency30mTimeSeries(
+    List<Map<String, Object>> selectCheckpointVsBackend1mTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
     );
 
     /**
-     * Throughput 시계열 데이터 조회 (30분 집계, 24시간)
+     * Backend Fsync Rate 시계열 데이터 조회 (1분 집계, 15분)
      */
-    List<Map<String, Object>> selectThroughput30mTimeSeries(
+    List<Map<String, Object>> selectBackendFsync1mTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
     );
 
     /**
-     * Process I/O 시계열 데이터 조회 (30분 집계, 24시간)
+     * Physical vs Cache Read 시계열 데이터 조회 (1분 집계, 15분)
      */
-    List<Map<String, Object>> selectProcessIO30mTimeSeries(
+    List<Map<String, Object>> selectPhysicalVsCache1mTimeSeries(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Checkpoint vs Backend Write 시계열 데이터 조회 (30분 집계, 24시간)
-     */
-    List<Map<String, Object>> selectCheckpointVsBackend30mTimeSeries(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Checkpoint vs Backend Write 시계열 데이터 조회 (30분 집계, 24시간, LIMIT)
-     */
-    List<Map<String, Object>> selectCheckpointVsBackend30mTimeSeriesWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
-    );
-
-    /**
-     * Backend Fsync Rate 시계열 데이터 조회 (30분 집계, 24시간)
-     */
-    List<Map<String, Object>> selectBackendFsync30mTimeSeries(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Backend Fsync Rate 시계열 데이터 조회 (30분 집계, 24시간, LIMIT)
-     */
-    List<Map<String, Object>> selectBackendFsync30mTimeSeriesWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
-    );
-
-    /**
-     * Physical vs Cache Read 시계열 데이터 조회 (30분 집계, 24시간)
-     */
-    List<Map<String, Object>> selectPhysicalVsCache30mTimeSeries(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Physical vs Cache Read 시계열 데이터 조회 (30분 집계, 24시간, LIMIT)
-     */
-    List<Map<String, Object>> selectPhysicalVsCache30mTimeSeriesWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
     );
 
     // ========================================
@@ -285,9 +239,53 @@ public interface DiskIoMapper {
     );
 
     /**
+     * 높은 Fsync 발생 시간대 (페이징)
+     */
+    List<Map<String, Object>> selectHighFsyncWithPaging(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList,
+            @Param("offset") Integer offset,
+            @Param("limit") Integer limit
+    );
+
+    /**
+     * 높은 Fsync 총 개수 조회
+     */
+    Long countHighFsyncList(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList
+    );
+
+    /**
      * 낮은 Cache Hit Ratio 시간대 Top 20
      */
     List<Map<String, Object>> selectLowCacheHitTop20(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList
+    );
+
+    /**
+     * 낮은 Cache Hit Ratio 시간대 (페이징)
+     */
+    List<Map<String, Object>> selectLowCacheHitWithPaging(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList,
+            @Param("offset") Integer offset,
+            @Param("limit") Integer limit
+    );
+
+    /**
+     * 낮은 Cache Hit Ratio 총 개수 조회
+     */
+    Long countLowCacheHitList(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime,

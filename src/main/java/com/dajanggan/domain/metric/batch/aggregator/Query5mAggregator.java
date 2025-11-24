@@ -28,8 +28,9 @@ import java.util.List;
 
 /**
  * 5분 단위 쿼리 집계 Batch Job
- * query_metrics_raw에서 직접 읽어서 5분 단위로 집계
- * Top 5 슬로우 쿼리 포함
+ * - query_metrics_raw에서 직접 읽어서 5분 단위로 집계
+ * - Top 5 슬로우 쿼리 포함
+ *
  * @author 이해든
  */
 @Slf4j
@@ -43,7 +44,7 @@ public class Query5mAggregator {
     private final PlatformTransactionManager batchTransactionManager;
 
     /**
-     * Job 정의 - queryAgg5mJob (이름 수정!)
+     * Job 정의
      */
     @Bean
     public Job queryAgg5mJob() {
@@ -152,13 +153,13 @@ public class Query5mAggregator {
 
     /**
      * Processor: 간단한 후처리
+     * null 값 처리 및 기본값 설정
      */
     @Bean
     public ItemProcessor<QueryAgg5mDto, QueryAgg5mDto> queryAgg5mProcessor() {
         return item -> {
             item.setCreatedAt(OffsetDateTime.now());
 
-            // null 값 처리
             if (item.getAvgExecutionTimeMs() == null) {
                 item.setAvgExecutionTimeMs(0.0);
             }
@@ -202,7 +203,6 @@ public class Query5mAggregator {
                 ));
             }
 
-            // 기본 집계
             dto.setTotalQueries(rs.getInt("total_queries"));
 
             Double avgExecTime = rs.getDouble("avg_execution_time_ms");
@@ -211,7 +211,6 @@ public class Query5mAggregator {
             dto.setSlowQueryCount(rs.getInt("slow_query_count"));
             dto.setTotalIoBlocks(rs.getLong("total_io_blocks"));
 
-            // Top 5 슬로우 쿼리
             dto.setTopSlowQuery1(rs.getString("top_slow_query_1"));
             Double time1 = rs.getDouble("top_slow_query_1_time");
             dto.setTopSlowQuery1Time(rs.wasNull() ? null : time1);

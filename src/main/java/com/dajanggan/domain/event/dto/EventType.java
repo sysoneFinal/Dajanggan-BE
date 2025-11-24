@@ -11,6 +11,10 @@ public enum EventType {
 
         // 쿼리
         SLOW_QUERY,
+        HIGH_CUMULATIVE_LOAD_QUERY,
+        SLOW_QUERY_SPIKE,
+        AVG_EXECUTION_SPIKE,
+        QPS_SPIKE,
 
         // vacuum
         Autovacuum_Worker_Utilization,

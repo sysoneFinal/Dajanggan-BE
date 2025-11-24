@@ -8,6 +8,11 @@ import lombok.NoArgsConstructor;
 /**
  * EXPLAIN ANALYZE 결과 DTO
  *
+ * 기능:
+ * - PostgreSQL EXPLAIN ANALYZE 실행 결과를 담는 데이터 객체
+ * - 실행 모드(ANALYZE/EXPLAIN), 실행 계획, 시간, 리소스 정보 포함
+ * - SELECT는 실제 실행, DML은 안전 모드로 실행
+ *
  * @author 이해든
  */
 @Data
@@ -16,33 +21,27 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ExplainAnalyzeResult {
 
-    /**
-     * 실행 모드
-     * - "실제 실행": EXPLAIN ANALYZE 수행 (SELECT 쿼리)
-     * - "안전 모드": EXPLAIN만 수행 (DML 쿼리)
-     */
+    // 실행 모드: "EXPLAIN ANALYZE", "EXPLAIN (추정치)", "시스템 통계 조회" 등
     private String executionMode;
 
-    /**
-     * EXPLAIN ANALYZE 결과 (전체 텍스트)
-     */
+    // EXPLAIN ANALYZE 결과 전체 텍스트
     private String explainPlan;
 
-    /**
-     * 실행 시간 (밀리초)
-     * EXPLAIN ANALYZE에서만 제공됨
-     */
+    // 실행 시간 (밀리초) - EXPLAIN ANALYZE에서만 제공
     private Double executionTimeMs;
 
-    /**
-     * 계획 시간 (밀리초)
-     * EXPLAIN ANALYZE에서만 제공됨
-     */
+    // 계획 시간 (밀리초) - EXPLAIN ANALYZE에서만 제공
     private Double planningTimeMs;
 
-    /**
-     * 반환된 행 수
-     * (향후 확장 가능)
-     */
+    // 반환된 행 수 (향후 확장용)
     private Integer rowsReturned;
+
+    // 메모리 사용량 (MB) - Buffers 정보에서 파싱
+    private Double memoryUsageMb;
+
+    // I/O 블록 수 (총합) - shared hit + read + written 합계
+    private Integer ioBlocks;
+
+    // CPU 사용률 (%) - 추정값 또는 시스템 제공값
+    private Double cpuUsagePercent;
 }

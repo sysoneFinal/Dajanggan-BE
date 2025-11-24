@@ -16,7 +16,7 @@ public class RealtimeMemoryMetrics {
     private MemoryDashboardResponse.OsMemoryUsageWidget osMemoryUsage;
     private MemoryDashboardResponse.SwapUsageWidget swapUsage;
     private MemoryDashboardResponse.SharedBufferHitWidget sharedBufferHit;
-    private MemoryDashboardResponse.BufferUsageWidget bufferUsage;
     private MemoryDashboardResponse.TempFileUsageWidget tempFileUsage;
 }
+
 

@@ -21,17 +21,18 @@ import java.util.List;
 @AllArgsConstructor
 public class QueryOverviewTrendDto {
 
+    /** 데이터베이스 식별 정보 */
     private Long instanceId;
     private Long databaseId;
 
-    // 시간대별 데이터
+    /** 시간대별 트렌드 데이터 */
     private List<TrendDataPoint> trendData;
 
-    // 통계 정보
-    private Integer totalDataPoints;       // 전체 데이터 포인트 수
-    private Double avgTps;                 // 평균 TPS
-    private Double avgQps;                 // 평균 QPS
-    private Double avgExecutionTimeMs;     // 평균 실행 시간
+    /** 통계 요약 정보 */
+    private Integer totalDataPoints;
+    private Double avgTps;
+    private Double avgQps;
+    private Double avgExecutionTimeMs;
 
     /**
      * 시간대별 데이터 포인트
@@ -41,11 +42,19 @@ public class QueryOverviewTrendDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TrendDataPoint {
-        private OffsetDateTime timestamp;      // 시각
-        private Integer tps;                   // TPS (해당 1분간 쿼리 / 60초)
-        private Integer qps;                   // QPS (해당 1분간 쿼리 / 60초)
-        private Double avgExecutionTimeMs;     // 평균 실행 시간
-        private Integer totalQueries;          // 전체 쿼리 수
-        private Integer slowQueryCount;        // 슬로우 쿼리 수
+
+        /** 데이터 수집 시각 */
+        private OffsetDateTime timestamp;
+
+        /** TPS/QPS 통계 */
+        private Integer tps;
+        private Integer qps;
+
+        /** 실행 시간 통계 */
+        private Double avgExecutionTimeMs;
+
+        /** 쿼리 개수 통계 */
+        private Integer totalQueries;
+        private Integer slowQueryCount;
     }
 }

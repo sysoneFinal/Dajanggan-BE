@@ -16,13 +16,22 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Checkpoint 메트릭 수집 스케줄러
- * 1분 집계: 매분 0초 실행
- * 5분 집계: 5분마다 실행 (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55분)
+ * Raw 데이터만 수집 (집계는 Batch Aggregator에서 수행)
+ * 
+ * 주의: 아래 메서드들은 현재 사용되지 않지만 향후 사용을 위해 보존:
+ * - calculateAggregation1m()
+ * - calculateAggregation5m()
+ * - determineCheckpointStatus()
+ * - calculateSafeDelta()
  */
 @Slf4j
 @Component
@@ -39,10 +48,11 @@ public class CheckpointCollectionScheduler {
     }
 
     /**
-     * 1분마다 실행 (매분 0초)
+     * 1분마다 실행 (매분 5초) - metric/batch 스타일에 맞춤
+     * 수집이 완료된 후 집계되도록 시간 조정
      * 1분 집계 데이터 수집
      */
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "5 * * * * *")
     public void collectCheckpoint1mMetrics() {
         log.info("========== Checkpoint 1분 집계 시작 ==========");
 
@@ -72,15 +82,20 @@ public class CheckpointCollectionScheduler {
     }
 
     /**
-     * 5분마다 실행 (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55분)
+     * 5분마다 실행 (매 5분의 10초) - metric/batch 스타일에 맞춤
+     * 0:10, 5:10, 10:10, 15:10, ... 형식으로 실행
      * 5분 집계 데이터 수집
      */
-    @Scheduled(cron = "0 */5 * * * *")
+    @Scheduled(cron = "10 */5 * * * *")
     public void collectCheckpoint5mMetrics() {
         log.info("========== Checkpoint 5분 집계 시작 ==========");
 
         try {
-            LocalDateTime collectedAt = LocalDateTime.now();
+            // 현재 시간을 시스템 시간대에서 가져온 후 UTC로 변환
+            // LocalDateTime.now()는 시간대 정보가 없으므로, ZonedDateTime을 사용
+            ZonedDateTime nowZoned = ZonedDateTime.now(ZoneId.systemDefault());
+            LocalDateTime collectedAt = nowZoned.toLocalDateTime();
+            log.debug("수집 시간 (로컬): {}", collectedAt);
             List<Long> instanceIds = checkpointMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
 
@@ -120,51 +135,17 @@ public class CheckpointCollectionScheduler {
         checkpointMapper.insertRaw(raw);
         log.debug("Raw 데이터 저장 완료: instanceId={}", instanceId);
 
-        // 첫 번째 수집 시에도 집계 데이터 생성 (previousRaw가 null이면 빈 집계 데이터 생성)
-        CheckpointAgg1m agg1m;
-        if (previousRaw != null) {
-            agg1m = calculateAggregation1m(instanceId, collectedAt, raw, previousRaw);
-        } else {
-            // 첫 번째 수집 시: 빈 집계 데이터 생성
-            agg1m = CheckpointAgg1m.builder()
-                    .instanceId(instanceId)
-                    .collectedAt(collectedAt)
-                    .avgCheckpointReqRatio(0.0)
-                    .avgWriteTime(0.0)
-                    .avgSyncTime(0.0)
-                    .avgTotalTime(0.0)
-                    .totalCheckpointsTimed(0L)
-                    .totalCheckpointsReq(0L)
-                    .totalWalBytes(BigDecimal.ZERO)
-                    .totalBuffersCheckpoint(0L)
-                    .status("정상")
-                    .build();
-            log.debug("첫 번째 수집: 빈 집계 데이터 생성, instanceId={}", instanceId);
-        }
-        checkpointMapper.insertAgg1m(agg1m);
-        log.debug("1분 집계 데이터 저장 완료: instanceId={}", instanceId);
-
+        // Agg 데이터 생성은 배치로 처리
         log.info("1분 집계 처리 완료: instanceId={}", instanceId);
     }
 
     /**
      * 특정 인스턴스의 5분 집계 처리
+     * Agg 데이터 생성은 배치로 처리
      */
     private void processInstance5mMetrics(Long instanceId, LocalDateTime collectedAt) {
-        // 5분 전부터 현재까지의 1분 집계 데이터 조회 (5개)
-        LocalDateTime startTime = collectedAt.minusMinutes(5);
-        List<CheckpointAgg1m> agg1mList = checkpointMapper.selectPreviousAgg1m(instanceId, startTime, collectedAt);
-
-        if (agg1mList == null || agg1mList.isEmpty()) {
-            log.warn("5분 집계 스킵: 1분 집계 데이터가 없습니다. instanceId={}", instanceId);
-            return;
-        }
-
-        CheckpointAgg5m agg5m = calculateAggregation5m(instanceId, collectedAt, agg1mList);
-        checkpointMapper.insertAgg5m(agg5m);
-        log.debug("5분 집계 데이터 저장 완료: instanceId={}", instanceId);
-
-        log.info("5분 집계 처리 완료: instanceId={}, 1분 집계 수={}", instanceId, agg1mList.size());
+        // 5분 집계는 배치로 처리되므로 여기서는 아무 작업도 하지 않음
+        log.debug("5분 집계는 배치로 처리됩니다: instanceId={}", instanceId);
     }
 
     /**
@@ -283,7 +264,7 @@ public class CheckpointCollectionScheduler {
 
         return CheckpointRaw.builder()
                 .instanceId(instanceId)
-                .collectedAt(collectedAt)
+                .collectedAt(toUtcOffsetDateTime(collectedAt))
                 .checkpointType(checkpointType)
                 .checkpointsTimed(checkpointsTimed)
                 .checkpointsReq(checkpointsReq)
@@ -342,7 +323,7 @@ public class CheckpointCollectionScheduler {
         if (totalCheckpoints == 0) {
             return CheckpointAgg1m.builder()
                     .instanceId(instanceId)
-                    .collectedAt(collectedAt)
+                    .collectedAt(toUtcOffsetDateTime(collectedAt))
                     .avgCheckpointReqRatio(0.0)
                     .avgWriteTime(0.0)
                     .avgSyncTime(0.0)
@@ -368,7 +349,7 @@ public class CheckpointCollectionScheduler {
 
         return CheckpointAgg1m.builder()
                 .instanceId(instanceId)
-                .collectedAt(collectedAt)
+                .collectedAt(toUtcOffsetDateTime(collectedAt))
                 .avgCheckpointReqRatio(reqRatio)
                 .avgWriteTime(avgWriteTime)
                 .avgSyncTime(avgSyncTime)
@@ -431,7 +412,7 @@ public class CheckpointCollectionScheduler {
 
         return CheckpointAgg5m.builder()
                 .instanceId(instanceId)
-                .collectedAt(collectedAt)
+                .collectedAt(toUtcOffsetDateTime(collectedAt))
                 .avgCheckpointReqRatio(reqRatio)
                 .avgWriteTime(avgWriteTime)
                 .avgSyncTime(avgSyncTime)
@@ -442,6 +423,21 @@ public class CheckpointCollectionScheduler {
                 .totalBuffersCheckpoint(totalBuffersCheckpoint)
                 .status(status)
                 .build();
+    }
+
+    /**
+     * LocalDateTime을 시스템 시간대 기준으로 UTC OffsetDateTime으로 변환
+     * 
+     * 예: 한국 시간(KST, UTC+9) 2025-11-22 21:26:05 
+     *    → UTC 2025-11-22 12:26:05
+     */
+    private OffsetDateTime toUtcOffsetDateTime(LocalDateTime localDateTime) {
+        // LocalDateTime을 시스템 시간대(한국 시간)로 해석
+        ZonedDateTime zonedDateTime = localDateTime.atZone(ZoneId.systemDefault());
+        // 같은 시점을 UTC로 변환
+        OffsetDateTime utcDateTime = zonedDateTime.withZoneSameInstant(ZoneOffset.UTC).toOffsetDateTime();
+        log.debug("시간 변환: {} (로컬) → {} (UTC)", localDateTime, utcDateTime);
+        return utcDateTime;
     }
 
     /**

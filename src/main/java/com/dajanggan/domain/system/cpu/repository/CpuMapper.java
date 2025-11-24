@@ -2,7 +2,6 @@ package com.dajanggan.domain.system.cpu.repository;
 
 import com.dajanggan.domain.system.cpu.domain.CpuAgg;
 import com.dajanggan.domain.system.cpu.domain.CpuAgg5m;
-import com.dajanggan.domain.system.cpu.domain.CpuAgg30m;
 import com.dajanggan.domain.system.cpu.domain.CpuRaw;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -19,9 +18,11 @@ public interface CpuMapper {
     List<Long> selectActiveInstanceIds();
 
     /**
-     * 이전 Raw 데이터 조회 (가장 최근 1개)
+     * 이전 Raw 데이터 조회 (현재 collectedAt보다 이전의 가장 최근 1개)
      */
-    CpuRaw selectPreviousRaw(@Param("instanceId") Long instanceId);
+    CpuRaw selectPreviousRaw(
+            @Param("instanceId") Long instanceId,
+            @Param("currentCollectedAt") OffsetDateTime currentCollectedAt);
 
     /**
      * CPU Raw 데이터 삽입
@@ -37,11 +38,6 @@ public interface CpuMapper {
      * CPU Agg 5분 데이터 삽입
      */
     void insertAgg5m(CpuAgg5m cpuAgg5m);
-
-    /**
-     * CPU Agg 30분 데이터 삽입
-     */
-    void insertAgg30m(CpuAgg30m cpuAgg30m);
 
     /**
      * CPU Raw 데이터 조회 (시간 범위)
@@ -65,6 +61,28 @@ public interface CpuMapper {
      * CPU 리스트 조회 (필터링)
      */
     List<CpuAgg> selectCpuListWithFilter(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList
+    );
+
+    /**
+     * CPU 리스트 조회 (필터링 + 페이징)
+     */
+    List<CpuAgg> selectCpuListWithFilterAndPaging(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList,
+            @Param("offset") Integer offset,
+            @Param("limit") Integer limit
+    );
+
+    /**
+     * CPU 리스트 총 개수 조회 (필터링)
+     */
+    Long countCpuListWithFilter(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime,
@@ -99,25 +117,6 @@ public interface CpuMapper {
      * CPU Agg 데이터 조회 (시간 범위 + LIMIT)
      */
     List<CpuAgg> selectCpuAggByTimeRangeWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
-    );
-
-    /**
-     * CPU Agg 30분 데이터 조회 (시간 범위)
-     */
-    List<CpuAgg30m> selectCpuAgg30mByTimeRange(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * CPU Agg 30분 데이터 조회 (시간 범위 + LIMIT)
-     */
-    List<CpuAgg30m> selectCpuAgg30mByTimeRangeWithLimit(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime,

@@ -32,3 +32,11 @@ public class CpuListItem {
     private String status;
 }
 
+
+
+
+
+
+
+
+

@@ -2,6 +2,12 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
+<!--
+    5분 집계 데이터 Mapper
+    - 슬로우 쿼리 분석 기능 제공
+
+    @author 이해든
+-->
 <mapper namespace="com.dajanggan.domain.query.repository.QueryAgg5mRepository">
 
     <!-- 5분 집계 데이터 일괄 저장 -->
@@ -29,7 +35,6 @@
             NOW()
             )
         </foreach>
-        <!-- PK 중복 시 UPDATE (UPSERT) -->
         ON CONFLICT (instance_id, database_id, collected_at)
         DO UPDATE SET
         total_queries = EXCLUDED.total_queries,
@@ -49,7 +54,7 @@
         created_at = NOW()
     </insert>
 
-    <!-- 상위 슬로우 쿼리 Top 5 -->
+    <!-- 상위 슬로우 쿼리 Top 5 조회 -->
     <select id="findTopSlowQueries" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.TopSlowQueryDto">
         SELECT
             instance_id AS instanceId,
@@ -72,23 +77,64 @@
             LIMIT 1
     </select>
 
-    <!-- 슬로우 쿼리 리스트 최신 10개 -->
+    <!-- 슬로우 쿼리 리스트 조회 -->
+    <!-- query_hash 기준 그룹화 및 집계 -->
     <select id="findSlowQueryList" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg5m.SlowQueryListDto">
+        WITH grouped_queries AS (
+            SELECT
+                query_hash,
+                MAX(query_metric_id) FILTER (WHERE rn = 1) AS queryMetricId,
+                MAX(collected_at) FILTER (WHERE rn = 1) AS collectedAt,
+                MAX(query_text) FILTER (WHERE rn = 1) AS queryText,
+                MAX(short_query) FILTER (WHERE rn = 1) AS shortQuery,
+                MAX(username) FILTER (WHERE rn = 1) AS username,
+                MAX(query_type) FILTER (WHERE rn = 1) AS queryType,
+                MAX(execution_time_ms) FILTER (WHERE rn = 1) AS executionTimeMs,
+                MAX(cpu_usage_percent) FILTER (WHERE rn = 1) AS cpuUsagePercent,
+                MAX(memory_usage_mb) FILTER (WHERE rn = 1) AS memoryUsageMb,
+                MAX(io_blocks) FILTER (WHERE rn = 1) AS ioBlocks,
+
+                COUNT(*) AS executionCount,
+                AVG(execution_time_ms) AS avgExecutionTimeMs,
+                MAX(execution_time_ms) AS maxExecutionTimeMs,
+                MIN(execution_time_ms) AS minExecutionTimeMs,
+                SUM(io_blocks) AS totalIoBlocks,
+                MIN(collected_at) AS firstSeenAt,
+                MAX(collected_at) AS lastSeenAt
+            FROM (
+                     SELECT
+                         *,
+                         ROW_NUMBER() OVER (PARTITION BY query_hash ORDER BY collected_at DESC) AS rn
+                     FROM query_metrics_raw
+                     WHERE instance_id = #{instanceId}
+                       AND database_id = #{databaseId}
+                       AND execution_time_ms > 1000
+                       AND collected_at >= NOW() - INTERVAL '24 hours'
+                 ) ranked
+            GROUP BY query_hash
+        )
         SELECT
-            query_metric_id AS queryMetricId,
-            collected_at AS collectedAt,
-            query_text AS queryText,
-            short_query AS shortQuery,
-            execution_time_ms AS executionTimeMs,
+            query_hash AS queryHash,
+            queryMetricId,
+            collectedAt,
+            queryText,
+            shortQuery,
             username,
-            query_type AS queryType
-        FROM query_metrics_raw
-        WHERE instance_id = #{instanceId}
-          AND database_id = #{databaseId}
-          AND execution_time_ms > 1000
-          AND collected_at >= NOW() - INTERVAL '24 hours'
-        ORDER BY execution_time_ms DESC
-            LIMIT 10
+            queryType,
+            executionTimeMs,
+            cpuUsagePercent,
+            memoryUsageMb,
+            ioBlocks,
+            executionCount,
+            avgExecutionTimeMs,
+            maxExecutionTimeMs,
+            minExecutionTimeMs,
+            totalIoBlocks,
+            firstSeenAt,
+            lastSeenAt
+        FROM grouped_queries
+        ORDER BY maxExecutionTimeMs DESC
+            LIMIT #{limit}
     </select>
 
 </mapper>

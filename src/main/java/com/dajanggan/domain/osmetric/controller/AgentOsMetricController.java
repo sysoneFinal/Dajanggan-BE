@@ -40,6 +40,11 @@ public class AgentOsMetricController {
                     request.getMetricType(),
                     request.getTimestamp());
             
+            if (request == null || request.getInstanceName() == null) {
+                log.error("Agent 요청 데이터가 유효하지 않습니다: request={}", request);
+                return ResponseEntity.badRequest().body("ERROR: Invalid request data");
+            }
+            
             // 1. instanceName으로 instanceId 조회
             Optional<Long> instanceIdOpt = instanceRepository.findIdByInstanceName(
                     request.getInstanceName());

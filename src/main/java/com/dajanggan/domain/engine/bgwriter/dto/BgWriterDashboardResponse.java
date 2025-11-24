@@ -15,23 +15,12 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BgWriterDashboardResponse {
-    private BackendFlushRatio backendFlushRatio;
     private CleanRate cleanRate;
-    private BufferFlushRatio bufferFlushRatio;
     private MaxwrittenClean maxwrittenClean;
     private BgwriterVsCheckpoint bgwriterVsCheckpoint;
     private BufferReuseRate bufferReuseRate;
+    private BufferFlushRatio bufferFlushRatio;
     private RecentStats recentStats;
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class BackendFlushRatio {
-        private Double value;
-        private Long buffersClean;
-        private Long buffersBackend;
-    }
 
     @Data
     @Builder
@@ -49,22 +38,10 @@ public class BgWriterDashboardResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class BufferFlushRatio {
-        private List<String> categories;
-        private List<Long> backend;
-        private List<Long> clean;
-        private Long backendTotal;
-        private Long cleanTotal;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class MaxwrittenClean {
         private List<String> categories;
         private List<Long> data;
-        private Long average;
+        private Double average;  // Long → Double로 변경 (평균값은 소수점 필요)
         private Long total;
     }
 
@@ -96,13 +73,22 @@ public class BgWriterDashboardResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class BufferFlushRatio {
+        private List<String> categories;
+        private List<Long> backend;
+        private List<Long> clean;
+        private Long backendTotal;
+        private Long cleanTotal;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class RecentStats {
         private Double bgwriterActivityRate;
         private Double cleanBufferReuseRate;
         private Long backendFsyncCount;
-        private Double bufferPoolUsageRate;
         private Long checkpointInterruptionCount;
-        private Double dirtyBufferAccumulationRate;
     }
 }
-

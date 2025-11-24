@@ -1,27 +1,22 @@
-package com.dajanggan.domain.system.cpu.domain;
+package com.dajanggan.domain.system.cpu.dto.agg5m;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
 
 /**
- * CPU 30분 집계 데이터
- * cpu_agg_30m 테이블에 매핑
+ * CPU 5분 집계 DTO (배치용)
  */
-@Getter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CpuAgg30m {
-    
-    private Long cpuAgg30mId;
+public class CpuAgg5mDto {
     private Long instanceId;
     private OffsetDateTime timeBucket;
-    
-    // 연결 통계 (평균)
     private Double avgTotalConnections;
     private Double avgActiveConnections;
     private Double avgIdleConnections;
@@ -29,32 +24,19 @@ public class CpuAgg30m {
     private Double avgWaitingSessions;
     private Double avgWaitingForLock;
     private Double avgWaitingForIo;
-    
-    // 대기 이벤트 통계 (평균)
     private Double avgWaitEventClient;
     private Double avgWaitEventActivity;
     private Double avgWaitEventBufferpin;
     private Double avgWaitEventLwlock;
     private Double avgWaitEventTimeout;
     private Double avgWaitEventIpc;
-    
-    // Backend 타입별 통계 (평균)
     private Double avgClientBackend;
     private Double avgAutovacuumWorker;
     private Double avgParallelWorker;
     private Double avgBackgroundWorker;
-    
-    // 쿼리 분석 (평균 및 최대)
     private Double avgLongRunningQueries;
-    private Double maxQueryDurationSec;
-    
-    // 트랜잭션 통계 (합계)
     private Long totalXactCommit;
     private Long totalXactRollback;
-    private Double avgXactCommitRate;
-    private Double avgXactRollbackRate;
-    
-    // 메타 정보
     private Long recordCount;
-    private OffsetDateTime createdAt;
 }
+
