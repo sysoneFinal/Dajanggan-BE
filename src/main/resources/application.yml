@@ -66,8 +66,3 @@ app:
     pbkdf2-iter: 200000
     salt-len: 16
     iv-len: 12
-
-slack:
-  webhook:
-    url: ${SLACK_WEBHOOK_URL}
-  enabled: false
