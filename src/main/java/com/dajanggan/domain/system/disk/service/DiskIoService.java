@@ -5,16 +5,17 @@ import com.dajanggan.domain.osmetric.repository.OsMetricMapper;
 import com.dajanggan.domain.osmetric.service.OsMetricRedisService;
 import com.dajanggan.domain.system.disk.domain.DiskIoAgg;
 import com.dajanggan.domain.system.disk.domain.DiskIoAgg5m;
-import com.dajanggan.domain.system.disk.domain.DiskIoAgg30m;
 import com.dajanggan.domain.system.disk.dto.*;
 import com.dajanggan.domain.system.disk.repository.DiskIoMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Comparator;
@@ -41,7 +42,21 @@ public class DiskIoService {
     private final OsMetricRedisService osMetricRedisService;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
-    private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
+
+    /**
+     * instanceId가 없을 때 기본 인스턴스 ID를 반환하는 helper 메서드
+     */
+    private Long getDefaultInstanceIdIfNull(Long instanceId) {
+        if (instanceId == null) {
+            List<Long> activeInstanceIds = diskIoMapper.selectActiveInstanceIds();
+            if (activeInstanceIds.isEmpty()) {
+                throw new IllegalArgumentException("활성 인스턴스가 없습니다");
+            }
+            instanceId = activeInstanceIds.get(0);
+            log.debug("instanceId가 제공되지 않아 기본 인스턴스 사용: instanceId={}", instanceId);
+        }
+        return instanceId;
+    }
 
     // ========================================
     // 대시보드 전체 데이터 조회
@@ -51,53 +66,52 @@ public class DiskIoService {
      * Disk I/O 대시보드 전체 데이터 조회
      */
     public DiskIoDashboardResponse getDiskIoDashboard(Long instanceId) {
-        if (instanceId == null) {
-            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
-        }
+        // instanceId가 없으면 첫 번째 활성 인스턴스 사용
+        final Long finalInstanceId = getDefaultInstanceIdIfNull(instanceId);
 
-        log.info("========== Disk I/O 대시보드 데이터 조회 시작: instanceId={} ==========", instanceId);
+        log.info("========== Disk I/O 대시보드 데이터 조회 시작: instanceId={} ==========", finalInstanceId);
         long startTime = System.currentTimeMillis();
 
         try {
             // 모든 데이터를 병렬로 조회
             CompletableFuture<DiskIoDashboardResponse.OsDiskUsageWidget> osDiskUsageFuture = 
-                    CompletableFuture.supplyAsync(() -> getOsDiskUsageWidget(instanceId));
+                    CompletableFuture.supplyAsync(() -> getOsDiskUsageWidget(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.DiskIoThroughputWidget> diskIoThroughputFuture = 
-                    CompletableFuture.supplyAsync(() -> getDiskIoThroughputWidget(instanceId));
+                    CompletableFuture.supplyAsync(() -> getDiskIoThroughputWidget(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.BufferCacheHitWidget> bufferCacheHitFuture = 
-                    CompletableFuture.supplyAsync(() -> getBufferCacheHitWidget(instanceId));
+                    CompletableFuture.supplyAsync(() -> getBufferCacheHitWidget(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.BackendFsyncWidget> backendFsyncFuture = 
-                    CompletableFuture.supplyAsync(() -> getBackendFsyncWidget(instanceId));
+                    CompletableFuture.supplyAsync(() -> getBackendFsyncWidget(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.DiskLatencyWidget> diskLatencyFuture = 
-                    CompletableFuture.supplyAsync(() -> getDiskLatencyWidget(instanceId));
+                    CompletableFuture.supplyAsync(() -> getDiskLatencyWidget(finalInstanceId));
 
             CompletableFuture<DiskIoDashboardResponse.OsDiskIoChart1h> osDiskIoChart1hFuture = 
-                    CompletableFuture.supplyAsync(() -> getOsDiskIoChart1h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getOsDiskIoChart1h(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.BufferCacheChart1h> bufferCacheChart1hFuture = 
-                    CompletableFuture.supplyAsync(() -> getBufferCacheChart1h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getBufferCacheChart1h(finalInstanceId));
 
             CompletableFuture<DiskIoDashboardResponse.IoLatencyChart6h> ioLatencyChart6hFuture = 
-                    CompletableFuture.supplyAsync(() -> getIoLatencyChart6h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getIoLatencyChart6h(finalInstanceId));
 
             CompletableFuture<DiskIoDashboardResponse.DiskUsageChart24h> diskUsageChart24hFuture = 
-                    CompletableFuture.supplyAsync(() -> getDiskUsageChart24h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getDiskUsageChart24h(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.CheckpointVsBackendChart24h> checkpointChart24hFuture = 
-                    CompletableFuture.supplyAsync(() -> getCheckpointVsBackendChart24h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getCheckpointVsBackendChart24h(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.BackendFsyncChart24h> backendFsyncChart24hFuture = 
-                    CompletableFuture.supplyAsync(() -> getBackendFsyncChart24h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getBackendFsyncChart24h(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.PhysicalVsCacheChart24h> physicalCacheChart24hFuture = 
-                    CompletableFuture.supplyAsync(() -> getPhysicalVsCacheChart24h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getPhysicalVsCacheChart24h(finalInstanceId));
             
             CompletableFuture<DiskIoDashboardResponse.ThroughputChart24h> throughputChart24hFuture = 
-                    CompletableFuture.supplyAsync(() -> getThroughputChart24h(instanceId));
+                    CompletableFuture.supplyAsync(() -> getThroughputChart24h(finalInstanceId));
 
             // 모든 작업이 완료될 때까지 대기
             CompletableFuture.allOf(
@@ -127,12 +141,12 @@ public class DiskIoService {
 
             long endTime = System.currentTimeMillis();
             log.info("========== Disk I/O 대시보드 데이터 조회 완료: instanceId={}, 소요시간={}ms ==========", 
-                    instanceId, (endTime - startTime));
+                    finalInstanceId, (endTime - startTime));
 
             return response;
 
         } catch (Exception e) {
-            log.error("Disk I/O 대시보드 데이터 조회 실패: instanceId={}", instanceId, e);
+            log.error("Disk I/O 대시보드 데이터 조회 실패: instanceId={}", finalInstanceId, e);
             throw new RuntimeException("대시보드 데이터 조회 중 오류 발생", e);
         }
     }
@@ -148,11 +162,11 @@ public class DiskIoService {
     private DiskIoDashboardResponse.OsDiskUsageWidget getOsDiskUsageWidget(Long instanceId) {
         try {
             // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusMinutes(1);
+            LocalDateTime endTime = LocalDateTime.now().plusMinutes(1);
+            LocalDateTime startTime = endTime.minusMinutes(1);
 
             List<RedisOsMetricData> metrics = osMetricRedisService.getRecentMetricsByType(
-                    instanceId, "DISK", startTime, endTime);
+                    instanceId, "DISK", startTime.atOffset(ZoneOffset.UTC), endTime.atOffset(ZoneOffset.UTC));
 
             if (metrics.isEmpty()) {
                 return buildEmptyOsDiskUsageWidget();
@@ -201,7 +215,9 @@ public class DiskIoService {
     private DiskIoDashboardResponse.DiskIoThroughputWidget getDiskIoThroughputWidget(Long instanceId) {
         try {
             // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
-            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+            // 시스템 시간대를 명시적으로 사용하여 UTC로 변환
+            ZonedDateTime nowZoned = ZonedDateTime.now(ZoneId.systemDefault());
+            OffsetDateTime endTime = nowZoned.plusMinutes(1).withZoneSameInstant(ZoneOffset.UTC).toOffsetDateTime();
             OffsetDateTime startTime = endTime.minusMinutes(1);
 
             List<RedisOsMetricData> metrics = osMetricRedisService.getRecentMetricsByType(
@@ -266,10 +282,7 @@ public class DiskIoService {
         try {
             Map<String, Object> result = diskIoMapper.selectRecentStats(instanceId);
 
-            log.info("Buffer Cache Hit 위젯 조회: instanceId={}, result={}", instanceId, result);
-
             if (result == null || result.isEmpty()) {
-                log.warn("Buffer Cache Hit 위젯 데이터 없음: instanceId={}", instanceId);
                 return buildEmptyBufferCacheHitWidget();
             }
 
@@ -282,22 +295,8 @@ public class DiskIoService {
             long cacheHits = getLongValue(result, "total_cache_hits");
             long physicalReads = getLongValue(result, "total_physical_reads");
 
-            log.info("Buffer Cache Hit 위젯 데이터: instanceId={}, hitRatio={}, cacheHits={}, physicalReads={}", 
-                    instanceId, hitRatio, cacheHits, physicalReads);
-
             // 상태 판정: >95% 정상, 85-95% 주의, <85% 위험
-            // 단, hitRatio가 0이고 physicalReads도 0이면 데이터가 없는 것으로 간주하여 "normal" 처리
-            String status;
-            if (hitRatio == 0.0 && physicalReads == 0 && cacheHits == 0) {
-                // 데이터가 없는 경우 (수집 안 됨 또는 실제로 I/O가 없는 경우)
-                status = "normal";
-            } else if (hitRatio > 95) {
-                status = "normal";
-            } else if (hitRatio > 85) {
-                status = "warning";
-            } else {
-                status = "danger";
-            }
+            String status = hitRatio > 95 ? "normal" : hitRatio > 85 ? "warning" : "danger";
 
             return DiskIoDashboardResponse.BufferCacheHitWidget.builder()
                     .hitRatio(hitRatio)
@@ -314,24 +313,22 @@ public class DiskIoService {
 
     /**
      * 위젯 4: Backend Fsync Rate
-     * 데이터: disk_io_agg_1m (최근 1분)
+     * 데이터: disk_io_agg_1m (최근 15분)
      */
     private DiskIoDashboardResponse.BackendFsyncWidget getBackendFsyncWidget(Long instanceId) {
         try {
-            Map<String, Object> result = diskIoMapper.selectRecentStats(instanceId);
-
-            log.info("Backend Fsync 위젯 조회: instanceId={}, result={}", instanceId, result);
+            // 최근 15분 데이터 조회
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
+            
+            Map<String, Object> result = diskIoMapper.selectBackendFsyncWidget15m(instanceId, startTime, endTime);
 
             if (result == null || result.isEmpty()) {
-                log.warn("Backend Fsync 위젯 데이터 없음: instanceId={}", instanceId);
                 return buildEmptyBackendFsyncWidget();
             }
 
             double fsyncRate = getDoubleValue(result, "backend_fsync_rate");
             long totalFsyncs = getLongValue(result, "total_backend_fsyncs");
-
-            log.info("Backend Fsync 위젯 데이터: instanceId={}, fsyncRate={}, totalFsyncs={}", 
-                    instanceId, fsyncRate, totalFsyncs);
 
             // 상태 판정: >100/s 주의 (병목 징후)
             String status = fsyncRate > 100 ? "warning" : "normal";
@@ -352,25 +349,23 @@ public class DiskIoService {
 
     /**
      * 위젯 5: Disk Latency
-     * 데이터: disk_io_agg_1m (최근 1분)
+     * 데이터: disk_io_agg_1m (최근 15분)
      */
     private DiskIoDashboardResponse.DiskLatencyWidget getDiskLatencyWidget(Long instanceId) {
         try {
-            Map<String, Object> result = diskIoMapper.selectRecentStats(instanceId);
-
-            log.info("Disk Latency 위젯 조회: instanceId={}, result={}", instanceId, result);
+            // 최근 15분 데이터 조회
+            OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
+            
+            Map<String, Object> result = diskIoMapper.selectDiskLatencyWidget15m(instanceId, startTime, endTime);
 
             if (result == null || result.isEmpty()) {
-                log.warn("Disk Latency 위젯 데이터 없음: instanceId={}", instanceId);
                 return buildEmptyDiskLatencyWidget();
             }
 
             double avgReadLatency = getDoubleValue(result, "avg_read_latency");
             double avgWriteLatency = getDoubleValue(result, "avg_write_latency");
             double maxLatency = Math.max(avgReadLatency, avgWriteLatency);
-
-            log.info("Disk Latency 위젯 데이터: instanceId={}, avgReadLatency={}, avgWriteLatency={}, maxLatency={}", 
-                    instanceId, avgReadLatency, avgWriteLatency, maxLatency);
 
             // 상태 판정: >10ms 주의, >50ms 위험
             String status = maxLatency > 50 ? "danger" : maxLatency > 10 ? "warning" : "normal";
@@ -473,12 +468,11 @@ public class DiskIoService {
                 return buildEmptyBufferCacheChart1h();
             }
 
-            // 시간순 정렬 (time_label은 이미 TO_CHAR로 포맷된 문자열이므로 문자열 정렬)
+            // 시간순 정렬
             results.sort(Comparator.comparing(r -> (String) r.get("time_label")));
 
-            // time_label은 이미 HH24:MI 형식이므로 그대로 사용
             List<String> categories = results.stream()
-                    .map(r -> (String) r.get("time_label"))
+                    .map(r -> formatTime(r.get("time_label")))
                     .collect(Collectors.toList());
 
             List<Double> hitRatio = results.stream()
@@ -503,66 +497,35 @@ public class DiskIoService {
     // ========================================
 
     /**
-     * 차트 3: I/O Latency 추이 (6시간)
-     * 데이터: disk_io_agg_5m (5분 집계)
-     * 5분 집계 데이터 사용
+     * 차트 3: I/O Latency 추이 (최근 15분)
+     * 데이터: disk_io_agg_1m (1분 집계)
      */
     private DiskIoDashboardResponse.IoLatencyChart6h getIoLatencyChart6h(Long instanceId) {
         try {
             // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(6);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
-            List<Map<String, Object>> results = diskIoMapper.selectIoLatency5mTimeSeries(
+            List<Map<String, Object>> results = diskIoMapper.selectIoLatencyTimeSeries(
                     instanceId, startTime, endTime);
 
             if (results.isEmpty()) {
                 return buildEmptyIoLatencyChart6h();
             }
 
-            // 시간순 정렬 (타입 안전한 변환)
-            results.sort(Comparator.comparing(r -> {
-                Object collectedAt = r.get("collected_at");
-                if (collectedAt instanceof OffsetDateTime) {
-                    return (OffsetDateTime) collectedAt;
-                } else if (collectedAt instanceof java.sql.Timestamp) {
-                    return ((java.sql.Timestamp) collectedAt).toInstant()
-                            .atOffset(ZoneOffset.UTC);
-                } else if (collectedAt instanceof java.time.LocalDateTime) {
-                    return ((java.time.LocalDateTime) collectedAt).atOffset(ZoneOffset.UTC);
-                } else {
-                    return OffsetDateTime.now(ZoneOffset.UTC);
-                }
-            }));
+            // 시간순 정렬
+            results.sort(Comparator.comparing(r -> (String) r.get("time_label")));
 
-            // 모든 데이터는 유지하되, 시간 형식은 HH:mm으로 통일
             List<String> categories = results.stream()
-                    .map(r -> {
-                        Object collectedAt = r.get("collected_at");
-                        if (collectedAt instanceof OffsetDateTime) {
-                            return ((OffsetDateTime) collectedAt).atZoneSameInstant(KOREA_ZONE)
-                                    .format(DateTimeFormatter.ofPattern("HH:mm"));
-                        } else if (collectedAt instanceof java.sql.Timestamp) {
-                            return ((java.sql.Timestamp) collectedAt).toInstant()
-                                    .atOffset(ZoneOffset.UTC)
-                                    .atZoneSameInstant(KOREA_ZONE)
-                                    .format(DateTimeFormatter.ofPattern("HH:mm"));
-                        } else if (collectedAt instanceof java.time.LocalDateTime) {
-                            return ((java.time.LocalDateTime) collectedAt)
-                                    .atOffset(ZoneOffset.UTC)
-                                    .atZoneSameInstant(KOREA_ZONE)
-                                    .format(DateTimeFormatter.ofPattern("HH:mm"));
-                        }
-                        return formatTime(collectedAt);
-                    })
+                    .map(r -> formatTime(r.get("time_label")))
                     .collect(Collectors.toList());
 
             List<Double> readLatency = results.stream()
-                    .map(r -> getDoubleValue(r, "avg_read_latency"))
+                    .map(r -> getDoubleValue(r, "read_latency"))
                     .collect(Collectors.toList());
 
             List<Double> writeLatency = results.stream()
-                    .map(r -> getDoubleValue(r, "avg_write_latency"))
+                    .map(r -> getDoubleValue(r, "write_latency"))
                     .collect(Collectors.toList());
 
             return DiskIoDashboardResponse.IoLatencyChart6h.builder()
@@ -582,16 +545,17 @@ public class DiskIoService {
     // ========================================
 
     /**
-     * 차트 4: Disk 사용률 추이 (24시간)
-     * 테이블: os_metric_agg (metricType='DISK_USAGE')
+     * 차트 4: Disk 사용률 추이 (최근 15분)
+     * 데이터: disk_io_agg_1m (1분 집계)
+     * 주의: disk_io_agg_1m에는 디스크 사용률 데이터가 없으므로 os_metric_agg에서 조회하되 15분으로 제한
      */
     private DiskIoDashboardResponse.DiskUsageChart24h getDiskUsageChart24h(Long instanceId) {
         try {
             // endTime을 약간 늦춰서 최신 데이터를 확실히 포함
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
-            // 30분 집계 데이터 조회
+            // os_metric_agg에서 15분 데이터 조회
             List<Map<String, Object>> metrics = osMetricMapper.selectAggregatedMetrics(
                     instanceId, "DISK_USAGE", startTime, endTime);
 
@@ -600,7 +564,7 @@ public class DiskIoService {
             }
 
             List<String> categories = metrics.stream()
-                    .map(m -> formatDateTime(m.get("collected_at")))
+                    .map(m -> formatTime(m.get("collected_at")))
                     .collect(Collectors.toList());
 
             List<Double> usagePercent = metrics.stream()
@@ -621,42 +585,26 @@ public class DiskIoService {
     }
 
     /**
-     * 차트 5: Checkpoint vs Backend Write (24시간)
-     * 테이블: disk_io_agg_30m
-     * 최근 48개 데이터 포인트로 제한
+     * 차트 5: Checkpoint vs Backend Write (최근 15분)
+     * 데이터: disk_io_agg_1m (1분 집계)
      */
     private DiskIoDashboardResponse.CheckpointVsBackendChart24h getCheckpointVsBackendChart24h(Long instanceId) {
         try {
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
-            log.info("Checkpoint vs Backend Chart 24h 조회 시작: instanceId={}, startTime={}, endTime={}", 
+            List<Map<String, Object>> results = diskIoMapper.selectCheckpointVsBackend1mTimeSeries(
                     instanceId, startTime, endTime);
 
-            List<Map<String, Object>> results = diskIoMapper.selectCheckpointVsBackend30mTimeSeriesWithLimit(
-                    instanceId, startTime, endTime, 48);
-
-            log.info("Checkpoint vs Backend Chart 24h 조회 결과: instanceId={}, resultsSize={}", 
-                    instanceId, results.size());
-
             if (results.isEmpty()) {
-                log.warn("Checkpoint vs Backend Chart 24h 데이터 없음: instanceId={}", instanceId);
                 return buildEmptyCheckpointVsBackendChart24h();
             }
 
-            // 데이터 샘플 로깅
-            if (!results.isEmpty()) {
-                Map<String, Object> sample = results.get(0);
-                log.info("Checkpoint vs Backend 샘플 데이터: collected_at={}, checkpoint_buffers={}, clean_buffers={}, backend_buffers={}", 
-                        sample.get("collected_at"), sample.get("checkpoint_buffers"), 
-                        sample.get("clean_buffers"), sample.get("backend_buffers"));
-            }
-
-            // DESC로 조회했으므로 역순으로 정렬
-            Collections.reverse(results);
+            // 시간순 정렬
+            results.sort(Comparator.comparing(r -> (OffsetDateTime) r.get("collected_at")));
 
             List<String> categories = results.stream()
-                    .map(r -> formatDateTime(r.get("collected_at")))
+                    .map(r -> formatTime(r.get("collected_at")))
                     .collect(Collectors.toList());
 
             List<Long> checkpointBuffers = results.stream()
@@ -670,13 +618,6 @@ public class DiskIoService {
             List<Long> backendBuffers = results.stream()
                     .map(r -> getLongValue(r, "backend_buffers"))
                     .collect(Collectors.toList());
-
-            // 데이터 합계 로깅
-            long totalCheckpoint = checkpointBuffers.stream().mapToLong(Long::longValue).sum();
-            long totalClean = cleanBuffers.stream().mapToLong(Long::longValue).sum();
-            long totalBackend = backendBuffers.stream().mapToLong(Long::longValue).sum();
-            log.info("Checkpoint vs Backend Chart 24h 합계: checkpoint={}, clean={}, backend={}", 
-                    totalCheckpoint, totalClean, totalBackend);
 
             return DiskIoDashboardResponse.CheckpointVsBackendChart24h.builder()
                     .categories(categories)
@@ -692,70 +633,31 @@ public class DiskIoService {
     }
 
     /**
-     * 차트 6: Backend Fsync Rate 추이 (24시간)
-     * 테이블: disk_io_agg_30m
-     * 최근 48개 데이터 포인트로 제한
+     * 차트 6: Backend Fsync Rate 추이 (최근 15분)
+     * 데이터: disk_io_agg_1m (1분 집계)
      */
     private DiskIoDashboardResponse.BackendFsyncChart24h getBackendFsyncChart24h(Long instanceId) {
         try {
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
-            log.info("Backend Fsync Chart 24h 조회 시작: instanceId={}, startTime={}, endTime={}", 
+            List<Map<String, Object>> results = diskIoMapper.selectBackendFsync1mTimeSeries(
                     instanceId, startTime, endTime);
 
-            List<Map<String, Object>> results = diskIoMapper.selectBackendFsync30mTimeSeriesWithLimit(
-                    instanceId, startTime, endTime, 48);
-
-            log.info("Backend Fsync Chart 24h 데이터 조회: instanceId={}, results={}", instanceId, results.size());
-
             if (results.isEmpty()) {
-                log.warn("Backend Fsync Chart 24h 데이터 없음: instanceId={}", instanceId);
                 return buildEmptyBackendFsyncChart24h();
             }
 
-            // 데이터 샘플 로깅
-            if (!results.isEmpty()) {
-                Map<String, Object> sample = results.get(0);
-                log.debug("Backend Fsync 샘플 데이터: collected_at={}, avg_fsync_rate={}, fsync_rate={}, keys={}", 
-                        sample.get("collected_at"), sample.get("avg_fsync_rate"), sample.get("fsync_rate"), sample.keySet());
-            }
-
-            // DESC로 조회했으므로 역순으로 정렬
-            Collections.reverse(results);
-
-            // collected_at 기준으로 정렬 (타입 안전한 변환)
-            results.sort(Comparator.comparing(r -> {
-                Object collectedAt = r.get("collected_at");
-                if (collectedAt instanceof OffsetDateTime) {
-                    return (OffsetDateTime) collectedAt;
-                } else if (collectedAt instanceof java.sql.Timestamp) {
-                    return ((java.sql.Timestamp) collectedAt).toInstant()
-                            .atOffset(ZoneOffset.UTC);
-                } else if (collectedAt instanceof java.time.LocalDateTime) {
-                    return ((java.time.LocalDateTime) collectedAt).atOffset(ZoneOffset.UTC);
-                } else {
-                    return OffsetDateTime.now(ZoneOffset.UTC);
-                }
-            }));
+            // 시간순 정렬
+            results.sort(Comparator.comparing(r -> (OffsetDateTime) r.get("collected_at")));
 
             List<String> categories = results.stream()
-                    .map(r -> formatDateTime(r.get("collected_at")))
+                    .map(r -> formatTime(r.get("collected_at")))
                     .collect(Collectors.toList());
 
             List<Double> fsyncRate = results.stream()
-                    .map(r -> {
-                        // avg_fsync_rate가 없으면 fsync_rate 사용
-                        Double avgFsyncRate = getDoubleValue(r, "avg_fsync_rate");
-                        if (avgFsyncRate == 0.0) {
-                            avgFsyncRate = getDoubleValue(r, "fsync_rate");
-                        }
-                        return avgFsyncRate;
-                    })
+                    .map(r -> getDoubleValue(r, "fsync_rate"))
                     .collect(Collectors.toList());
-
-            log.info("Backend Fsync Chart 24h 데이터 생성 완료: instanceId={}, categories={}, fsyncRate={}", 
-                    instanceId, categories.size(), fsyncRate.size());
 
             return DiskIoDashboardResponse.BackendFsyncChart24h.builder()
                     .categories(categories)
@@ -770,27 +672,26 @@ public class DiskIoService {
     }
 
     /**
-     * 차트 7: Physical vs Cache Read (24시간)
-     * 테이블: disk_io_agg_30m
-     * 최근 48개 데이터 포인트로 제한
+     * 차트 7: Physical vs Cache Read (최근 15분)
+     * 데이터: disk_io_agg_1m (1분 집계)
      */
     private DiskIoDashboardResponse.PhysicalVsCacheChart24h getPhysicalVsCacheChart24h(Long instanceId) {
         try {
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
-            List<Map<String, Object>> results = diskIoMapper.selectPhysicalVsCache30mTimeSeriesWithLimit(
-                    instanceId, startTime, endTime, 48);
+            List<Map<String, Object>> results = diskIoMapper.selectPhysicalVsCache1mTimeSeries(
+                    instanceId, startTime, endTime);
 
             if (results.isEmpty()) {
                 return buildEmptyPhysicalVsCacheChart24h();
             }
 
-            // DESC로 조회했으므로 역순으로 정렬
-            Collections.reverse(results);
+            // 시간순 정렬
+            results.sort(Comparator.comparing(r -> (OffsetDateTime) r.get("collected_at")));
 
             List<String> categories = results.stream()
-                    .map(r -> formatDateTime(r.get("collected_at")))
+                    .map(r -> formatTime(r.get("collected_at")))
                     .collect(Collectors.toList());
 
             List<Long> physicalReads = results.stream()
@@ -800,12 +701,6 @@ public class DiskIoService {
             List<Long> cacheHits = results.stream()
                     .map(r -> getLongValue(r, "cache_hits"))
                     .collect(Collectors.toList());
-
-            // 디버깅: 물리 읽기와 캐시 히트 값 확인
-            log.info("Physical vs Cache Chart 24h 데이터: instanceId={}, 데이터 포인트 수={}, physicalReads 샘플={}, cacheHits 샘플={}", 
-                    instanceId, results.size(), 
-                    physicalReads.isEmpty() ? "없음" : physicalReads.subList(0, Math.min(5, physicalReads.size())),
-                    cacheHits.isEmpty() ? "없음" : cacheHits.subList(0, Math.min(5, cacheHits.size())));
 
             return DiskIoDashboardResponse.PhysicalVsCacheChart24h.builder()
                     .categories(categories)
@@ -820,107 +715,45 @@ public class DiskIoService {
     }
 
     /**
-     * 차트 8: Disk I/O Throughput (24시간)
-     * 테이블: os_metric_agg_1m (metricType='DISK_READ', 'DISK_WRITE')
+     * 차트 8: Disk I/O Throughput (최근 15분)
+     * 데이터: disk_io_agg_1m (1분 집계)
      */
     private DiskIoDashboardResponse.ThroughputChart24h getThroughputChart24h(Long instanceId) {
         try {
             OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
-            OffsetDateTime startTime = endTime.minusHours(24);
+            OffsetDateTime startTime = endTime.minusMinutes(15);
 
-            log.info("Throughput Chart 24h 조회 시작: instanceId={}, startTime={}, endTime={}", 
+            List<Map<String, Object>> results = diskIoMapper.selectThroughputTimeSeries(
                     instanceId, startTime, endTime);
 
-            List<Map<String, Object>> readMetrics = osMetricMapper.selectAggregatedMetrics(
-                    instanceId, "DISK_READ", startTime, endTime);
-            List<Map<String, Object>> writeMetrics = osMetricMapper.selectAggregatedMetrics(
-                    instanceId, "DISK_WRITE", startTime, endTime);
-
-            log.info("Throughput Chart 24h 데이터 조회: instanceId={}, readMetrics={}, writeMetrics={}", 
-                    instanceId, readMetrics.size(), writeMetrics.size());
-
-            if (readMetrics.isEmpty() && writeMetrics.isEmpty()) {
-                log.warn("Throughput Chart 24h 데이터 없음: instanceId={}", instanceId);
+            if (results.isEmpty()) {
                 return buildEmptyThroughputChart24h();
             }
 
-            // 데이터 샘플 로깅
-            if (!readMetrics.isEmpty()) {
-                Map<String, Object> sample = readMetrics.get(0);
-                log.info("DISK_READ 샘플 데이터: collected_at={}, avg_value={}, keys={}", 
-                        sample.get("collected_at"), sample.get("avg_value"), sample.keySet());
-            }
-            if (!writeMetrics.isEmpty()) {
-                Map<String, Object> sample = writeMetrics.get(0);
-                log.info("DISK_WRITE 샘플 데이터: collected_at={}, avg_value={}, keys={}", 
-                        sample.get("collected_at"), sample.get("avg_value"), sample.keySet());
-            }
+            // 시간순 정렬
+            results.sort(Comparator.comparing(r -> (String) r.get("time_label")));
 
-            // 모든 메트릭을 collected_at 기준으로 정렬 (시간 순서 보장)
-            List<Map<String, Object>> allMetrics = new ArrayList<>();
-            allMetrics.addAll(readMetrics);
-            allMetrics.addAll(writeMetrics);
-            
-            // collected_at을 OffsetDateTime으로 변환하여 정렬
-            allMetrics.sort(Comparator.comparing(m -> {
-                Object collectedAt = m.get("collected_at");
-                if (collectedAt instanceof OffsetDateTime) {
-                    return (OffsetDateTime) collectedAt;
-                } else if (collectedAt instanceof java.sql.Timestamp) {
-                    return ((java.sql.Timestamp) collectedAt).toInstant()
-                            .atOffset(ZoneOffset.UTC);
-                } else if (collectedAt instanceof java.time.LocalDateTime) {
-                    return ((java.time.LocalDateTime) collectedAt).atOffset(ZoneOffset.UTC);
-                } else {
-                    return OffsetDateTime.now(ZoneOffset.UTC);
-                }
-            }));
-
-            // 시간 순서대로 categories 생성 (중복 제거)
-            LinkedHashSet<String> timeSet = new LinkedHashSet<>();
-            for (Map<String, Object> metric : allMetrics) {
-                String timeLabel = formatDateTime(metric.get("collected_at"));
-                if (timeLabel != null && !timeLabel.isEmpty()) {
-                    timeSet.add(timeLabel);
-                }
-            }
-            List<String> categories = new ArrayList<>(timeSet);
-
-            // 읽기/쓰기 데이터 매핑
-            Map<String, Double> readMap = readMetrics.stream()
-                    .collect(Collectors.toMap(
-                            m -> formatDateTime(m.get("collected_at")),
-                            m -> {
-                                // avg_value가 null이면 0.0 반환
-                                Double avgValue = getDoubleValue(m, "avg_value");
-                                // 바이트를 MB로 변환 (1024^2)
-                                return avgValue / (1024.0 * 1024.0);
-                            },
-                            (a, b) -> a
-                    ));
-
-            Map<String, Double> writeMap = writeMetrics.stream()
-                    .collect(Collectors.toMap(
-                            m -> formatDateTime(m.get("collected_at")),
-                            m -> {
-                                // avg_value가 null이면 0.0 반환
-                                Double avgValue = getDoubleValue(m, "avg_value");
-                                // 바이트를 MB로 변환 (1024^2)
-                                return avgValue / (1024.0 * 1024.0);
-                            },
-                            (a, b) -> a
-                    ));
-
-            List<Double> readMBps = categories.stream()
-                    .map(time -> readMap.getOrDefault(time, 0.0))
+            List<String> categories = results.stream()
+                    .map(r -> formatTime(r.get("time_label")))
                     .collect(Collectors.toList());
 
-            List<Double> writeMBps = categories.stream()
-                    .map(time -> writeMap.getOrDefault(time, 0.0))
+            // Throughput 계산: delta_reads와 delta_writes를 MB/s로 변환
+            // 블록 크기는 8KB이므로: (delta_reads + delta_writes) * 8 / 1024 = MB/s
+            List<Double> readMBps = results.stream()
+                    .map(r -> {
+                        long reads = getLongValue(r, "reads");
+                        // 1분당 읽기 수를 초당으로 변환하고 MB/s로 변환 (블록 크기 8KB)
+                        return (reads / 60.0) * 8.0 / 1024.0;
+                    })
                     .collect(Collectors.toList());
 
-            log.info("Throughput Chart 24h 데이터 생성 완료: instanceId={}, categories={}, readMBps={}, writeMBps={}", 
-                    instanceId, categories.size(), readMBps.size(), writeMBps.size());
+            List<Double> writeMBps = results.stream()
+                    .map(r -> {
+                        long writes = getLongValue(r, "writes");
+                        // 1분당 쓰기 수를 초당으로 변환하고 MB/s로 변환 (블록 크기 8KB)
+                        return (writes / 60.0) * 8.0 / 1024.0;
+                    })
+                    .collect(Collectors.toList());
 
             return DiskIoDashboardResponse.ThroughputChart24h.builder()
                     .categories(categories)
@@ -941,23 +774,41 @@ public class DiskIoService {
     /**
      * 리스트 데이터 조회
      */
-    public DiskIoListResponse getDiskIoList(Long instanceId, String timeRange, List<String> statusList) {
-        if (instanceId == null) {
-            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
-        }
+    public DiskIoListResponse getDiskIoList(Long instanceId, String timeRange, List<String> statusList, Integer page, Integer size) {
+        instanceId = getDefaultInstanceIdIfNull(instanceId);
+
+        // 페이징 파라미터 설정 (기본값: page=0, size=20)
+        int pageNum = page != null ? page : 0;
+        int pageSize = size != null ? size : 20;
+        if (pageNum < 0) pageNum = 0;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 100) pageSize = 100; // 최대 100개로 제한
 
         OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
 
         try {
-            // 낮은 Cache Hit Ratio 시간대 (Top 20)
-            List<DiskIoListResponse.LowCacheHitItem> lowCacheHitList = getLowCacheHitListInternal(instanceId, startTime, endTime, statusList);
+            // 섹션 1: 높은 Fsync 발생 시간대 (페이징)
+            List<DiskIoListResponse.HighFsyncItem> highFsyncList = getHighFsyncList(instanceId, startTime, endTime, statusList, pageNum, pageSize);
 
-            long totalCount = (long) lowCacheHitList.size();
+            // 섹션 2: 낮은 Cache Hit Ratio 시간대 (페이징)
+            List<DiskIoListResponse.LowCacheHitItem> lowCacheHitList = getLowCacheHitList(instanceId, startTime, endTime, statusList, pageNum, pageSize);
+
+            // 총 개수 조회
+            long highFsyncTotal = countHighFsyncList(instanceId, startTime, endTime, statusList);
+            long lowCacheHitTotal = countLowCacheHitList(instanceId, startTime, endTime, statusList);
+            long totalCount = highFsyncTotal + lowCacheHitTotal;
+
+            // 총 페이지 수 계산
+            int totalPages = (int) Math.ceil((double) totalCount / pageSize);
 
             return DiskIoListResponse.builder()
+                    .highFsyncList(highFsyncList)
                     .lowCacheHitList(lowCacheHitList)
                     .totalCount(totalCount)
+                    .page(pageNum)
+                    .size(pageSize)
+                    .totalPages(totalPages)
                     .build();
 
         } catch (Exception e) {
@@ -967,56 +818,163 @@ public class DiskIoService {
     }
 
     /**
-     * 낮은 Cache Hit Ratio 시간대 리스트 조회
+     * 섹션 1: 높은 Fsync 발생 시간대 (페이징)
      */
-    public List<DiskIoListResponse.LowCacheHitItem> getLowCacheHitList(Long instanceId, String timeRange, List<String> statusList) {
-        if (instanceId == null) {
-            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
-        }
+    private List<DiskIoListResponse.HighFsyncItem> getHighFsyncList(Long instanceId, OffsetDateTime startTime,
+                                                           OffsetDateTime endTime, List<String> statusList, int page, int size) {
+        try {
+            int offset = page * size;
+            List<Map<String, Object>> results = diskIoMapper.selectHighFsyncWithPaging(
+                    instanceId, startTime, endTime, statusList, offset, size);
 
-        OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC);
-        OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
-        return getLowCacheHitListInternal(instanceId, startTime, endTime, statusList);
+            return results.stream()
+                    .map(r -> DiskIoListResponse.HighFsyncItem.builder()
+                            .collectedAt(convertToOffsetDateTime(r.get("collected_at")))
+                            .fsyncRate(getDoubleValue(r, "fsync_rate"))
+                            .bufferHitRatio(getDoubleValue(r, "buffer_hit_ratio"))
+                            .avgLatency(getDoubleValue(r, "avg_write_latency"))
+                            .status((String) r.get("status"))
+                            .backendType((String) r.get("backend_type"))
+                            .build())
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("높은 Fsync 리스트 조회 실패", e);
+            return new ArrayList<>();
+        }
     }
 
     /**
-     * 낮은 Cache Hit Ratio 시간대 (Top 20)
+     * 섹션 2: 낮은 Cache Hit Ratio 시간대 (페이징)
      */
-    private List<DiskIoListResponse.LowCacheHitItem> getLowCacheHitListInternal(Long instanceId, OffsetDateTime startTime,
-                                                               OffsetDateTime endTime, List<String> statusList) {
+    private List<DiskIoListResponse.LowCacheHitItem> getLowCacheHitList(Long instanceId, OffsetDateTime startTime,
+                                                               OffsetDateTime endTime, List<String> statusList, int page, int size) {
         try {
-            List<Map<String, Object>> results = diskIoMapper.selectLowCacheHitTop20(
-                    instanceId, startTime, endTime, statusList);
+            int offset = page * size;
+            List<Map<String, Object>> results = diskIoMapper.selectLowCacheHitWithPaging(
+                    instanceId, startTime, endTime, statusList, offset, size);
 
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(KOREA_ZONE);
-            
             return results.stream()
-                    .map(r -> {
-                        Object collectedAtObj = r.get("collected_at");
-                        String collectedAtStr = "";
-                        if (collectedAtObj instanceof OffsetDateTime) {
-                            collectedAtStr = ((OffsetDateTime) collectedAtObj)
-                                    .atZoneSameInstant(KOREA_ZONE)
-                                    .format(formatter);
-                        } else if (collectedAtObj != null) {
-                            collectedAtStr = collectedAtObj.toString();
-                        }
-                        
-                        return DiskIoListResponse.LowCacheHitItem.builder()
-                                .collectedAt(collectedAtStr)
-                                .bufferHitRatio(getDoubleValue(r, "buffer_hit_ratio"))
-                                .physicalReads(getLongValue(r, "physical_reads"))
-                                .cacheHits(getLongValue(r, "cache_hits"))
-                                .status((String) r.get("status"))
-                                .backendType((String) r.get("backend_type"))
-                                .databaseName((String) r.get("database_name"))
-                                .build();
-                    })
+                    .map(r -> DiskIoListResponse.LowCacheHitItem.builder()
+                            .collectedAt(convertToOffsetDateTime(r.get("collected_at")))
+                            .bufferHitRatio(getDoubleValue(r, "buffer_hit_ratio"))
+                            .physicalReads(getLongValue(r, "physical_reads"))
+                            .cacheHits(getLongValue(r, "cache_hits"))
+                            .status((String) r.get("status"))
+                            .backendType((String) r.get("backend_type"))
+                            .databaseName((String) r.get("database_name"))
+                            .build())
                     .collect(Collectors.toList());
 
         } catch (Exception e) {
             log.error("낮은 Cache Hit 리스트 조회 실패", e);
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 섹션 1 총 개수 조회
+     */
+    private long countHighFsyncList(Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList) {
+        try {
+            return diskIoMapper.countHighFsyncList(instanceId, startTime, endTime, statusList);
+        } catch (Exception e) {
+            log.error("높은 Fsync 총 개수 조회 실패", e);
+            return 0L;
+        }
+    }
+
+    /**
+     * 섹션 2 총 개수 조회
+     */
+    private long countLowCacheHitList(Long instanceId, OffsetDateTime startTime, OffsetDateTime endTime, List<String> statusList) {
+        try {
+            return diskIoMapper.countLowCacheHitList(instanceId, startTime, endTime, statusList);
+        } catch (Exception e) {
+            log.error("낮은 Cache Hit 총 개수 조회 실패", e);
+            return 0L;
+        }
+    }
+
+    /**
+     * 낮은 Cache Hit 리스트만 조회 (페이징 없음, 전체 조회)
+     */
+    public List<DiskIoListResponse.LowCacheHitItem> getLowCacheHitListOnly(
+            Long instanceId, String timeRange, List<String> statusList) {
+        
+        if (instanceId == null) {
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
+
+        OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+        OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
+
+        try {
+            // 페이징 없이 전체 조회 (프론트엔드에서 클라이언트 사이드 페이징)
+            List<Map<String, Object>> results = diskIoMapper.selectLowCacheHitWithPaging(
+                    instanceId, startTime, endTime, statusList, 0, 10000); // 충분히 큰 limit
+
+            return results.stream()
+                    .map(r -> DiskIoListResponse.LowCacheHitItem.builder()
+                            .collectedAt(convertToOffsetDateTime(r.get("collected_at")))
+                            .bufferHitRatio(getDoubleValue(r, "buffer_hit_ratio"))
+                            .physicalReads(getLongValue(r, "physical_reads"))
+                            .cacheHits(getLongValue(r, "cache_hits"))
+                            .status((String) r.get("status"))
+                            .backendType((String) r.get("backend_type"))
+                            .databaseName((String) r.get("database_name"))
+                            .build())
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("낮은 Cache Hit 리스트 조회 실패", e);
+            throw new RuntimeException("리스트 데이터 조회 중 오류 발생", e);
+        }
+    }
+
+    /**
+     * 낮은 Cache Hit 리스트만 조회 (페이징 포함)
+     */
+    public DiskIoListResponse getLowCacheHitListWithPaging(
+            Long instanceId, String timeRange, List<String> statusList, Integer page, Integer size) {
+        
+        if (instanceId == null) {
+            throw new IllegalArgumentException("instanceId는 필수 파라미터입니다");
+        }
+
+        // 페이징 파라미터 설정 (기본값: page=0, size=10)
+        int pageNum = page != null ? page : 0;
+        int pageSize = size != null ? size : 10;
+        if (pageNum < 0) pageNum = 0;
+        if (pageSize < 1) pageSize = 10;
+        if (pageSize > 100) pageSize = 100; // 최대 100개로 제한
+
+        OffsetDateTime endTime = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(1);
+        OffsetDateTime startTime = calculateStartTime(endTime, timeRange);
+
+        try {
+            // 낮은 Cache Hit 리스트만 조회 (페이징)
+            List<DiskIoListResponse.LowCacheHitItem> lowCacheHitList = getLowCacheHitList(
+                    instanceId, startTime, endTime, statusList, pageNum, pageSize);
+
+            // 총 개수 조회
+            long lowCacheHitTotal = countLowCacheHitList(instanceId, startTime, endTime, statusList);
+
+            // 총 페이지 수 계산
+            int totalPages = (int) Math.ceil((double) lowCacheHitTotal / pageSize);
+
+            return DiskIoListResponse.builder()
+                    .highFsyncList(new ArrayList<>()) // 빈 리스트
+                    .lowCacheHitList(lowCacheHitList)
+                    .totalCount(lowCacheHitTotal)
+                    .page(pageNum)
+                    .size(pageSize)
+                    .totalPages(totalPages)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("낮은 Cache Hit 리스트 조회 실패", e);
+            throw new RuntimeException("리스트 데이터 조회 중 오류 발생", e);
         }
     }
 
@@ -1034,29 +992,40 @@ public class DiskIoService {
         };
     }
 
+    /**
+     * Object를 OffsetDateTime으로 변환 (Timestamp, LocalDateTime, OffsetDateTime 지원)
+     */
+    private OffsetDateTime convertToOffsetDateTime(Object timeObj) {
+        if (timeObj == null) {
+            return OffsetDateTime.MIN;
+        }
+        if (timeObj instanceof OffsetDateTime) {
+            return (OffsetDateTime) timeObj;
+        }
+        if (timeObj instanceof java.sql.Timestamp) {
+            return ((java.sql.Timestamp) timeObj).toInstant().atOffset(ZoneOffset.UTC);
+        }
+        if (timeObj instanceof LocalDateTime) {
+            return ((LocalDateTime) timeObj).atOffset(ZoneOffset.UTC);
+        }
+        return OffsetDateTime.MIN;
+    }
+
     private String formatTime(Object timeObj) {
         if (timeObj instanceof OffsetDateTime) {
-            return ((OffsetDateTime) timeObj).atZoneSameInstant(KOREA_ZONE).format(TIME_FORMATTER);
+            return ((OffsetDateTime) timeObj).format(TIME_FORMATTER);
+        }
+        if (timeObj instanceof LocalDateTime) {
+            return ((LocalDateTime) timeObj).format(TIME_FORMATTER);
+        }
+        if (timeObj instanceof java.sql.Timestamp) {
+            return ((java.sql.Timestamp) timeObj).toInstant().atOffset(ZoneOffset.UTC).format(TIME_FORMATTER);
         }
         return timeObj != null ? timeObj.toString() : "";
     }
 
     private String formatDateTime(Object timeObj) {
-        // HH:mm 형식으로 통일 (타입 안전한 변환)
-        if (timeObj instanceof OffsetDateTime) {
-            return ((OffsetDateTime) timeObj).atZoneSameInstant(KOREA_ZONE)
-                    .format(DateTimeFormatter.ofPattern("HH:mm"));
-        } else if (timeObj instanceof java.sql.Timestamp) {
-            return ((java.sql.Timestamp) timeObj).toInstant()
-                    .atOffset(ZoneOffset.UTC)
-                    .atZoneSameInstant(KOREA_ZONE)
-                    .format(DateTimeFormatter.ofPattern("HH:mm"));
-        } else if (timeObj instanceof java.time.LocalDateTime) {
-            return ((java.time.LocalDateTime) timeObj)
-                    .atOffset(ZoneOffset.UTC)
-                    .atZoneSameInstant(KOREA_ZONE)
-                    .format(DateTimeFormatter.ofPattern("HH:mm"));
-        }
+        // HH:mm 형식으로 통일
         return formatTime(timeObj);
     }
 
