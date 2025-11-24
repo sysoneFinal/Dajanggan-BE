@@ -33,14 +33,19 @@ public class AlarmRuleDto {
         private Integer minDurationMin;
         private Integer occurCount;
         private Integer windowMin;
+        // 히스테리시스: 복구 조건 (발생 조건보다 낮은 임계치, 더 긴 지속 시간)
+        private BigDecimal resolveThreshold;  // 복구 임계치 (발생 임계치보다 낮게 설정)
+        private Integer resolveDurationMin;    // 복구 지속 시간 (분)
+        // 쿨다운: 재알림 최소 간격 (분)
+        private Integer cooldownMin;           // 쿨다운 시간 (분)
     }
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Levels {
-        private ThresholdLevel notice;
-        private ThresholdLevel warning;
+        private ThresholdLevel info;
+        private ThresholdLevel warn;
         private ThresholdLevel critical;
     }
 

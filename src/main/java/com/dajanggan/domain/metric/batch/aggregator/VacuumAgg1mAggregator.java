@@ -54,7 +54,24 @@ public class VacuumAgg1mAggregator {
     @Bean
     public JdbcCursorItemReader<VacuumAgg1mDto> vacuumAgg1mReader() {
         String sql = """
-    WITH current_stats AS (
+    
+                WITH index_bloat_parsed AS (
+              SELECT
+                  database_id,
+                  instance_id,
+                  DATE_TRUNC('minute', collected_at) as collected_at,
+                  COALESCE(SUM(
+                      (SELECT SUM((elem->>'bytes')::BIGINT)
+                       FROM jsonb_array_elements(index_bloat_info::jsonb) AS elem)
+                  ), 0) AS total_index_bloat_bytes
+              FROM vacuum_raw_metrics
+              WHERE collected_at >= DATE_TRUNC('minute', NOW()) - INTERVAL '1 minute'
+                AND collected_at < DATE_TRUNC('minute', NOW())
+                AND index_bloat_info IS NOT NULL
+                AND index_bloat_info::text != '[]'
+              GROUP BY database_id, instance_id, DATE_TRUNC('minute', collected_at)
+          ),
+    current_stats AS (
         SELECT 
             database_id,
             instance_id,
@@ -63,12 +80,11 @@ public class VacuumAgg1mAggregator {
             -- ✅ 전체 세션 (dead tuple이 있는 테이블)
             COUNT(*) as total_vacuum_sessions,
             
-            -- ✅ 실행 중인 세션만 카운트 (핵심 수정!)
+            -- ✅ 실행 중인 세션만 카운트 (session_phase 기준으로 판단)
+            -- elapsed_seconds가 NULL일 수 있으므로 session_phase만으로 판단
             COUNT(*) FILTER (
                 WHERE session_phase IS NOT NULL 
                 AND session_phase != 'not_running'
-                AND elapsed_seconds IS NOT NULL
-                AND elapsed_seconds > 0
             ) as active_vacuum_sessions,
             
             -- ✅ Autovacuum 세션 (실행 중인 것만)
@@ -128,9 +144,8 @@ public class VacuumAgg1mAggregator {
            SUM(relsize_total_bytes) as total_table_size_bytes,
             
             -- Worker 설정
-            AVG(autovacuum_cost_delay_ms) FILTER (
-                WHERE autovacuum_cost_delay_ms > 0
-            ) as avg_cost_delay_ms,
+            -- ✅ cost_delay_ms는 설정값이므로 항상 표시 (FILTER 제거)
+            COALESCE(AVG(autovacuum_cost_delay_ms), 0) as avg_cost_delay_ms,
             MAX(max_workers) as max_workers_configured,
             
             -- ✅ Worker 활용률 = 실행 중인 세션 / max_workers (수정!)
@@ -155,6 +170,16 @@ public class VacuumAgg1mAggregator {
         AND collected_at < DATE_TRUNC('minute', NOW())
         GROUP BY database_id, instance_id, DATE_TRUNC('minute', collected_at)
     ),
+    current_stats_with_index AS (
+        SELECT 
+            cs.*,
+            COALESCE(ibp.total_index_bloat_bytes, 0) as total_index_bloat_bytes
+        FROM current_stats cs
+        LEFT JOIN index_bloat_parsed ibp 
+            ON cs.database_id = ibp.database_id
+            AND cs.instance_id = ibp.instance_id
+            AND cs.collected_at = ibp.collected_at
+    ),
     previous_stats AS (
         SELECT 
             database_id,
@@ -164,29 +189,29 @@ public class VacuumAgg1mAggregator {
         WHERE collected_at = DATE_TRUNC('minute', NOW() - INTERVAL '1 minutes')
     )
     SELECT 
-        cs.*,
+        cswi.*,
         CASE 
             WHEN ps.prev_total_dead_tuples IS NOT NULL 
-                 AND cs.total_dead_tuples > ps.prev_total_dead_tuples
-            THEN cs.total_dead_tuples - ps.prev_total_dead_tuples
+                 AND cswi.total_dead_tuples > ps.prev_total_dead_tuples
+            THEN cswi.total_dead_tuples - ps.prev_total_dead_tuples
             ELSE 0 
         END as dead_tuple_increase_rate,
         CASE 
             WHEN ps.prev_total_dead_tuples IS NOT NULL 
-                 AND cs.total_dead_tuples < ps.prev_total_dead_tuples
-            THEN ps.prev_total_dead_tuples - cs.total_dead_tuples
+                 AND cswi.total_dead_tuples < ps.prev_total_dead_tuples
+            THEN ps.prev_total_dead_tuples - cswi.total_dead_tuples
             ELSE 0 
         END as dead_tuple_decrease_rate,
         CASE 
             WHEN ps.prev_total_dead_tuples IS NOT NULL
-            THEN cs.total_dead_tuples - ps.prev_total_dead_tuples
+            THEN cswi.total_dead_tuples - ps.prev_total_dead_tuples
             ELSE 0 
         END as net_dead_tuple_change
-    FROM current_stats cs
+    FROM current_stats_with_index cswi
     LEFT JOIN previous_stats ps 
-        ON cs.database_id = ps.database_id 
-        AND cs.instance_id = ps.instance_id
-    ORDER BY cs.database_id, cs.instance_id, cs.collected_at
+        ON cswi.database_id = ps.database_id 
+        AND cswi.instance_id = ps.instance_id
+    ORDER BY cswi.database_id, cswi.instance_id, cswi.collected_at
     """;
 
         return new JdbcCursorItemReaderBuilder<VacuumAgg1mDto>()
@@ -212,6 +237,7 @@ public class VacuumAgg1mAggregator {
             if (item.getMaxBloatRatio() == null) item.setMaxBloatRatio(0.0);
             if (item.getCriticalBloatTables() == null) item.setCriticalBloatTables(0);
             if (item.getTotalTableSizeBytes() == null) item.setTotalTableSizeBytes(0L);
+            if (item.getTotalIndexBloatBytes() == null) item.setTotalIndexBloatBytes(0L);
             if (item.getAvgCostDelayMs() == null) item.setAvgCostDelayMs(0.0);
             if (item.getMaxWorkersConfigured() == null) item.setMaxWorkersConfigured(0);
             if (item.getWorkerUtilizationPct() == null) item.setWorkerUtilizationPct(0.0);
@@ -241,6 +267,7 @@ public class VacuumAgg1mAggregator {
                     avg_cost_delay_ms, worker_utilization_pct, max_workers_configured,
                     avg_bloat_bytes, max_bloat_bytes, total_bloat_bytes,
                     avg_bloat_ratio, max_bloat_ratio, critical_bloat_tables, total_table_size_bytes,
+                    total_index_bloat_bytes,
                     blocked_vacuum_count, avg_blocked_seconds, max_blocked_seconds,
                     created_at
                 ) VALUES 
@@ -249,7 +276,7 @@ public class VacuumAgg1mAggregator {
             for (int i = 0; i < items.size(); i++) {
                 VacuumAgg1mDto item = items.get(i);
                 sql.append(String.format(
-                        "(%d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %.2f, %.2f, %d, %d, %d, %.2f, %.2f, %d, %d, %d, %d, %.4f, %.4f, %d, %d, %d, %.2f, %d, NOW())",
+                        "(%d, %d, '%s', %d, %d, %d, %d, %d, %d, %d, %.2f, %d, %d, %.2f, %.2f, %d, %d, %d, %.2f, %.2f, %d, %d, %d, %d, %.4f, %.4f, %d, %d, %d, %d, %.2f, %d, NOW())",
                         item.getDatabaseId(),
                         item.getInstanceId(),
                         item.getCollectedAt(),
@@ -278,6 +305,7 @@ public class VacuumAgg1mAggregator {
                         item.getMaxBloatRatio(),
                         item.getCriticalBloatTables(),
                         item.getTotalTableSizeBytes(),
+                        item.getTotalIndexBloatBytes(),
                         item.getBlockedVacuumCount(),
                         item.getAvgBlockedSeconds(),
                         item.getMaxBlockedSeconds()
@@ -314,6 +342,7 @@ public class VacuumAgg1mAggregator {
                     max_bloat_ratio = EXCLUDED.max_bloat_ratio,
                     critical_bloat_tables = EXCLUDED.critical_bloat_tables,
                     total_table_size_bytes = EXCLUDED.total_table_size_bytes,
+                    total_index_bloat_bytes = EXCLUDED.total_index_bloat_bytes,
                     blocked_vacuum_count = EXCLUDED.blocked_vacuum_count,
                     avg_blocked_seconds = EXCLUDED.avg_blocked_seconds,
                     max_blocked_seconds = EXCLUDED.max_blocked_seconds,
@@ -361,10 +390,11 @@ public class VacuumAgg1mAggregator {
                     .avgBloatBytes(rs.getLong("avg_bloat_bytes"))
                     .maxBloatBytes(rs.getLong("max_bloat_bytes"))
                     .totalBloatBytes(rs.getLong("total_bloat_bytes"))
-                    .avgBloatRatio(rs.getDouble("avg_bloat_ratio"))
+                    .                    avgBloatRatio(rs.getDouble("avg_bloat_ratio"))
                     .maxBloatRatio(rs.getDouble("max_bloat_ratio"))
                     .criticalBloatTables(rs.getInt("critical_bloat_tables"))
                     .totalTableSizeBytes(rs.getLong("total_table_size_bytes"))
+                    .totalIndexBloatBytes(rs.getLong("total_index_bloat_bytes"))
                     .blockedVacuumCount(rs.getInt("blocked_vacuum_count"))
                     .avgBlockedSeconds(rs.getDouble("avg_blocked_seconds"))
                     .maxBlockedSeconds(rs.getInt("max_blocked_seconds"))

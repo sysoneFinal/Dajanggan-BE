@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -39,7 +38,7 @@ public class VacuumHistoryService {
     }
 
     private VacuumHistoryDto.Response convertToResponse(VacuumHistoryDto.Entity entity) {
-        return VacuumHistoryDto.Response.builder()
+        VacuumHistoryDto.Response response = VacuumHistoryDto.Response.builder()
                 .table(entity.getTableName())
                 .executedAt(formatDateTime(entity.getExecutedAt()))
                 .vacuumType(entity.getVacuumType())
@@ -48,6 +47,13 @@ public class VacuumHistoryService {
                 .bloatRatio(formatBloatRatio(entity.getBloatRatioBefore()))
                 .status(entity.getStatus())
                 .build();
+        
+        // 디버깅 로그 추가
+        log.debug("History 변환: table={}, deadTuplesBefore={}, deadTuples={}, durationSeconds={}, bloatRatioBefore={}, bloatRatio={}",
+                entity.getTableName(), entity.getDeadTuplesBefore(), response.getDeadTuples(),
+                response.getDurationSeconds(), entity.getBloatRatioBefore(), response.getBloatRatio());
+        
+        return response;
     }
 
     private boolean filterByStatus(VacuumHistoryDto.Response dto, String statusFilter) {

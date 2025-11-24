@@ -7,9 +7,6 @@ import org.apache.ibatis.annotations.Param;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * Vacuum 5분 집계 Repository
- */
 @Mapper
 public interface VacuumAgg5mMapper {
 
@@ -35,16 +32,6 @@ public interface VacuumAgg5mMapper {
      * KPI 집계 (평균값)
      */
     VacuumAgg5mDto getKpiSummary(
-            @Param("databaseId") Long databaseId,
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Bloat KPI 집계
-     */
-    VacuumAgg5mDto getBloatKpiSummary(
             @Param("databaseId") Long databaseId,
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,

@@ -4,6 +4,8 @@ import com.dajanggan.domain.instance.dto.InstanceCreateRequest;
 import com.dajanggan.domain.instance.dto.InstanceResponse;
 import com.dajanggan.domain.instance.dto.InstanceUpdateRequest;
 import com.dajanggan.domain.instance.dto.InstanceWithDatabasesDto;
+import com.dajanggan.domain.instance.dto.InstanceSlackSettingsResponse;
+import com.dajanggan.domain.instance.dto.SlackSettingsRequest;
 import com.dajanggan.domain.instance.service.InstanceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -66,6 +68,44 @@ public class InstanceController {
         InstanceResponse response =instanceService.update(id, req);
 
         return ResponseEntity.ok(response);
+    }
+
+    // ========== Slack 설정 CRUD ==========
+
+    // 모든 인스턴스의 Slack 설정 목록 조회
+    @GetMapping("/slack-settings")
+    public ResponseEntity<List<InstanceSlackSettingsResponse>> getAllSlackSettings() {
+        List<InstanceSlackSettingsResponse> settings = instanceService.getAllSlackSettings();
+        return ResponseEntity.ok(settings);
+    }
+
+    // Slack 설정 조회 (인스턴스 ID 기준)
+    @GetMapping("/slack-settings/{instanceId}")
+    public ResponseEntity<SlackSettingsRequest> getSlackSettingsById(
+            @PathVariable Long instanceId
+    ) {
+        SlackSettingsRequest settings = instanceService.getSlackSettingsById(instanceId);
+        return ResponseEntity.ok(settings);
+    }
+
+
+    // Slack 설정 생성/업데이트 (인스턴스 ID 기준)
+    @PutMapping("/slack-settings/{instanceId}")
+    public ResponseEntity<Map<String, Object>> updateSlackSettingsById(
+            @PathVariable Long instanceId,
+            @RequestBody @Valid SlackSettingsRequest request
+    ) {
+        instanceService.updateSlackSettingsById(instanceId, request);
+        return ResponseEntity.ok(Map.of("message", "Slack 설정이 업데이트되었습니다."));
+    }
+
+    // Slack 설정 삭제/초기화 (인스턴스 ID 기준)
+    @DeleteMapping("/slack-settings/{instanceId}")
+    public ResponseEntity<Map<String, Object>> deleteSlackSettingsById(
+            @PathVariable Long instanceId
+    ) {
+        instanceService.deleteSlackSettingsById(instanceId);
+        return ResponseEntity.ok(Map.of("message", "Slack 설정이 삭제되었습니다."));
     }
 
     // 삭제

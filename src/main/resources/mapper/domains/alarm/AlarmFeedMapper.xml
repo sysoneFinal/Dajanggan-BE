@@ -183,12 +183,37 @@
                  )
     </insert>
 
-    <!-- trackingId로 최신 feed_id 조회 -->
+    <!-- trackingId로 최신 feed_id 조회 (해결되지 않은 Feed만) -->
     <select id="selectLatestFeedIdByTrackingId" resultType="long">
         SELECT alarm_feed_id
         FROM alarm_feed
         WHERE alarm_tracking_id = #{alarmTrackingId}
+          AND is_resolved = false
         ORDER BY occurred_at DESC, alarm_feed_id DESC
-            LIMIT 1
+        LIMIT 1
+    </select>
+
+    <!-- 마지막 알람 발생 시간 조회 (쿨다운 체크용 - 같은 레벨만) -->
+    <select id="selectLastFiredAtByRuleId" resultType="java.time.OffsetDateTime">
+        SELECT occurred_at
+        FROM alarm_feed
+        WHERE alarm_rule_id = #{alarmRuleId}
+          AND severity_level = #{severityLevel}
+          AND is_resolved = false
+        ORDER BY occurred_at DESC
+        LIMIT 1
+    </select>
+
+    <!-- ruleId, instanceId, databaseId, level 기준으로 해결되지 않은 Feed 조회 (중복 체크용) -->
+    <select id="selectUnresolvedFeedIdByRule" resultType="java.lang.Long">
+        SELECT alarm_feed_id
+        FROM alarm_feed
+        WHERE alarm_rule_id = #{alarmRuleId}
+          AND instance_id = #{instanceId}
+          AND database_id = #{databaseId}
+          AND severity_level = #{severityLevel}
+          AND is_resolved = false
+        ORDER BY occurred_at DESC
+        LIMIT 1
     </select>
 </mapper>

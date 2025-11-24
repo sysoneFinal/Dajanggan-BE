@@ -3,6 +3,8 @@ package com.dajanggan.domain.vacuum.service;
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDetailDto;
 import com.dajanggan.domain.vacuum.dto.raw.VacuumRawMetricDto;
 import com.dajanggan.domain.vacuum.repository.VacuumBloatRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
 public class VacuumBloatDetailService {
 
     private final VacuumBloatRepository bloatRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final DateTimeFormatter LABEL_FORMATTER = DateTimeFormatter.ofPattern("MM-dd");
 
@@ -219,26 +222,112 @@ public class VacuumBloatDetailService {
                 .collect(Collectors.groupingBy(m ->
                         m.getCollectedAt().toLocalDate().format(LABEL_FORMATTER)));
 
+        // 먼저 모든 인덱스 이름 수집
+        Map<String, Boolean> allIndexNames = new HashMap<>();
+        
+        groupedByDate.values().stream()
+                .flatMap(List::stream)
+                .filter(m -> m != null && m.getIndexBloatInfo() != null 
+                        && !m.getIndexBloatInfo().isEmpty() 
+                        && !m.getIndexBloatInfo().equals("[]"))
+                .forEach(m -> {
+                    try {
+                        List<Map<String, Object>> indexList = objectMapper.readValue(
+                                m.getIndexBloatInfo(), 
+                                new TypeReference<List<Map<String, Object>>>() {}
+                        );
+                        if (indexList != null) {
+                            indexList.forEach(indexInfo -> {
+                                String indexName = (String) indexInfo.get("name");
+                                if (indexName != null) {
+                                    allIndexNames.put(indexName, true);
+                                }
+                            });
+                        }
+                    } catch (Exception e) {
+                        // 무시하고 계속 진행
+                    }
+                });
+
+        // 날짜별로 처리
         groupedByDate.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> {
-                    labels.add(entry.getKey());
+                    String dateLabel = entry.getKey();
+                    labels.add(dateLabel);
 
-                    // 각 날짜의 인덱스 bloat 정보 파싱
+                    // 각 날짜의 인덱스 bloat 정보 파싱 및 평균 계산
+                    Map<String, List<Double>> dateIndexRatios = new HashMap<>();
+                    
                     entry.getValue().stream()
-                            .filter(m -> m != null && m.getIndexBloatInfo() != null)  // ✨ null 체크!
+                            .filter(m -> m != null && m.getIndexBloatInfo() != null 
+                                    && !m.getIndexBloatInfo().isEmpty() 
+                                    && !m.getIndexBloatInfo().equals("[]"))
                             .forEach(m -> {
-                                // TODO: JSON 파싱 로직
-                                // ObjectMapper를 사용하여 index_bloat_info 파싱
-                                // 현재는 빈 데이터 반환
+                                try {
+                                    // JSON 배열 파싱: [{"name": "...", "bytes": ..., "ratio": ...}, ...]
+                                    List<Map<String, Object>> indexList = objectMapper.readValue(
+                                            m.getIndexBloatInfo(), 
+                                            new TypeReference<List<Map<String, Object>>>() {}
+                                    );
+
+                                    if (indexList != null) {
+                                        for (Map<String, Object> indexInfo : indexList) {
+                                            String indexName = (String) indexInfo.get("name");
+                                            if (indexName == null) continue;
+
+                                            // ratio 값 추출 (Double 또는 Number)
+                                            Double ratio = 0.0;
+                                            Object ratioObj = indexInfo.get("ratio");
+                                            if (ratioObj != null) {
+                                                if (ratioObj instanceof Number) {
+                                                    ratio = ((Number) ratioObj).doubleValue();
+                                                } else if (ratioObj instanceof String) {
+                                                    try {
+                                                        ratio = Double.parseDouble((String) ratioObj);
+                                                    } catch (NumberFormatException e) {
+                                                        log.warn("Invalid ratio value for index {}: {}", indexName, ratioObj);
+                                                    }
+                                                }
+                                            }
+
+                                            // 인덱스별 ratio 리스트에 추가
+                                            dateIndexRatios.computeIfAbsent(indexName, k -> new ArrayList<>()).add(ratio);
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    log.warn("⚠️ Failed to parse index_bloat_info JSON for table {}: {}", 
+                                            tableName, e.getMessage());
+                                }
                             });
+
+                    // 모든 인덱스에 대해 날짜별 평균 ratio 계산 (없으면 0.0)
+                    for (String indexName : allIndexNames.keySet()) {
+                        List<Double> ratios = dateIndexRatios.getOrDefault(indexName, new ArrayList<>());
+                        
+                        // 일별 평균 ratio 계산 (퍼센트로 변환)
+                        double avgRatio = ratios.isEmpty() 
+                                ? 0.0 
+                                : ratios.stream()
+                                        .mapToDouble(Double::doubleValue)
+                                        .average()
+                                        .orElse(0.0) * 100; // 퍼센트로 변환
+
+                        // 인덱스별 시계열 데이터에 추가
+                        indexDataMap.computeIfAbsent(indexName, k -> new ArrayList<>()).add(avgRatio);
+                    }
                 });
 
         // 인덱스별 데이터 시리즈 생성
+        // 모든 인덱스가 모든 날짜에 대해 데이터를 가지도록 보장
         List<String> indexNames = new ArrayList<>(indexDataMap.keySet());
-        List<List<Double>> seriesData = indexNames.stream()
-                .map(indexDataMap::get)
-                .collect(Collectors.toList());
+        List<List<Double>> seriesData = new ArrayList<>();
+        
+        for (String indexName : indexNames) {
+            List<Double> indexData = indexDataMap.get(indexName);
+            // 이미 모든 날짜에 대해 데이터가 있으므로 그대로 사용
+            seriesData.add(new ArrayList<>(indexData));
+        }
 
         log.info("📈 Index Bloat Trend: {} indexes, {} data points",
                 indexNames.size(), labels.size());
