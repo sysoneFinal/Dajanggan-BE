@@ -115,25 +115,25 @@
         )
         SELECT
             query_hash AS queryHash,
-            query_metric_id AS queryMetricId,
-            collected_at AS collectedAt,
-            query_text AS queryText,
-            short_query AS shortQuery,
+            queryMetricId,
+            collectedAt,
+            queryText,
+            shortQuery,
             username,
-            query_type AS queryType,
-            execution_time_ms AS executionTimeMs,
-            cpu_usage_percent AS cpuUsagePercent,
-            memory_usage_mb AS memoryUsageMb,
-            io_blocks AS ioBlocks,
-            execution_count AS executionCount,
-            avg_execution_time_ms AS avgExecutionTimeMs,
-            max_execution_time_ms AS maxExecutionTimeMs,
-            min_execution_time_ms AS minExecutionTimeMs,
-            total_io_blocks AS totalIoBlocks,
-            first_seen_at AS firstSeenAt,
-            last_seen_at AS lastSeenAt
+            queryType,
+            executionTimeMs,
+            cpuUsagePercent,
+            memoryUsageMb,
+            ioBlocks,
+            executionCount,
+            avgExecutionTimeMs,
+            maxExecutionTimeMs,
+            minExecutionTimeMs,
+            totalIoBlocks,
+            firstSeenAt,
+            lastSeenAt
         FROM grouped_queries
-        ORDER BY max_execution_time_ms DESC
+        ORDER BY maxExecutionTimeMs DESC
             LIMIT #{limit}
     </select>
 
