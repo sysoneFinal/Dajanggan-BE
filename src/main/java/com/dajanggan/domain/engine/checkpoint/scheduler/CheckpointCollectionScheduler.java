@@ -15,15 +15,23 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Checkpoint 메트릭 수집 스케줄러
- * 1분 집계: 매분 0초 실행
- * 5분 집계: 5분마다 실행 (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55분)
+ * Raw 데이터만 수집 (집계는 Batch Aggregator에서 수행)
+ * 
+ * 주의: 아래 메서드들은 현재 사용되지 않지만 향후 사용을 위해 보존:
+ * - calculateAggregation1m()
+ * - calculateAggregation5m()
+ * - determineCheckpointStatus()
+ * - calculateSafeDelta()
  */
 @Slf4j
 @Component
@@ -40,22 +48,18 @@ public class CheckpointCollectionScheduler {
     }
 
     /**
-     * 1분마다 실행 (매분 0초)
+     * 1분마다 실행 (매분 5초) - metric/batch 스타일에 맞춤
+     * 수집이 완료된 후 집계되도록 시간 조정
      * 1분 집계 데이터 수집
      */
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "5 * * * * *")
     public void collectCheckpoint1mMetrics() {
         log.info("========== Checkpoint 1분 집계 시작 ==========");
 
         try {
-            OffsetDateTime collectedAt = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+            LocalDateTime collectedAt = LocalDateTime.now();
             List<Long> instanceIds = checkpointMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
-            
-            if (instanceIds.isEmpty()) {
-                log.warn("활성 인스턴스가 없습니다. DB의 instance 테이블에 is_active=true인 인스턴스가 있는지 확인하세요.");
-                return;
-            }
 
             int successCount = 0;
             int failCount = 0;
@@ -78,15 +82,20 @@ public class CheckpointCollectionScheduler {
     }
 
     /**
-     * 5분마다 실행 (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55분)
+     * 5분마다 실행 (매 5분의 10초) - metric/batch 스타일에 맞춤
+     * 0:10, 5:10, 10:10, 15:10, ... 형식으로 실행
      * 5분 집계 데이터 수집
      */
-    @Scheduled(cron = "0 */5 * * * *")
+    @Scheduled(cron = "10 */5 * * * *")
     public void collectCheckpoint5mMetrics() {
         log.info("========== Checkpoint 5분 집계 시작 ==========");
 
         try {
-            OffsetDateTime collectedAt = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+            // 현재 시간을 시스템 시간대에서 가져온 후 UTC로 변환
+            // LocalDateTime.now()는 시간대 정보가 없으므로, ZonedDateTime을 사용
+            ZonedDateTime nowZoned = ZonedDateTime.now(ZoneId.systemDefault());
+            LocalDateTime collectedAt = nowZoned.toLocalDateTime();
+            log.debug("수집 시간 (로컬): {}", collectedAt);
             List<Long> instanceIds = checkpointMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
 
@@ -99,86 +108,44 @@ public class CheckpointCollectionScheduler {
                     successCount++;
                 } catch (Exception e) {
                     failCount++;
-                    // 집계 실패는 정상적인 상황일 수 있으므로 로그 최소화
-                    log.debug("Checkpoint 5분 집계 처리 실패: instanceId={}, error={}", instanceId, e.getMessage());
+                    log.error("Checkpoint 5분 집계 처리 실패: instanceId={}", instanceId, e);
                 }
             }
 
             log.info("========== Checkpoint 5분 집계 완료: 성공={}, 실패={} ==========", successCount, failCount);
 
         } catch (Exception e) {
-            // 집계 실패는 정상적인 상황일 수 있으므로 로그 최소화
-            log.debug("Checkpoint 5분 집계 중 오류 발생: {}", e.getMessage());
+            log.error("Checkpoint 5분 집계 중 오류 발생", e);
         }
     }
 
     /**
      * 특정 인스턴스의 1분 집계 처리
      */
-    private void processInstance1mMetrics(Long instanceId, OffsetDateTime collectedAt) {
+    private void processInstance1mMetrics(Long instanceId, LocalDateTime collectedAt) {
         Instance instance = instanceRepository.findById(instanceId)
                 .orElseThrow(() -> new RuntimeException("인스턴스를 찾을 수 없습니다: " + instanceId));
 
         JdbcTemplate jdbcTemplate = dataSourceFactory.createJdbcTemplate(instance, "postgres");
         Map<String, Object> currentData = collectFromPgStatBgwriter(jdbcTemplate);
         Map<String, Object> walData = collectWalData(jdbcTemplate);
-        Map<String, Object> archiverData = collectFromPgStatArchiver(jdbcTemplate);
         CheckpointRaw previousRaw = checkpointMapper.selectPreviousRaw(instanceId);
 
-        log.debug("Checkpoint 1분 집계 데이터 수집: instanceId={}, collectedAt={}, previousRaw={}", 
-                instanceId, collectedAt, previousRaw != null ? "존재" : "없음");
-
-        CheckpointRaw raw = buildCheckpointRaw(instanceId, collectedAt, currentData, walData, archiverData, previousRaw);
+        CheckpointRaw raw = buildCheckpointRaw(instanceId, collectedAt, currentData, walData, previousRaw);
         checkpointMapper.insertRaw(raw);
-        log.debug("Raw 데이터 저장 완료: instanceId={}, checkpointsTimed={}, checkpointsReq={}, writeTime={}, syncTime={}", 
-                instanceId, raw.getCheckpointsTimed(), raw.getCheckpointsReq(), raw.getCheckpointWriteTime(), raw.getCheckpointSyncTime());
+        log.debug("Raw 데이터 저장 완료: instanceId={}", instanceId);
 
-        // 이전 데이터가 있을 때만 집계 데이터 생성 (더미 데이터 방지)
-        if (previousRaw != null) {
-            CheckpointAgg1m agg1m = calculateAggregation1m(instanceId, collectedAt, raw, previousRaw);
-            checkpointMapper.insertAgg1m(agg1m);
-            log.info("1분 집계 데이터 저장 완료: instanceId={}, totalCheckpoints={}, avgWriteTime={}, avgSyncTime={}, avgTotalTime={}, status={}", 
-                    instanceId, 
-                    agg1m.getTotalCheckpointsTimed() + agg1m.getTotalCheckpointsReq(),
-                    agg1m.getAvgWriteTime(), 
-                    agg1m.getAvgSyncTime(), 
-                    agg1m.getAvgTotalTime(),
-                    agg1m.getStatus());
-        } else {
-            log.warn("첫 번째 수집: 이전 데이터가 없어 집계 데이터 생성을 스킵합니다. instanceId={}", instanceId);
-        }
-
+        // Agg 데이터 생성은 배치로 처리
         log.info("1분 집계 처리 완료: instanceId={}", instanceId);
     }
 
     /**
      * 특정 인스턴스의 5분 집계 처리
+     * Agg 데이터 생성은 배치로 처리
      */
-    private void processInstance5mMetrics(Long instanceId, OffsetDateTime collectedAt) {
-        // 5분 전부터 현재까지의 1분 집계 데이터 조회 (5개)
-        OffsetDateTime startTime = collectedAt.minusMinutes(5);
-        List<CheckpointAgg1m> agg1mList = checkpointMapper.selectPreviousAgg1m(instanceId, startTime, collectedAt);
-
-        log.debug("5분 집계 데이터 조회: instanceId={}, startTime={}, collectedAt={}, agg1mListSize={}", 
-                instanceId, startTime, collectedAt, agg1mList != null ? agg1mList.size() : 0);
-
-        if (agg1mList == null || agg1mList.isEmpty()) {
-            log.warn("5분 집계 스킵: 1분 집계 데이터가 없습니다. instanceId={}, startTime={}, collectedAt={}", 
-                    instanceId, startTime, collectedAt);
-            return;
-        }
-
-        CheckpointAgg5m agg5m = calculateAggregation5m(instanceId, collectedAt, agg1mList);
-        checkpointMapper.insertAgg5m(agg5m);
-        log.info("5분 집계 데이터 저장 완료: instanceId={}, totalCheckpoints={}, avgWriteTime={}, avgSyncTime={}, avgTotalTime={}, status={}", 
-                instanceId,
-                agg5m.getTotalCheckpointsTimed() + agg5m.getTotalCheckpointsReq(),
-                agg5m.getAvgWriteTime(),
-                agg5m.getAvgSyncTime(),
-                agg5m.getAvgTotalTime(),
-                agg5m.getStatus());
-
-        log.info("5분 집계 처리 완료: instanceId={}, 1분 집계 수={}", instanceId, agg1mList.size());
+    private void processInstance5mMetrics(Long instanceId, LocalDateTime collectedAt) {
+        // 5분 집계는 배치로 처리되므로 여기서는 아무 작업도 하지 않음
+        log.debug("5분 집계는 배치로 처리됩니다: instanceId={}", instanceId);
     }
 
     /**
@@ -227,9 +194,8 @@ public class CheckpointCollectionScheduler {
             return jdbcTemplate.queryForMap(query);
         } catch (Exception e) {
             // pg_stat_wal이 없는 경우 (PostgreSQL 12 이하) 또는 오류 발생 시
-            // 다른 스케줄러와 일관성을 위해 예외를 로깅하고 기본값 반환
-            log.warn("pg_stat_wal 조회 실패 (PostgreSQL 12 이하이거나 확장 미설치): {}. 기본값을 사용합니다.", e.getMessage());
-            // 기본값 반환 (다른 메트릭 수집은 계속 진행)
+            log.warn("pg_stat_wal 조회 실패, 기본값 사용: {}", e.getMessage());
+            // 기본값 반환
             return Map.of(
                     "wal_records", 0L,
                     "wal_fpi", 0L,
@@ -244,42 +210,11 @@ public class CheckpointCollectionScheduler {
     }
 
     /**
-     * pg_stat_archiver에서 데이터 수집
-     */
-    private Map<String, Object> collectFromPgStatArchiver(JdbcTemplate jdbcTemplate) {
-        try {
-            String query = """
-                    SELECT 
-                        COALESCE(archived_count, 0) AS archived_count,
-                        COALESCE(last_archived_wal, '') AS last_archived_wal,
-                        COALESCE(last_archived_time, NULL) AS last_archived_time,
-                        COALESCE(failed_count, 0) AS failed_count,
-                        COALESCE(last_failed_wal, '') AS last_failed_wal,
-                        COALESCE(last_failed_time, NULL) AS last_failed_time,
-                        stats_reset
-                    FROM pg_stat_archiver
-                    """;
-            return jdbcTemplate.queryForMap(query);
-        } catch (Exception e) {
-            log.warn("pg_stat_archiver 조회 실패: {}. 기본값을 사용합니다.", e.getMessage());
-            return Map.of(
-                    "archived_count", 0L,
-                    "last_archived_wal", "",
-                    "last_archived_time", null,
-                    "failed_count", 0L,
-                    "last_failed_wal", "",
-                    "last_failed_time", null
-            );
-        }
-    }
-
-    /**
      * CheckpointRaw 객체 생성
      */
-    private CheckpointRaw buildCheckpointRaw(Long instanceId, OffsetDateTime collectedAt,
+    private CheckpointRaw buildCheckpointRaw(Long instanceId, LocalDateTime collectedAt,
                                              Map<String, Object> bgwriterData, 
                                              Map<String, Object> walData,
-                                             Map<String, Object> archiverData,
                                              CheckpointRaw previousRaw) {
         Long checkpointsTimed = getLongValue(bgwriterData, "checkpoints_timed");
         Long checkpointsReq = getLongValue(bgwriterData, "checkpoints_req");
@@ -288,16 +223,10 @@ public class CheckpointCollectionScheduler {
         Long buffersCheckpoint = getLongValue(bgwriterData, "buffers_checkpoint");
         Long buffersBackend = getLongValue(bgwriterData, "buffers_backend");
 
-        log.debug("pg_stat_bgwriter 데이터: instanceId={}, checkpointsTimed={}, checkpointsReq={}, writeTime={}, syncTime={}, buffersCheckpoint={}", 
-                instanceId, checkpointsTimed, checkpointsReq, writeTime, syncTime, buffersCheckpoint);
-
         // WAL 데이터 추출
         Long walBytes = getLongValue(walData, "wal_bytes");
         Long walWrite = getLongValue(walData, "wal_write");
         Long walSync = getLongValue(walData, "wal_sync");
-        
-        log.debug("WAL 데이터: instanceId={}, walBytes={}, walWrite={}, walSync={}", 
-                instanceId, walBytes, walWrite, walSync);
 
         // 체크포인트 타입 판단 (이전 데이터와 비교)
         String checkpointType = "unknown";
@@ -329,14 +258,13 @@ public class CheckpointCollectionScheduler {
             }
         }
 
-        // WAL 파일 추가/제거
+        // WAL 파일 추가/제거는 pg_stat_archiver에서 가져와야 하지만, 여기서는 간단히 wal_write/sync로 추정
         Long walFilesAdded = walWrite;
-        // pg_stat_archiver에서 archived_count를 가져옴 (누적값)
-        Long walFilesRemoved = getLongValue(archiverData, "archived_count");
+        Long walFilesRemoved = 0L; // 실제로는 pg_stat_archiver에서 가져와야 함
 
         return CheckpointRaw.builder()
                 .instanceId(instanceId)
-                .collectedAt(collectedAt)
+                .collectedAt(toUtcOffsetDateTime(collectedAt))
                 .checkpointType(checkpointType)
                 .checkpointsTimed(checkpointsTimed)
                 .checkpointsReq(checkpointsReq)
@@ -355,7 +283,7 @@ public class CheckpointCollectionScheduler {
     /**
      * 증분 계산하여 1분 집계 데이터 생성
      */
-    private CheckpointAgg1m calculateAggregation1m(Long instanceId, OffsetDateTime collectedAt,
+    private CheckpointAgg1m calculateAggregation1m(Long instanceId, LocalDateTime collectedAt,
                                                    CheckpointRaw current, CheckpointRaw previous) {
         // 증분 계산 (음수 방어: stats_reset 발생 시 현재 값 사용)
         long deltaTimedCheckpoints = calculateSafeDelta(
@@ -391,16 +319,11 @@ public class CheckpointCollectionScheduler {
         // 총 체크포인트 수
         long totalCheckpoints = deltaTimedCheckpoints + deltaReqCheckpoints;
 
-        log.debug("Checkpoint 1분 집계 계산: instanceId={}, deltaTimed={}, deltaReq={}, deltaWriteTime={}, deltaSyncTime={}, totalCheckpoints={}", 
-                instanceId, deltaTimedCheckpoints, deltaReqCheckpoints, deltaWriteTime, deltaSyncTime, totalCheckpoints);
-
-        // 1분 동안 체크포인트가 없는 경우 (정상 상황) - 집계 데이터는 저장하되 0으로 설정
+        // 1분 동안 체크포인트가 없는 경우 (정상 상황)
         if (totalCheckpoints == 0) {
-            log.debug("체크포인트가 발생하지 않음: instanceId={}, deltaWalBytes={}, deltaBuffersCheckpoint={}", 
-                    instanceId, deltaWalBytes, deltaBuffersCheckpoint);
             return CheckpointAgg1m.builder()
                     .instanceId(instanceId)
-                    .collectedAt(collectedAt)
+                    .collectedAt(toUtcOffsetDateTime(collectedAt))
                     .avgCheckpointReqRatio(0.0)
                     .avgWriteTime(0.0)
                     .avgSyncTime(0.0)
@@ -417,20 +340,16 @@ public class CheckpointCollectionScheduler {
         double reqRatio = (100.0 * deltaReqCheckpoints) / totalCheckpoints;
 
         // 평균 시간 계산 (밀리초를 초로 변환)
-        // deltaWriteTime과 deltaSyncTime은 밀리초 단위이므로, 총 체크포인트 수로 나누어 평균을 구한 후 초로 변환
         double avgWriteTime = (deltaWriteTime / 1000.0) / totalCheckpoints;
         double avgSyncTime = (deltaSyncTime / 1000.0) / totalCheckpoints;
         double avgTotalTime = avgWriteTime + avgSyncTime;
-
-        log.debug("Checkpoint 평균 시간 계산: instanceId={}, avgWriteTime={}, avgSyncTime={}, avgTotalTime={}, reqRatio={}", 
-                instanceId, avgWriteTime, avgSyncTime, avgTotalTime, reqRatio);
 
         // 상태 판단 개선 (체크포인트 평균 시간 + 요청형 비율 고려)
         String status = determineCheckpointStatus(avgTotalTime, reqRatio);
 
         return CheckpointAgg1m.builder()
                 .instanceId(instanceId)
-                .collectedAt(collectedAt)
+                .collectedAt(toUtcOffsetDateTime(collectedAt))
                 .avgCheckpointReqRatio(reqRatio)
                 .avgWriteTime(avgWriteTime)
                 .avgSyncTime(avgSyncTime)
@@ -446,7 +365,7 @@ public class CheckpointCollectionScheduler {
     /**
      * 1분 집계 데이터를 기반으로 5분 집계 데이터 생성
      */
-    private CheckpointAgg5m calculateAggregation5m(Long instanceId, OffsetDateTime collectedAt,
+    private CheckpointAgg5m calculateAggregation5m(Long instanceId, LocalDateTime collectedAt,
                                                    List<CheckpointAgg1m> agg1mList) {
         // 1분 집계 데이터들을 합산/평균 계산
         long totalCheckpointsTimed = 0;
@@ -493,7 +412,7 @@ public class CheckpointCollectionScheduler {
 
         return CheckpointAgg5m.builder()
                 .instanceId(instanceId)
-                .collectedAt(collectedAt)
+                .collectedAt(toUtcOffsetDateTime(collectedAt))
                 .avgCheckpointReqRatio(reqRatio)
                 .avgWriteTime(avgWriteTime)
                 .avgSyncTime(avgSyncTime)
@@ -504,6 +423,21 @@ public class CheckpointCollectionScheduler {
                 .totalBuffersCheckpoint(totalBuffersCheckpoint)
                 .status(status)
                 .build();
+    }
+
+    /**
+     * LocalDateTime을 시스템 시간대 기준으로 UTC OffsetDateTime으로 변환
+     * 
+     * 예: 한국 시간(KST, UTC+9) 2025-11-22 21:26:05 
+     *    → UTC 2025-11-22 12:26:05
+     */
+    private OffsetDateTime toUtcOffsetDateTime(LocalDateTime localDateTime) {
+        // LocalDateTime을 시스템 시간대(한국 시간)로 해석
+        ZonedDateTime zonedDateTime = localDateTime.atZone(ZoneId.systemDefault());
+        // 같은 시점을 UTC로 변환
+        OffsetDateTime utcDateTime = zonedDateTime.withZoneSameInstant(ZoneOffset.UTC).toOffsetDateTime();
+        log.debug("시간 변환: {} (로컬) → {} (UTC)", localDateTime, utcDateTime);
+        return utcDateTime;
     }
 
     /**

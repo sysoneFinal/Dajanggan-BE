@@ -17,7 +17,9 @@ import java.util.List;
 public class CheckpointListResponse {
     private List<CheckpointListItem> data;
     private Long total;
+    private Integer page;
+    private Integer size;
+    private Integer totalPages;
 }
-
 
 

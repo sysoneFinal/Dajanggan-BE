@@ -35,18 +35,21 @@ public class CheckpointController {
     /**
      * Checkpoint 리스트 데이터 조회
      * @param instanceId PostgreSQL 인스턴스 ID (optional)
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
+     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d) - 기본값: 24h
      * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
+     * @param page 페이지 번호 (0부터 시작) - 기본값: 0
+     * @param size 페이지당 항목 수 - 기본값: 20
      * @return Checkpoint 리스트 데이터
      */
     @GetMapping("/list")
     public ResponseEntity<CheckpointListResponse> getCheckpointList(
             @RequestParam(required = false) Long instanceId,
-            @RequestParam(defaultValue = "7d") String timeRange,
+            @RequestParam(defaultValue = "24h") String timeRange,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String type) {
-        log.debug("Checkpoint 리스트 조회 요청 - instanceId: {}, timeRange: {}, status: {}, type: {}", 
-                instanceId, timeRange, status, type);
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        log.debug("Checkpoint 리스트 조회 요청 - instanceId: {}, timeRange: {}, status: {}, page: {}, size: {}", 
+                instanceId, timeRange, status, page, size);
         
         // status 파라미터를 List로 변환
         List<String> statusList = null;
@@ -54,13 +57,7 @@ public class CheckpointController {
             statusList = List.of(status.split(","));
         }
         
-        // type 파라미터를 List로 변환
-        List<String> typeList = null;
-        if (type != null && !type.isEmpty()) {
-            typeList = List.of(type.split(","));
-        }
-        
-        CheckpointListResponse response = checkpointService.getCheckpointList(instanceId, timeRange, statusList, typeList);
+        CheckpointListResponse response = checkpointService.getCheckpointList(instanceId, timeRange, statusList, page, size);
         
         return ResponseEntity.ok(response);
     }
