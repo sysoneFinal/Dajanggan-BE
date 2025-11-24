@@ -17,5 +17,9 @@ import java.util.List;
 public class CpuListResponse {
     private List<CpuListItem> data;
     private Integer total;
+    private Integer page;
+    private Integer size;
+    private Integer totalPages;
 }
+
 

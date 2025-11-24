@@ -41,7 +41,7 @@ public class MemoryAgg {
     // 계산된 메트릭
     private Double cacheHitRatio;           // 캐시 히트율 (%)
     
-    // pg_buffercache usagecount 통계
+    // usagecount 통계 (기본값 0, pg_buffercache 미사용)
     private Double avgUsagecount;           // 버퍼 재사용 빈도 평균
     private Double bufferReuseScore;        // 버퍼 재사용 점수 (0~100)
     

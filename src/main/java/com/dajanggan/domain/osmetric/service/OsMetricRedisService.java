@@ -4,11 +4,16 @@ import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -50,9 +55,45 @@ public class OsMetricRedisService {
             log.debug("Redis 저장 성공: key={}, type={}, details={}", 
                     key, metricData.getMetricType(), metricData.getDetails());
         } catch (Exception e) {
-            log.error("Redis 저장 실패: instanceId={}, type={}", 
-                    metricData.getInstanceId(), metricData.getMetricType(), e);
-            throw new RuntimeException("Redis 저장 중 오류 발생", e);
+            // Redis 연결 실패인지 확인
+            Throwable cause = e;
+            boolean isRedisConnectionFailure = false;
+            while (cause != null) {
+                if (cause instanceof RedisConnectionFailureException) {
+                    isRedisConnectionFailure = true;
+                    break;
+                }
+                cause = cause.getCause();
+            }
+            
+            if (isRedisConnectionFailure || e instanceof RedisConnectionFailureException) {
+                // Redis 연결 실패 시 더 명확한 에러 메시지
+                String rootCause = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                String redisHost = System.getenv("REDIS_HOST");
+                if (redisHost == null || redisHost.isEmpty()) {
+                    redisHost = "환경변수 미설정 (기본값: localhost)";
+                }
+                
+                log.error("Redis 연결 실패: Redis 서버에 연결할 수 없습니다. " +
+                        "현재 REDIS_HOST 환경변수: '{}'. " +
+                        "로컬 개발 환경인 경우 REDIS_HOST=localhost로 설정하거나, " +
+                        "Redis 서버를 실행하세요. " +
+                        "instanceId={}, type={}, error={}, rootCause={}", 
+                        redisHost, metricData.getInstanceId(), metricData.getMetricType(), 
+                        e.getMessage(), rootCause);
+                
+                // Redis 연결 실패 시 예외를 던지지 않고 경고만 로깅
+                // (실시간 메트릭이므로 Redis가 없어도 애플리케이션은 계속 동작해야 함)
+                log.warn("Redis 저장 실패로 인해 메트릭 데이터가 저장되지 않았습니다. " +
+                        "Redis 연결을 복구하면 정상 동작합니다.");
+                // 예외를 던지지 않고 조용히 실패 처리
+                return;
+            } else {
+                // 다른 예외인 경우 로깅 후 예외 던지기
+                log.error("Redis 저장 실패: instanceId={}, type={}", 
+                        metricData.getInstanceId(), metricData.getMetricType(), e);
+                throw new RuntimeException("Redis 저장 중 오류 발생", e);
+            }
         }
     }
     
@@ -65,8 +106,8 @@ public class OsMetricRedisService {
      * @return 메트릭 데이터 리스트
      */
     public List<RedisOsMetricData> getRecentMetrics(Long instanceId, 
-                                                      LocalDateTime startTime, 
-                                                      LocalDateTime endTime) {
+                                                      OffsetDateTime startTime, 
+                                                      OffsetDateTime endTime) {
         try {
             // CPU, MEMORY, DISK 3가지 메트릭 타입
             List<String> metricTypes = List.of("CPU", "MEMORY", "DISK");
@@ -87,8 +128,9 @@ public class OsMetricRedisService {
                         return values.stream()
                                 .map(this::convertToRedisOsMetricData)
                                 .filter(data -> data != null &&
-                                        !data.getCollectedAt().isBefore(startTime) &&
-                                        !data.getCollectedAt().isAfter(endTime));
+                                        data.getCollectedAt() != null &&
+                                        !data.getCollectedAt().isBefore(startTime.toLocalDateTime()) &&
+                                        !data.getCollectedAt().isAfter(endTime.toLocalDateTime()));
                     })
                     .sorted((a, b) -> a.getCollectedAt().compareTo(b.getCollectedAt()))
                     .collect(Collectors.toList());
@@ -177,6 +219,53 @@ public class OsMetricRedisService {
     }
 
     /**
+     * CPU, MEMORY, DISK 최신 데이터를 배치로 조회 (SSE용 최적화)
+     * Redis Pipeline을 사용하여 네트워크 왕복을 1회로 줄임
+     * 
+     * @param instanceId 인스턴스 ID
+     * @return 메트릭 타입별 최신 데이터 맵 (key: "CPU", "MEMORY", "DISK")
+     */
+    public Map<String, RedisOsMetricData> getLatestMetricsBatch(Long instanceId) {
+        try {
+            // Redis Pipeline을 사용하여 3개 키를 한 번에 조회
+            @SuppressWarnings("unchecked")
+            List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                List<String> metricTypes = List.of("CPU", "MEMORY", "DISK");
+                for (String metricType : metricTypes) {
+                    String key = KEY_PREFIX + instanceId + ":" + metricType;
+                    // Redis List의 마지막 요소 조회 (LINDEX key -1)
+                    connection.listCommands().lIndex(key.getBytes(), -1);
+                }
+                return null; // Pipeline에서는 반환값이 무시됨
+            });
+
+            // 결과를 맵으로 변환
+            Map<String, RedisOsMetricData> metricsMap = new HashMap<>();
+            List<String> metricTypes = List.of("CPU", "MEMORY", "DISK");
+            
+            for (int i = 0; i < metricTypes.size() && i < results.size(); i++) {
+                String metricType = metricTypes.get(i);
+                Object result = results.get(i);
+                
+                if (result != null) {
+                    RedisOsMetricData metricData = convertToRedisOsMetricData(result);
+                    if (metricData != null) {
+                        metricsMap.put(metricType, metricData);
+                    }
+                }
+            }
+            
+            log.debug("Redis 배치 조회 성공: instanceId={}, 조회된 메트릭 수={}", instanceId, metricsMap.size());
+            return metricsMap;
+            
+        } catch (Exception e) {
+            log.error("Redis 배치 조회 실패: instanceId={}", instanceId, e);
+            // 실패 시 빈 맵 반환 (기존 동작과 동일하게 null 대신 빈 맵)
+            return new HashMap<>();
+        }
+    }
+
+    /**
      * 특정 메트릭 타입의 시간 범위 데이터 조회
      * 
      * @param instanceId 인스턴스 ID
@@ -186,7 +275,7 @@ public class OsMetricRedisService {
      * @return 메트릭 데이터 리스트
      */
     public List<RedisOsMetricData> getRecentMetricsByType(Long instanceId, String metricType,
-                                                            LocalDateTime startTime, LocalDateTime endTime) {
+                                                            OffsetDateTime startTime, OffsetDateTime endTime) {
         try {
             String key = KEY_PREFIX + instanceId + ":" + metricType;
             
@@ -200,8 +289,9 @@ public class OsMetricRedisService {
             return values.stream()
                     .map(this::convertToRedisOsMetricData)
                     .filter(data -> data != null &&
-                            !data.getCollectedAt().isBefore(startTime) &&
-                            !data.getCollectedAt().isAfter(endTime))
+                            data.getCollectedAt() != null &&
+                            !data.getCollectedAt().isBefore(startTime.toLocalDateTime()) &&
+                            !data.getCollectedAt().isAfter(endTime.toLocalDateTime()))
                     .sorted((a, b) -> a.getCollectedAt().compareTo(b.getCollectedAt()))
                     .collect(Collectors.toList());
             

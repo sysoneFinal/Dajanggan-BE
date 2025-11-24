@@ -1,8 +1,8 @@
 package com.dajanggan.domain.system.disk.scheduler;
 
+import com.dajanggan.domain.common.util.MetricCollectionUtils;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
-import com.dajanggan.domain.system.disk.domain.DiskIoAgg;
 import com.dajanggan.domain.system.disk.domain.DiskIoRaw;
 import com.dajanggan.domain.system.disk.repository.DiskIoMapper;
 import com.dajanggan.infrastructure.datasource.DataSourceFactory;
@@ -44,9 +44,10 @@ public class DiskIoCollectionScheduler {
     }
 
     /**
-     * 1분마다 실행 (매분 0초)
+     * 1분마다 실행 (매분 5초) - metric/batch 스타일에 맞춤
+     * 수집이 완료된 후 집계되도록 시간 조정
      */
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "5 * * * * *")
     public void collectDiskIoMetrics() {
         log.info("========== Disk I/O 메트릭 수집 시작 (pg_stat_io) ==========");
 
@@ -56,6 +57,11 @@ public class DiskIoCollectionScheduler {
             
             List<Long> instanceIds = diskIoMapper.selectActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
+            
+            if (instanceIds.isEmpty()) {
+                log.warn("활성 인스턴스가 없습니다. DB의 instance 테이블에 is_active=true인 인스턴스가 있는지 확인하세요.");
+                return;
+            }
 
             int successCount = 0;
             int failCount = 0;
@@ -98,15 +104,7 @@ public class DiskIoCollectionScheduler {
         // 5. pg_stat_bgwriter에서 fsync 관련 데이터 수집
         Map<String, Object> bgwriterData = collectFromPgStatBgwriter(jdbcTemplate);
 
-        // 6. 이전 Raw 데이터 조회 (backend_type별)
-        List<DiskIoRaw> previousRawList = diskIoMapper.selectPreviousRawByBackendType(instanceId);
-        Map<String, DiskIoRaw> previousRawMap = new HashMap<>();
-        for (DiskIoRaw prev : previousRawList) {
-            String key = prev.getBackendType() + "_" + (prev.getDatabaseName() != null ? prev.getDatabaseName() : "");
-            previousRawMap.put(key, prev);
-        }
-
-        // 7. Raw 데이터 생성 및 저장
+        // 6. Raw 데이터 생성 및 저장
         List<DiskIoRaw> rawList = new ArrayList<>();
         
         // 7-1. pg_stat_io 데이터 추가
@@ -130,31 +128,14 @@ public class DiskIoCollectionScheduler {
             log.debug("Raw 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, rawList.size());
         }
 
-        // 8. Agg 데이터 생성 및 저장 (증분 계산)
-        List<DiskIoAgg> aggList = new ArrayList<>();
-        for (DiskIoRaw currentRaw : rawList) {
-            String key = currentRaw.getBackendType() + "_" + (currentRaw.getDatabaseName() != null ? currentRaw.getDatabaseName() : "");
-            DiskIoRaw previousRaw = previousRawMap.get(key);
-            if (previousRaw != null) {
-                DiskIoAgg agg = calculateAggregation(currentRaw, previousRaw, collectedAt);
-                aggList.add(agg);
-            }
-        }
-
-        if (!aggList.isEmpty()) {
-            diskIoMapper.insertAggBatch(aggList);
-            log.debug("Agg 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, aggList.size());
-        }
-
-        log.info("메트릭 처리 완료: instanceId={}, raw={}, agg={}, fsync={}", 
-                instanceId, rawList.size(), aggList.size(),
-                aggList.stream().filter(a -> a.getBackendFsyncRate() != null && a.getBackendFsyncRate() > 0)
-                        .count());
+        // Agg 데이터 생성은 배치로 처리
+        log.info("메트릭 처리 완료: instanceId={}, raw={}", instanceId, rawList.size());
     }
 
     /**
      * pg_stat_io에서 데이터 수집
      * PostgreSQL 16 이상에서만 사용 가능
+     * context='normal'만 필터링 (latency 측정이 되는 context)
      */
     private List<Map<String, Object>> collectFromPgStatIo(JdbcTemplate jdbcTemplate) {
         String sql = """
@@ -162,26 +143,41 @@ public class DiskIoCollectionScheduler {
                 backend_type,
                 object,
                 context,
-                reads,
-                read_time,
-                writes,
-                write_time,
-                writebacks,
-                writeback_time,
-                extends,
-                extend_time,
-                op_bytes,
-                hits,
-                evictions,
-                reuses,
-                fsyncs,
-                fsync_time,
+                COALESCE(reads, 0) as reads,
+                COALESCE(read_time, 0.0) as read_time,
+                COALESCE(writes, 0) as writes,
+                COALESCE(write_time, 0.0) as write_time,
+                COALESCE(writebacks, 0) as writebacks,
+                COALESCE(writeback_time, 0.0) as writeback_time,
+                COALESCE(extends, 0) as extends,
+                COALESCE(extend_time, 0.0) as extend_time,
+                COALESCE(op_bytes, 0) as op_bytes,
+                COALESCE(hits, 0) as hits,
+                COALESCE(evictions, 0) as evictions,
+                COALESCE(reuses, 0) as reuses,
+                COALESCE(fsyncs, 0) as fsyncs,
+                COALESCE(fsync_time, 0.0) as fsync_time,
                 stats_reset
             FROM pg_stat_io
             WHERE backend_type IS NOT NULL
+              AND context = 'normal'
             """;
 
-        return jdbcTemplate.queryForList(sql);
+        List<Map<String, Object>> results = jdbcTemplate.queryForList(sql);
+        
+        // 디버깅: SQL 쿼리 결과 확인
+        if (!results.isEmpty()) {
+            Map<String, Object> firstRow = results.get(0);
+            log.debug("pg_stat_io SQL 쿼리 결과 첫 번째 행: backend_type={}, reads={} ({}), read_time={} ({}), writes={} ({}), write_time={} ({})",
+                    firstRow.get("backend_type"),
+                    firstRow.get("reads"), firstRow.get("reads") != null ? firstRow.get("reads").getClass().getName() : "null",
+                    firstRow.get("read_time"), firstRow.get("read_time") != null ? firstRow.get("read_time").getClass().getName() : "null",
+                    firstRow.get("writes"), firstRow.get("writes") != null ? firstRow.get("writes").getClass().getName() : "null",
+                    firstRow.get("write_time"), firstRow.get("write_time") != null ? firstRow.get("write_time").getClass().getName() : "null"
+            );
+        }
+        
+        return results;
     }
     
     /**
@@ -225,26 +221,40 @@ public class DiskIoCollectionScheduler {
      */
     private DiskIoRaw buildDiskIoRaw(Long instanceId, OffsetDateTime collectedAt, 
                                       Map<String, Object> data) {
+        // 디버깅: read_time, write_time 값 확인
+        Object readTimeObj = data.get("read_time");
+        Object writeTimeObj = data.get("write_time");
+        log.debug("buildDiskIoRaw - backend_type: {}, reads: {}, read_time raw: {} (type: {}), writes: {}, write_time raw: {} (type: {})",
+                data.get("backend_type"),
+                data.get("reads"),
+                readTimeObj,
+                readTimeObj != null ? readTimeObj.getClass().getName() : "null",
+                data.get("writes"),
+                writeTimeObj,
+                writeTimeObj != null ? writeTimeObj.getClass().getName() : "null"
+        );
+        
         return DiskIoRaw.builder()
                 .instanceId(instanceId)
                 .collectedAt(collectedAt)
-                .backendType(getString(data, "backend_type"))
-                .object(getString(data, "object"))
-                .context(getString(data, "context"))
-                .reads(getLong(data, "reads"))
-                .readTime(getDouble(data, "read_time"))
-                .writes(getLong(data, "writes"))
-                .writeTime(getDouble(data, "write_time"))
-                .writebacks(getLong(data, "writebacks"))
-                .writebackTime(getDouble(data, "writeback_time"))
-                .extendCount(getLong(data, "extends"))
-                .extendTime(getDouble(data, "extend_time"))
-                .opBytes(getLong(data, "op_bytes"))
-                .hits(getLong(data, "hits"))
-                .evictions(getLong(data, "evictions"))
-                .reuses(getLong(data, "reuses"))
-                .fsyncs(getLong(data, "fsyncs"))
-                .fsyncTime(getDouble(data, "fsync_time"))
+                .backendType(MetricCollectionUtils.getStringValue(data, "backend_type"))
+                .object(MetricCollectionUtils.getStringValue(data, "object"))
+                .context(MetricCollectionUtils.getStringValue(data, "context"))
+                .reads(MetricCollectionUtils.getLongValue(data, "reads"))
+                .readTime(MetricCollectionUtils.getDoubleValue(data, "read_time"))
+                .writes(MetricCollectionUtils.getLongValue(data, "writes"))
+                .writeTime(MetricCollectionUtils.getDoubleValue(data, "write_time"))
+                .writebacks(MetricCollectionUtils.getLongValue(data, "writebacks"))
+                .writebackTime(MetricCollectionUtils.getDoubleValue(data, "writeback_time"))
+                // PostgreSQL pg_stat_io에서는 'extends' 컬럼을 사용하지만, Domain에서는 'extendCount' 필드 사용
+                .extendCount(MetricCollectionUtils.getLongValue(data, "extends"))
+                .extendTime(MetricCollectionUtils.getDoubleValue(data, "extend_time"))
+                .opBytes(MetricCollectionUtils.getLongValue(data, "op_bytes"))
+                .hits(MetricCollectionUtils.getLongValue(data, "hits"))
+                .evictions(MetricCollectionUtils.getLongValue(data, "evictions"))
+                .reuses(MetricCollectionUtils.getLongValue(data, "reuses"))
+                .fsyncs(MetricCollectionUtils.getLongValue(data, "fsyncs"))
+                .fsyncTime(MetricCollectionUtils.getDoubleValue(data, "fsync_time"))
                 .statsReset(getOffsetDateTime(data, "stats_reset"))
                 .build();
     }
@@ -258,9 +268,9 @@ public class DiskIoCollectionScheduler {
                 .instanceId(instanceId)
                 .collectedAt(collectedAt)
                 .backendType("database")  // pg_stat_database는 backend_type을 'database'로 설정
-                .databaseName(getString(data, "database_name"))
-                .blksRead(getLong(data, "blks_read"))
-                .blksHit(getLong(data, "blks_hit"))
+                .databaseName(MetricCollectionUtils.getStringValue(data, "database_name"))
+                .blksRead(MetricCollectionUtils.getLongValue(data, "blks_read"))
+                .blksHit(MetricCollectionUtils.getLongValue(data, "blks_hit"))
                 .build();
     }
 
@@ -273,163 +283,18 @@ public class DiskIoCollectionScheduler {
                 .instanceId(instanceId)
                 .collectedAt(collectedAt)
                 .backendType("bgwriter")  // pg_stat_bgwriter는 backend_type을 'bgwriter'로 설정
-                .buffersCheckpoint(getLong(data, "buffers_checkpoint"))
-                .buffersClean(getLong(data, "buffers_clean"))
-                .buffersBackend(getLong(data, "buffers_backend"))
-                .buffersBackendFsync(getLong(data, "buffers_backend_fsync"))
+                .buffersCheckpoint(MetricCollectionUtils.getLongValue(data, "buffers_checkpoint"))
+                .buffersClean(MetricCollectionUtils.getLongValue(data, "buffers_clean"))
+                .buffersBackend(MetricCollectionUtils.getLongValue(data, "buffers_backend"))
+                .buffersBackendFsync(MetricCollectionUtils.getLongValue(data, "buffers_backend_fsync"))
                 .statsReset(getOffsetDateTime(data, "stats_reset"))
                 .build();
     }
 
-    /**
-     * DiskIoAgg 객체 생성 (증분 계산)
-     */
-    private DiskIoAgg calculateAggregation(DiskIoRaw current, DiskIoRaw previous, 
-                                            OffsetDateTime collectedAt) {
-        // 증분 계산 (current - previous)
-        long deltaReads = safeMinus(current.getReads(), previous.getReads());
-        double deltaReadTime = safeMinus(current.getReadTime(), previous.getReadTime());
-        long deltaWrites = safeMinus(current.getWrites(), previous.getWrites());
-        double deltaWriteTime = safeMinus(current.getWriteTime(), previous.getWriteTime());
-        long deltaWritebacks = safeMinus(current.getWritebacks(), previous.getWritebacks());
-        long deltaExtendCount = safeMinus(current.getExtendCount(), previous.getExtendCount());
-        long deltaHits = safeMinus(current.getHits(), previous.getHits());
-        long deltaEvictions = safeMinus(current.getEvictions(), previous.getEvictions());
-        long deltaFsyncs = safeMinus(current.getFsyncs(), previous.getFsyncs());
-        double deltaFsyncTime = safeMinus(current.getFsyncTime(), previous.getFsyncTime());
-        
-        // pg_stat_database 메트릭 증분
-        long deltaBlksRead = safeMinus(current.getBlksRead(), previous.getBlksRead());
-        long deltaBlksHit = safeMinus(current.getBlksHit(), previous.getBlksHit());
-        
-        // pg_stat_bgwriter 메트릭 증분
-        long deltaBuffersBackendFsync = safeMinus(current.getBuffersBackendFsync(), previous.getBuffersBackendFsync());
-        long deltaBuffersCheckpoint = safeMinus(current.getBuffersCheckpoint(), previous.getBuffersCheckpoint());
-        long deltaBuffersClean = safeMinus(current.getBuffersClean(), previous.getBuffersClean());
-        long deltaBuffersBackend = safeMinus(current.getBuffersBackend(), previous.getBuffersBackend());
-
-        // 평균 레이턴시 계산
-        double avgReadLatency = deltaReads > 0 ? deltaReadTime / deltaReads : 0.0;
-        double avgWriteLatency = deltaWrites > 0 ? deltaWriteTime / deltaWrites : 0.0;
-
-        // 읽기/쓰기 비율
-        double readWriteRatio = deltaWrites > 0 ? 
-                (double) deltaReads / deltaWrites : 0.0;
-
-        // 캐시 히트율 (pg_stat_io) = hits / (hits + reads) * 100
-        long totalAccess = deltaHits + deltaReads;
-        double cacheHitRatio = totalAccess > 0 ? 
-                (double) deltaHits / totalAccess * 100 : 0.0;
-        
-        // Buffer Hit Ratio (pg_stat_database) = blks_hit / (blks_hit + blks_read) * 100
-        long totalBlocks = deltaBlksHit + deltaBlksRead;
-        double bufferHitRatio = totalBlocks > 0 ? 
-                (double) deltaBlksHit / totalBlocks * 100 : 0.0;
-        
-        // Backend Fsync Rate 계산 (초당 fsync 수)
-        long intervalSeconds = ChronoUnit.SECONDS.between(
-            previous.getCollectedAt(), current.getCollectedAt()
-        );
-        if (intervalSeconds <= 0) {
-            intervalSeconds = 60;
-        }
-        double backendFsyncRate = (double) deltaBuffersBackendFsync / intervalSeconds;
-
-        // 상태 판정 (Buffer Hit Ratio 우선 사용)
-        String status = determineStatus(avgReadLatency, avgWriteLatency, 
-                bufferHitRatio > 0 ? bufferHitRatio : cacheHitRatio);
-
-        return DiskIoAgg.builder()
-                .instanceId(current.getInstanceId())
-                .collectedAt(collectedAt)
-                .backendType(current.getBackendType())
-                .databaseName(current.getDatabaseName())
-                .deltaReads(deltaReads)
-                .deltaReadTime(deltaReadTime)
-                .deltaWrites(deltaWrites)
-                .deltaWriteTime(deltaWriteTime)
-                .deltaWritebacks(deltaWritebacks)
-                .deltaExtendCount(deltaExtendCount)
-                .deltaHits(deltaHits)
-                .deltaEvictions(deltaEvictions)
-                .deltaFsyncs(deltaFsyncs)
-                .deltaFsyncTime(deltaFsyncTime)
-                .deltaBlksRead(deltaBlksRead)
-                .deltaBlksHit(deltaBlksHit)
-                .avgReadLatencyMs(avgReadLatency)
-                .avgWriteLatencyMs(avgWriteLatency)
-                .readWriteRatio(readWriteRatio)
-                .cacheHitRatio(cacheHitRatio)
-                .bufferHitRatio(bufferHitRatio)
-                // pg_stat_bgwriter 증분
-                .deltaBuffersBackendFsync(deltaBuffersBackendFsync)
-                .deltaBuffersCheckpoint(deltaBuffersCheckpoint)
-                .deltaBuffersClean(deltaBuffersClean)
-                .deltaBuffersBackend(deltaBuffersBackend)
-                .backendFsyncRate(backendFsyncRate)
-                .status(status)
-                .build();
-    }
-
-    /**
-     * 상태 판정 로직
-     * - 정상: 레이턴시 < 10ms AND 캐시 히트율 > 90%
-     * - 주의: 레이턴시 < 50ms AND 캐시 히트율 > 80%
-     * - 위험: 그 외
-     */
-    private String determineStatus(double readLatency, double writeLatency, double cacheHitRatio) {
-        double maxLatency = Math.max(readLatency, writeLatency);
-        
-        if (maxLatency < 10 && cacheHitRatio > 90) {
-            return "정상";
-        } else if (maxLatency < 50 && cacheHitRatio > 80) {
-            return "주의";
-        } else {
-            return "위험";
-        }
-    }
 
     // ========== Helper Methods ==========
 
-    private long safeMinus(Long a, Long b) {
-        if (a == null || b == null) return 0L;
-        long result = a - b;
-        return result < 0 ? 0 : result;
-    }
-
-    private double safeMinus(Double a, Double b) {
-        if (a == null || b == null) return 0.0;
-        double result = a - b;
-        return result < 0 ? 0.0 : result;
-    }
-
-    private String getString(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        return value != null ? value.toString() : null;
-    }
-
-    private Long getLong(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) return 0L;
-        if (value instanceof Long) return (Long) value;
-        if (value instanceof Integer) return ((Integer) value).longValue();
-        return Long.parseLong(value.toString());
-    }
-
-    private Double getDouble(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) return 0.0;
-        if (value instanceof Double) return (Double) value;
-        if (value instanceof Float) return ((Float) value).doubleValue();
-        if (value instanceof Number) return ((Number) value).doubleValue();
-        return Double.parseDouble(value.toString());
-    }
-
     private OffsetDateTime getOffsetDateTime(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) return null;
-        if (value instanceof OffsetDateTime) return (OffsetDateTime) value;
-        // Timestamp 변환 로직 추가 가능
-        return null;
+        return MetricCollectionUtils.getOffsetDateTime(map, key);
     }
 }

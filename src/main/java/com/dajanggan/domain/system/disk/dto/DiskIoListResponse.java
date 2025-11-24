@@ -19,6 +19,9 @@ public class DiskIoListResponse {
     private List<HighFsyncItem> highFsyncList;
     private List<LowCacheHitItem> lowCacheHitList;
     private Long totalCount;
+    private Integer page;
+    private Integer size;
+    private Integer totalPages;
 
     @Data
     @Builder
