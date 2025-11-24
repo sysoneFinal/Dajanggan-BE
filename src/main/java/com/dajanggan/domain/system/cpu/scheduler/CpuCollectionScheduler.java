@@ -3,7 +3,6 @@ package com.dajanggan.domain.system.cpu.scheduler;
 import com.dajanggan.domain.common.util.MetricCollectionUtils;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
-import com.dajanggan.domain.system.cpu.domain.CpuAgg;
 import com.dajanggan.domain.system.cpu.domain.CpuRaw;
 import com.dajanggan.domain.system.cpu.repository.CpuMapper;
 import com.dajanggan.infrastructure.datasource.DataSourceFactory;
@@ -43,9 +42,10 @@ public class CpuCollectionScheduler {
     }
 
     /**
-     * 1분마다 실행 (매분 0초)
+     * 1분마다 실행 (매분 5초) - metric/batch 스타일에 맞춤
+     * 수집이 완료된 후 집계되도록 시간 조정
      */
-    @Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "5 * * * * *")
     public void collectCpuMetrics() {
         log.info("========== CPU 메트릭 수집 시작 (pg_stat_activity) ==========");
 
@@ -99,10 +99,7 @@ public class CpuCollectionScheduler {
         // 4. pg_stat_database에서 트랜잭션 통계 수집
         Map<String, Object> databaseData = collectFromPgStatDatabase(jdbcTemplate);
 
-        // 5. 이전 Raw 데이터 조회 (트랜잭션 증분 계산용) - Raw 저장 전에 조회
-        CpuRaw previousRaw = cpuMapper.selectPreviousRaw(instanceId);
-
-        // 6. Raw 데이터 생성 및 저장
+        // 5. Raw 데이터 생성 및 저장 (Agg 생성은 배치로 처리)
         CpuRaw raw = buildCpuRaw(instanceId, collectedAt, activityData, databaseData);
         cpuMapper.insertRaw(raw);
         log.debug("Raw 데이터 저장 완료: instanceId={}", instanceId);
@@ -114,29 +111,9 @@ public class CpuCollectionScheduler {
                 raw.getAutovacuumWorkerCount(),
                 raw.getParallelWorkerCount(),
                 raw.getBackgroundWorkerCount());
-
-        // 7. Agg 데이터 생성 및 저장 (이전 데이터가 있을 때만)
-        if (previousRaw != null) {
-            CpuAgg agg = buildCpuAgg(instanceId, collectedAt, raw, previousRaw);
-            cpuMapper.insertAgg(agg);
-            log.debug("Agg 데이터 저장 완료: instanceId={}", instanceId);
-            
-            // 디버깅: Agg 데이터의 Backend 타입별 평균값 로깅
-            log.info("Agg 데이터 저장 - Backend 타입별 평균: instanceId={}, avg_client_backend={}, avg_autovacuum_worker={}, avg_parallel_worker={}, avg_background_worker={}",
-                    instanceId,
-                    agg.getAvgClientBackend(),
-                    agg.getAvgAutovacuumWorker(),
-                    agg.getAvgParallelWorker(),
-                    agg.getAvgBackgroundWorker());
-            
-            log.info("메트릭 처리 완료: instanceId={}, totalConn={}, activeConn={}, tps={}", 
-                    instanceId, raw.getTotalConnections(), raw.getActiveConnections(), 
-                    agg.getXactCommitRate());
-        } else {
-            log.debug("첫 번째 수집: 이전 데이터가 없어 집계 데이터 생성을 스킵합니다. instanceId={}", instanceId);
-            log.info("메트릭 처리 완료: instanceId={}, totalConn={}, activeConn={}", 
-                    instanceId, raw.getTotalConnections(), raw.getActiveConnections());
-        }
+        
+        log.info("메트릭 처리 완료: instanceId={}, totalConn={}, activeConn={}", 
+                instanceId, raw.getTotalConnections(), raw.getActiveConnections());
     }
 
     /**
@@ -256,89 +233,5 @@ public class CpuCollectionScheduler {
                 .build();
     }
 
-    /**
-     * CpuAgg 객체 생성
-     */
-    private CpuAgg buildCpuAgg(Long instanceId, OffsetDateTime collectedAt, 
-                                CpuRaw raw, CpuRaw previousRaw) {
-        // 상태 판정 로직
-        String status = determineStatus(raw);
-        
-        // 트랜잭션 증분 및 TPS 계산
-        Long deltaXactCommit = 0L;
-        Long deltaXactRollback = 0L;
-        Double xactCommitRate = 0.0;
-        Double xactRollbackRate = 0.0;
-        
-        if (previousRaw != null) {
-            // stats_reset 대응을 위한 안전한 증분 계산
-            deltaXactCommit = MetricCollectionUtils.calculateSafeDelta(
-                    raw.getXactCommit(), previousRaw.getXactCommit());
-            deltaXactRollback = MetricCollectionUtils.calculateSafeDelta(
-                    raw.getXactRollback(), previousRaw.getXactRollback());
-            
-            // 수집 간격(초) 계산 (기본 60초)
-            long intervalSeconds = ChronoUnit.SECONDS.between(
-                previousRaw.getCollectedAt(), raw.getCollectedAt()
-            );
-            if (intervalSeconds <= 0) {
-                intervalSeconds = 60;
-            }
-            
-            // TPS 계산: 초당 트랜잭션 수
-            xactCommitRate = deltaXactCommit.doubleValue() / intervalSeconds;
-            xactRollbackRate = deltaXactRollback.doubleValue() / intervalSeconds;
-        }
-
-        return CpuAgg.builder()
-                .instanceId(instanceId)
-                .collectedAt(collectedAt)
-                .avgTotalConnections((double) raw.getTotalConnections())
-                .avgActiveConnections((double) raw.getActiveConnections())
-                .avgIdleConnections((double) raw.getIdleConnections())
-                .avgIdleInTransaction((double) raw.getIdleInTransaction())
-                .avgWaitingSessions((double) raw.getWaitingSessions())
-                .avgWaitingForLock((double) raw.getWaitingForLock())
-                .avgWaitingForIo((double) raw.getWaitingForIo())
-                .avgWaitEventClient((double) raw.getWaitEventClient())
-                .avgWaitEventActivity((double) raw.getWaitEventActivity())
-                .avgWaitEventBufferpin((double) raw.getWaitEventBufferpin())
-                .avgWaitEventLwlock((double) raw.getWaitEventLwlock())
-                .avgWaitEventTimeout((double) raw.getWaitEventTimeout())
-                .avgWaitEventIpc((double) raw.getWaitEventIpc())
-                .avgClientBackend((double) raw.getClientBackendCount())
-                .avgAutovacuumWorker((double) raw.getAutovacuumWorkerCount())
-                .avgParallelWorker((double) raw.getParallelWorkerCount())
-                .avgBackgroundWorker((double) raw.getBackgroundWorkerCount())
-                .avgLongRunningQueries((double) raw.getLongRunningQueries())
-                .maxQueryDurationSec(raw.getMaxQueryDurationSec())
-                // 트랜잭션 통계
-                .databaseName(raw.getDatabaseName())
-                .deltaXactCommit(deltaXactCommit)
-                .deltaXactRollback(deltaXactRollback)
-                .xactCommitRate(xactCommitRate)
-                .xactRollbackRate(xactRollbackRate)
-                .status(status)
-                .build();
-    }
-
-    /**
-     * 상태 판정 로직
-     * - 정상: waiting_sessions < 5 AND long_running_queries < 3
-     * - 주의: waiting_sessions < 10 AND long_running_queries < 5
-     * - 위험: 그 외
-     */
-    private String determineStatus(CpuRaw raw) {
-        long waitingSessions = raw.getWaitingSessions();
-        long longRunningQueries = raw.getLongRunningQueries();
-
-        if (waitingSessions < 5 && longRunningQueries < 3) {
-            return "정상";
-        } else if (waitingSessions < 10 && longRunningQueries < 5) {
-            return "주의";
-        } else {
-            return "위험";
-        }
-    }
 
 }

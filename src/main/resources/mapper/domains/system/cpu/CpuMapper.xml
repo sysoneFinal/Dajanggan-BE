@@ -100,35 +100,6 @@
         <result property="createdAt"             column="created_at"/>
     </resultMap>
 
-    <!-- CPU Agg 30분 Result Map -->
-    <resultMap id="cpuAgg30mResultMap" type="com.dajanggan.domain.system.cpu.domain.CpuAgg30m">
-        <id     property="cpuAgg30mId"           column="cpu_agg_30m_id"/>
-        <result property="instanceId"            column="instance_id"/>
-        <result property="timeBucket"            column="time_bucket"/>
-        <result property="avgTotalConnections"   column="avg_total_connections"/>
-        <result property="avgActiveConnections"  column="avg_active_connections"/>
-        <result property="avgIdleConnections"    column="avg_idle_connections"/>
-        <result property="avgIdleInTransaction"  column="avg_idle_in_transaction"/>
-        <result property="avgWaitingSessions"    column="avg_waiting_sessions"/>
-        <result property="avgWaitingForLock"     column="avg_waiting_for_lock"/>
-        <result property="avgWaitingForIo"       column="avg_waiting_for_io"/>
-        <result property="avgWaitEventClient"    column="avg_wait_event_client"/>
-        <result property="avgWaitEventActivity"  column="avg_wait_event_activity"/>
-        <result property="avgWaitEventBufferpin" column="avg_wait_event_bufferpin"/>
-        <result property="avgWaitEventLwlock"    column="avg_wait_event_lwlock"/>
-        <result property="avgWaitEventTimeout"   column="avg_wait_event_timeout"/>
-        <result property="avgWaitEventIpc"       column="avg_wait_event_ipc"/>
-        <result property="avgClientBackend"      column="avg_client_backend"/>
-        <result property="avgAutovacuumWorker"   column="avg_autovacuum_worker"/>
-        <result property="avgParallelWorker"     column="avg_parallel_worker"/>
-        <result property="avgBackgroundWorker"   column="avg_background_worker"/>
-        <result property="avgLongRunningQueries" column="avg_long_running_queries"/>
-        <result property="totalXactCommit"       column="total_xact_commit"/>
-        <result property="totalXactRollback"     column="total_xact_rollback"/>
-        <result property="recordCount"           column="record_count"/>
-        <result property="createdAt"             column="created_at"/>
-    </resultMap>
-
     <!-- ========================================
          Scheduler Queries
          ======================================== -->
@@ -140,11 +111,14 @@
         ORDER BY instance_id
     </select>
 
-    <!-- 이전 Raw 데이터 조회 -->
+    <!-- 이전 Raw 데이터 조회 (현재 collectedAt보다 이전 데이터) -->
     <select id="selectPreviousRaw" resultMap="cpuRawResultMap">
         SELECT *
         FROM cpu_raw
         WHERE instance_id = #{instanceId}
+          <if test="currentCollectedAt != null">
+            AND collected_at &lt; #{currentCollectedAt}
+          </if>
         ORDER BY collected_at DESC
             LIMIT 1
     </select>
@@ -319,56 +293,6 @@
                            record_count = EXCLUDED.record_count
     </insert>
 
-    <!-- CPU Agg 30분 데이터 삽입 (UPSERT) -->
-    <insert id="insertAgg30m"
-            parameterType="com.dajanggan.domain.system.cpu.domain.CpuAgg30m"
-            useGeneratedKeys="true" keyProperty="cpuAgg30mId">
-        INSERT INTO cpu_agg_30m (
-            instance_id, time_bucket,
-            avg_total_connections, avg_active_connections, avg_idle_connections,
-            avg_idle_in_transaction, avg_waiting_sessions, avg_waiting_for_lock, avg_waiting_for_io,
-            avg_wait_event_client, avg_wait_event_activity, avg_wait_event_bufferpin,
-            avg_wait_event_lwlock, avg_wait_event_timeout, avg_wait_event_ipc,
-            avg_client_backend, avg_autovacuum_worker, avg_parallel_worker, avg_background_worker,
-            avg_long_running_queries,
-            total_xact_commit, total_xact_rollback,
-            record_count
-        ) VALUES (
-                     #{instanceId}, #{timeBucket},
-                     #{avgTotalConnections}, #{avgActiveConnections}, #{avgIdleConnections},
-                     #{avgIdleInTransaction}, #{avgWaitingSessions}, #{avgWaitingForLock}, #{avgWaitingForIo},
-                     #{avgWaitEventClient}, #{avgWaitEventActivity}, #{avgWaitEventBufferpin},
-                     #{avgWaitEventLwlock}, #{avgWaitEventTimeout}, #{avgWaitEventIpc},
-                     #{avgClientBackend}, #{avgAutovacuumWorker}, #{avgParallelWorker}, #{avgBackgroundWorker},
-                     #{avgLongRunningQueries},
-                     #{totalXactCommit}, #{totalXactRollback},
-                     #{recordCount}
-                 )
-            ON CONFLICT (instance_id, time_bucket)
-        DO UPDATE SET
-            avg_total_connections = EXCLUDED.avg_total_connections,
-                           avg_active_connections = EXCLUDED.avg_active_connections,
-                           avg_idle_connections = EXCLUDED.avg_idle_connections,
-                           avg_idle_in_transaction = EXCLUDED.avg_idle_in_transaction,
-                           avg_waiting_sessions = EXCLUDED.avg_waiting_sessions,
-                           avg_waiting_for_lock = EXCLUDED.avg_waiting_for_lock,
-                           avg_waiting_for_io = EXCLUDED.avg_waiting_for_io,
-                           avg_wait_event_client = EXCLUDED.avg_wait_event_client,
-                           avg_wait_event_activity = EXCLUDED.avg_wait_event_activity,
-                           avg_wait_event_bufferpin = EXCLUDED.avg_wait_event_bufferpin,
-                           avg_wait_event_lwlock = EXCLUDED.avg_wait_event_lwlock,
-                           avg_wait_event_timeout = EXCLUDED.avg_wait_event_timeout,
-                           avg_wait_event_ipc = EXCLUDED.avg_wait_event_ipc,
-                           avg_client_backend = EXCLUDED.avg_client_backend,
-                           avg_autovacuum_worker = EXCLUDED.avg_autovacuum_worker,
-                           avg_parallel_worker = EXCLUDED.avg_parallel_worker,
-                           avg_background_worker = EXCLUDED.avg_background_worker,
-                           avg_long_running_queries = EXCLUDED.avg_long_running_queries,
-                           total_xact_commit = EXCLUDED.total_xact_commit,
-                           total_xact_rollback = EXCLUDED.total_xact_rollback,
-                           record_count = EXCLUDED.record_count
-    </insert>
-
     <!-- ========================================
          조회용 쿼리
          ======================================== -->
@@ -388,7 +312,7 @@
         FROM cpu_agg_1m
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
-        ORDER BY collected_at DESC
+        ORDER BY collected_at ASC
     </select>
 
     <!-- CPU 리스트 조회 (필터링) -->
@@ -406,6 +330,36 @@
         ORDER BY collected_at DESC
     </select>
 
+    <!-- CPU 리스트 조회 (필터링 + 페이징) -->
+    <select id="selectCpuListWithFilterAndPaging" resultMap="cpuAggResultMap">
+        SELECT *
+        FROM cpu_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
+        </if>
+        ORDER BY collected_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- CPU 리스트 총 개수 조회 (필터링) -->
+    <select id="countCpuListWithFilter" resultType="long">
+        SELECT COUNT(*)
+        FROM cpu_agg_1m
+        WHERE instance_id = #{instanceId}
+        AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
+        <if test="statusList != null and statusList.size() > 0">
+            AND status IN
+            <foreach collection="statusList" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
+        </if>
+    </select>
+
     <!-- 최근 CPU 통계 조회 -->
     <select id="selectRecentCpuStats" resultMap="cpuAggResultMap">
         SELECT *
@@ -420,7 +374,7 @@
         SELECT *
         FROM cpu_agg_5m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
+          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
         ORDER BY time_bucket ASC
     </select>
 
@@ -429,7 +383,7 @@
         SELECT *
         FROM cpu_agg_5m
         WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
+          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ <= ]]> #{endTime}
         ORDER BY time_bucket DESC
             LIMIT #{limit}
     </select>
@@ -441,25 +395,6 @@
         WHERE instance_id = #{instanceId}
           AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY collected_at DESC
-            LIMIT #{limit}
-    </select>
-
-    <!-- CPU Agg 30분 데이터 조회 (시간 범위) -->
-    <select id="selectCpuAgg30mByTimeRange" resultMap="cpuAgg30mResultMap">
-        SELECT *
-        FROM cpu_agg_30m
-        WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
-        ORDER BY time_bucket ASC
-    </select>
-
-    <!-- CPU Agg 30분 데이터 조회 (시간 범위 + LIMIT) -->
-    <select id="selectCpuAgg30mByTimeRangeWithLimit" resultMap="cpuAgg30mResultMap">
-        SELECT *
-        FROM cpu_agg_30m
-        WHERE instance_id = #{instanceId}
-          AND time_bucket >= #{startTime} AND time_bucket <![CDATA[ < ]]> #{endTime}
-        ORDER BY time_bucket DESC
             LIMIT #{limit}
     </select>
 
