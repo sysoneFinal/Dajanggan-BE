@@ -83,8 +83,13 @@ public class VacuumMaintenanceService {
 
                 // Active Workers 문자열 생성
                 int activeWorkerCount = summary.getActiveVacuumSessions() != null ? summary.getActiveVacuumSessions() : 0;
-                int maxWorkers = summary.getMaxWorkersConfigured() != null ? summary.getMaxWorkersConfigured() : 3;
+                // max_workers_configured가 NULL이거나 0이면 기본값 3 사용
+                int maxWorkers = (summary.getMaxWorkersConfigured() != null && summary.getMaxWorkersConfigured() > 0) 
+                    ? summary.getMaxWorkersConfigured() : 3;
                 String activeWorkersStr = activeWorkerCount + "/" + maxWorkers;
+                
+                log.info("📊 1분 집계 Active Workers 계산: active={}, max={}, result={}", 
+                        activeWorkerCount, summary.getMaxWorkersConfigured(), activeWorkersStr);
 
                 VacuumMaintenanceDto.Kpi kpi = VacuumMaintenanceDto.Kpi.builder()
                         .blockedSessions(summary.getBlockedVacuumCount() != null ? summary.getBlockedVacuumCount() : 0)
@@ -108,8 +113,17 @@ public class VacuumMaintenanceService {
 
                 // Active Workers 문자열 생성
                 int activeWorkerCount = summary.getActiveVacuumSessions() != null ? summary.getActiveVacuumSessions() : 0;
-                int maxWorkers = summary.getMaxWorkersConfigured() != null ? summary.getMaxWorkersConfigured() : 3;
+                // max_workers_configured가 NULL이거나 0이면 기본값 3 사용
+                int maxWorkers = (summary.getMaxWorkersConfigured() != null && summary.getMaxWorkersConfigured() > 0) 
+                    ? summary.getMaxWorkersConfigured() : 3;
                 String activeWorkersStr = activeWorkerCount + "/" + maxWorkers;
+                
+                log.info("📊 5분 집계 Active Workers 계산: active={}, max={}, result={}", 
+                        activeWorkerCount, summary.getMaxWorkersConfigured(), activeWorkersStr);
+                
+                log.info("📈 5분 집계 KPI 값: blockedVacuumCount={}, avgElapsedSeconds={}, totalDeadTuples={}, activeVacuumSessions={}, maxWorkersConfigured={}",
+                        summary.getBlockedVacuumCount(), summary.getAvgElapsedSeconds(), 
+                        summary.getTotalDeadTuples(), summary.getActiveVacuumSessions(), summary.getMaxWorkersConfigured());
 
                 return VacuumMaintenanceDto.Kpi.builder()
                         .blockedSessions(summary.getBlockedVacuumCount() != null ? summary.getBlockedVacuumCount() : 0)
@@ -223,7 +237,7 @@ public class VacuumMaintenanceService {
                 }
 
                 for (VacuumAgg1mDto t : trends) {
-                    if (t == null) continue;
+                    if (t == null || t.getCollectedAt() == null) continue;
                     labels.add(formatTimeLabel(t.getCollectedAt()));
                     costDelay.add(t.getAvgCostDelayMs() != null ? t.getAvgCostDelayMs() : 0.0);
                     activeWorkers.add(t.getActiveVacuumSessions() != null ? t.getActiveVacuumSessions() : 0);
@@ -237,12 +251,22 @@ public class VacuumMaintenanceService {
                 }
 
                 for (VacuumAgg5mDto t : trends) {
-                    if (t == null) continue;
+                    if (t == null || t.getCollectedAt() == null) continue;
                     labels.add(formatTimeLabel(t.getCollectedAt()));
                     costDelay.add(t.getAvgCostDelayMs() != null ? t.getAvgCostDelayMs() : 0.0);
                     activeWorkers.add(t.getActiveVacuumSessions() != null ? t.getActiveVacuumSessions() : 0);
                 }
             }
+
+            if (labels.isEmpty()) {
+                log.warn("⚠️ Autovacuum 차트: 유효한 시계열 데이터가 없음 (labels={}, costDelay={}, activeWorkers={})",
+                        labels.size(), costDelay.size(), activeWorkers.size());
+                return getEmptyChart();
+            }
+
+            log.info("✅ Autovacuum 차트 생성 완료: labels={}, costDelay={}, activeWorkers={}",
+                    labels.size(), costDelay.size(), activeWorkers.size());
+
         } catch (Exception e) {
             log.error("❌ Autovacuum 차트 생성 실패", e);
             return getEmptyChart();
@@ -280,7 +304,7 @@ public class VacuumMaintenanceService {
 
                     // 대기 시간 = 블로킹 시간 + cost delay (초 단위)
                     double blockingSeconds = t.getAvgBlockedSeconds() != null ? t.getAvgBlockedSeconds() : 0.0;
-                    double costDelaySeconds = t.getAvgCostDelayMs() != null ? t.getAvgCostDelayMs() / 1000.0 : 0.0;
+                    double costDelaySeconds = t.getAvgCostDelayMs() != null ? t.getAvgCostDelayMs() : 0.0;
                     latency.add(blockingSeconds + costDelaySeconds);
                 }
             } else {
@@ -297,7 +321,7 @@ public class VacuumMaintenanceService {
 
                     // 대기 시간 = 블로킹 시간 + cost delay (초 단위)
                     double blockingSeconds = t.getAvgBlockedSeconds() != null ? t.getAvgBlockedSeconds() : 0.0;
-                    double costDelaySeconds = t.getAvgCostDelayMs() != null ? t.getAvgCostDelayMs() / 1000.0 : 0.0;
+                    double costDelaySeconds = t.getAvgCostDelayMs() != null ? t.getAvgCostDelayMs() : 0.0;
                     latency.add(blockingSeconds + costDelaySeconds);
                 }
             }

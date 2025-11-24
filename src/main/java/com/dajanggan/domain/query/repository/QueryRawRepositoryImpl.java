@@ -13,7 +13,10 @@ import java.util.List;
 
 /**
  * QueryRawRepository의 JdbcTemplate 기반 구현체
- * 대상 PostgreSQL 인스턴스에 동적으로 연결하여 메트릭 수집
+ * - 대상 PostgreSQL 인스턴스에 동적으로 연결하여 메트릭 수집
+ * - pg_stat_statements와 pg_stat_activity 조인하여 상세 정보 수집
+ *
+ * @author 이해든
  */
 @Repository
 @RequiredArgsConstructor
@@ -21,7 +24,12 @@ public class QueryRawRepositoryImpl {
 
     /**
      * 대상 PostgreSQL 인스턴스의 쿼리 메트릭 조회
-     * pg_stat_statements와 pg_stat_activity 조인하여 CPU/메모리 정보 포함
+     * - pg_stat_statements: 쿼리 실행 통계
+     * - pg_stat_activity: 현재 실행 중인 쿼리 정보
+     * - 파라미터($1, $2, ...) 포함 쿼리는 수집 제외
+     *
+     * @param jdbcTemplate 대상 DB에 연결된 JdbcTemplate
+     * @return 수집된 쿼리 메트릭 목록 (최대 1000건)
      */
     public List<QueryRawMetricDto> getQueryMetrics(JdbcTemplate jdbcTemplate) {
         String sql = """
@@ -63,6 +71,7 @@ public class QueryRawRepositoryImpl {
                   AND s.query NOT LIKE '%테이블%'
                   AND s.query NOT LIKE '%데이터%'
                   AND s.query NOT LIKE '%파티션%'
+                  AND s.query NOT LIKE '%$%'
                   AND s.calls > 0
             )
             SELECT 
@@ -89,6 +98,7 @@ public class QueryRawRepositoryImpl {
 
     /**
      * QueryRawMetricDto RowMapper
+     * ResultSet을 QueryRawMetricDto 객체로 변환
      */
     private static class QueryRawMetricRowMapper implements RowMapper<QueryRawMetricDto> {
         @Override
@@ -101,7 +111,6 @@ public class QueryRawRepositoryImpl {
             dto.setDatabasename(rs.getString("database_name"));
             dto.setUsername(rs.getString("username"));
 
-            // BigDecimal 변환
             Double executionTime = rs.getDouble("execution_time_ms");
             dto.setExecutionTimeMs(executionTime != null ? BigDecimal.valueOf(executionTime) : null);
 
@@ -111,7 +120,6 @@ public class QueryRawRepositoryImpl {
             Long ioBlocks = rs.getLong("io_blocks");
             dto.setIoBlocks(ioBlocks);
 
-            // ⭐ CPU 사용량 - NULL 처리 수정!
             double cpuUsage = rs.getDouble("cpu_usage_percent");
             if (!rs.wasNull()) {
                 dto.setCpuUsagePercent(BigDecimal.valueOf(cpuUsage));
@@ -119,7 +127,6 @@ public class QueryRawRepositoryImpl {
                 dto.setCpuUsagePercent(null);
             }
 
-            // ⭐ 메모리 사용량 - NULL 처리 수정!
             double memoryUsage = rs.getDouble("memory_usage_mb");
             if (!rs.wasNull()) {
                 dto.setMemoryUsageMb(BigDecimal.valueOf(memoryUsage));
@@ -127,7 +134,6 @@ public class QueryRawRepositoryImpl {
                 dto.setMemoryUsageMb(null);
             }
 
-            // ⭐ pg_stat_activity 추가 정보
             dto.setState(rs.getString("state"));
             dto.setApplicationName(rs.getString("application_name"));
             dto.setClientAddr(rs.getString("client_addr"));

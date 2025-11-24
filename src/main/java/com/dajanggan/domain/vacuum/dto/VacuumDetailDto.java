@@ -11,15 +11,6 @@ import java.util.Map;
 
 public class VacuumDetailDto {
 
-    // ========== Request DTOs ==========
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Request {
-        private Long databaseId;
-        private String tableName;
-    }
-
     // ========== Raw DTOs ==========
     @Data
     @NoArgsConstructor

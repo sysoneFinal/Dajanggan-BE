@@ -8,6 +8,12 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 5분 집계 데이터 Service
+ * - 슬로우 쿼리 분석 기능 제공
+ *
+ * @author 이해든
+ */
 @Slf4j
 @Service
 public class QueryAgg5mService {
@@ -18,15 +24,19 @@ public class QueryAgg5mService {
         this.queryAgg5mRepository = queryAgg5mRepository;
     }
 
-
-    /** 상위 슬로우 쿼리 Top 5 */
+    /**
+     * 상위 슬로우 쿼리 Top 5 조회
+     */
     public TopSlowQueryDto findTopSlowQueries(Map<String, Object> params) {
         TopSlowQueryDto result = queryAgg5mRepository.findTopSlowQueries(params);
         log.debug("findTopSlowQueries 결과: {}", result);
         return result;
     }
 
-    /** 슬로우 쿼리 리스트 */
+    /**
+     * 슬로우 쿼리 리스트 조회
+     * 최신 10개 반환
+     */
     public List<SlowQueryListDto> findSlowQueryList(Map<String, Object> params) {
         List<SlowQueryListDto> result = queryAgg5mRepository.findSlowQueryList(params);
         log.debug("findSlowQueryList 결과 개수: {}", result != null ? result.size() : 0);

@@ -5,88 +5,44 @@ import java.time.OffsetDateTime;
 
 /**
  * 쿼리 메트릭스 원시 데이터 엔티티
- * query_metrics_raw 테이블과 매핑
  *
- * ⚠️ PostgreSQL TIMESTAMPTZ 타입 매핑을 위해 OffsetDateTime 사용
+ * 기능:
+ * - query_metrics_raw 테이블과 매핑
+ * - PostgreSQL에서 수집된 쿼리 실행 정보 저장
+ * - CPU, 메모리, I/O 등 리소스 사용량 추적
+ * - TIMESTAMPTZ 타입은 OffsetDateTime으로 매핑
  *
  * @author 이해든
  */
 public class QueryMetricsRaw {
 
-    // 쿼리 지표 고유 ID
     private Long queryMetricId;
-
-    // 인스턴스 ID
     private Long instanceId;
-
-    // 데이터베이스ID
     private Long databaseId;
-
-    // 수집 시각 (TIMESTAMPTZ -> OffsetDateTime)
     private OffsetDateTime collectedAt;
-
-    // 쿼리ID
     private String queryId;
-
-    // 쿼리해시
     private String queryHash;
-
-    // 쿼리전문
     private String queryText;
-
-    // 축약쿼리
     private String shortQuery;
-
-    // 쿼리타입
     private String queryType;
-
-    // 실행횟수
     private Integer executionCount;
-
-    // IO 블록수
     private Long ioBlocks;
-
-    // explain_plan
     private String explainPlan;
-
-    // 계획시간
     private BigDecimal planningTimeMs;
-
-    // 실행시간
     private BigDecimal executionTimeMs;
-
-    // CPU 사용량
     private BigDecimal cpuUsagePercent;
-
-    // 메모리사용량
     private BigDecimal memoryUsageMb;
-
-    // 사용자이름
     private String username;
-
-    // 접속_프로그램명
     private String applicationName;
-
-    // 클라이언트IP
     private String clientAddr;
-
-    // 상태
     private String state;
-
-    // 생성일 (TIMESTAMPTZ -> OffsetDateTime)
     private OffsetDateTime createdAt;
-
-    // CPU순위
     private Integer cpuRank;
-
-    // 메모리순위
     private Integer memoryRank;
 
-    // 기본 생성자
     public QueryMetricsRaw() {
     }
 
-    // 전체 생성자
     public QueryMetricsRaw(Long queryMetricId, Long instanceId, Long databaseId, OffsetDateTime collectedAt,
                            String queryId, String queryHash, String queryText, String shortQuery,
                            String queryType, Integer executionCount, Long ioBlocks,
@@ -119,8 +75,6 @@ public class QueryMetricsRaw {
         this.memoryRank = memoryRank;
     }
 
-
-    // Getter/Setter
     public Long getQueryMetricId() {
         return queryMetricId;
     }
@@ -128,11 +82,14 @@ public class QueryMetricsRaw {
     public void setQueryMetricId(Long queryMetricId) {
         this.queryMetricId = queryMetricId;
     }
+
     public Long getInstanceId() {
         return instanceId;
     }
 
-    public void setInstanceId(Long instanceId) { this.instanceId = instanceId; }
+    public void setInstanceId(Long instanceId) {
+        this.instanceId = instanceId;
+    }
 
     public Long getDatabaseId() {
         return databaseId;

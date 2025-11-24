@@ -7,5 +7,6 @@ public enum ResourceType {
     CONNECTION_POOL,
     CPU,
     MEMORY,
-    DISK
+    DISK,
+    QUERY
 }

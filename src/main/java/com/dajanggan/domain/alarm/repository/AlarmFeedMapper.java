@@ -77,4 +77,18 @@ public interface AlarmFeedMapper {
     );
 
     Long selectLatestFeedIdByTrackingId(Long alarmTrackingId);
+
+    // 마지막 알람 발생 시간 조회 (쿨다운 체크용 - 같은 레벨만)
+    OffsetDateTime selectLastFiredAtByRuleId(
+            @Param("alarmRuleId") Long alarmRuleId,
+            @Param("severityLevel") String severityLevel
+    );
+
+    // ruleId, instanceId, databaseId, level 기준으로 해결되지 않은 Feed 조회 (중복 체크용)
+    Long selectUnresolvedFeedIdByRule(
+            @Param("alarmRuleId") Long alarmRuleId,
+            @Param("instanceId") Long instanceId,
+            @Param("databaseId") Long databaseId,
+            @Param("severityLevel") String severityLevel
+    );
 }

@@ -42,9 +42,7 @@
         SELECT DISTINCT ON (table_name)
         database_id,
         table_name,
-        -- ✅ 실제 bloat_bytes 컬럼 사용 (Collector에서 계산됨)
         COALESCE(bloat_bytes, 0) AS bloat_bytes,
-        -- ✅ 실제 bloat_ratio 컬럼 사용
         COALESCE(bloat_ratio, 0) AS bloat_ratio,
         n_dead_tup AS dead_tuple_total,
         relsize_total_bytes AS table_size,
@@ -77,20 +75,24 @@
         SELECT DISTINCT ON (table_name)
         database_id,
         table_name,
-        CASE
-        WHEN session_phase IN ('vacuuming', 'index_cleanup') THEN 2
-        WHEN session_phase IN ('scanning') THEN 1
-        ELSE 0
-        END AS blockers_per_hour,
-        COALESCE(elapsed_seconds, 0) AS blocked_seconds,
+        blocker_pid,
+        blocked_seconds,
+        transaction_age,
+        blocker_lock_mode,
+        query_state,
+        is_blocked,
         session_phase,
         collected_at
         FROM vacuum_raw_metrics
         WHERE collected_at BETWEEN COALESCE(#{start}, NOW() - INTERVAL '24 hours')
         AND COALESCE(#{end}, NOW())
         AND table_name IS NOT NULL
-        AND session_phase IS NOT NULL
-        AND session_phase != 'not_running'
+        AND (
+            -- 차단된 vacuum (blocker_pid가 있거나 is_blocked가 true)
+            (blocker_pid IS NOT NULL OR is_blocked = true)
+            -- 또는 실행 중인 vacuum 세션
+            OR (session_phase IS NOT NULL AND session_phase != 'not_running')
+        )
         <if test="databaseId != null">
             AND database_id = #{databaseId}
         </if>
@@ -99,21 +101,28 @@
         SELECT
         database_id AS databaseId,
         table_name  AS tableName,
-        (10000 + (database_id * 100 + ROW_NUMBER() OVER ())::INTEGER) AS pid,
-        CASE
-        WHEN blockers_per_hour >= 2 THEN 'AccessExclusiveLock'
-        WHEN blockers_per_hour >= 1 THEN 'ShareUpdateExclusiveLock'
-        ELSE 'ShareLock'
-        END AS lockType,
-        EXTRACT(EPOCH FROM (NOW() - collected_at))::BIGINT AS transactionAge,
-        blocked_seconds AS blockDuration,
-        CASE
-        WHEN session_phase IN ('vacuuming', 'index_cleanup') THEN 'idle in transaction'
-        ELSE 'active'
-        END AS queryState
+        COALESCE(blocker_pid, (10000 + (database_id * 100 + ROW_NUMBER() OVER ())::INTEGER)) AS pid,
+        COALESCE(blocker_lock_mode,
+            CASE
+            WHEN session_phase IN ('vacuuming', 'index_cleanup') THEN 'AccessExclusiveLock'
+            WHEN session_phase IN ('scanning') THEN 'ShareUpdateExclusiveLock'
+            ELSE 'ShareLock'
+            END
+        ) AS lockType,
+        COALESCE(transaction_age, 0) AS transactionAge,
+        COALESCE(blocked_seconds, 0) AS blockDuration,
+        COALESCE(query_state,
+            CASE
+            WHEN session_phase IN ('vacuuming', 'index_cleanup') THEN 'idle in transaction'
+            ELSE 'active'
+            END
+        ) AS queryState
         FROM recent_blockers
-        WHERE blockers_per_hour > 0
-        ORDER BY blockers_per_hour DESC, blocked_seconds DESC
+        WHERE (blocker_pid IS NOT NULL OR is_blocked = true OR (session_phase IS NOT NULL AND session_phase != 'not_running'))
+        ORDER BY 
+            CASE WHEN blocker_pid IS NOT NULL OR is_blocked = true THEN 1 ELSE 2 END,
+            COALESCE(blocked_seconds, 0) DESC,
+            COALESCE(transaction_age, 0) DESC
         LIMIT 10
     </select>
 

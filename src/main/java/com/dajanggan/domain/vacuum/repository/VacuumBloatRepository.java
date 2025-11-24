@@ -1,6 +1,5 @@
 package com.dajanggan.domain.vacuum.repository;
 
-import com.dajanggan.domain.vacuum.dto.agg.VacuumAgg1mDto;
 import com.dajanggan.domain.vacuum.dto.agg.VacuumAgg5mDto;
 import com.dajanggan.domain.vacuum.dto.raw.VacuumRawMetricDto;
 import lombok.RequiredArgsConstructor;
@@ -13,16 +12,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VacuumBloatRepository {
 
-    private final VacuumAgg1mMapper agg1mMapper;
-    private final VacuumAgg5mMapper agg5mMapper;
-    private final VacuumBloatRawMapper rawMapper;
+    private final VacuumBloatMapper bloatMapper;
 
     // ========== KPI (집계 테이블) ==========
 
     public VacuumAgg5mDto getKpiSummary(
             Long databaseId, Long instanceId,
             OffsetDateTime start, OffsetDateTime end) {
-        return agg5mMapper.getBloatKpiSummary(databaseId, instanceId, start, end);
+        return bloatMapper.getBloatKpiSummary(databaseId, instanceId, start, end);
     }
 
     // ========== 차트 데이터 (집계 테이블) ==========
@@ -30,7 +27,7 @@ public class VacuumBloatRepository {
     public List<VacuumAgg5mDto> getBloatTrend(
             Long databaseId, Long instanceId,
             OffsetDateTime start, OffsetDateTime end) {
-        return agg5mMapper.findByTimeRange(databaseId, instanceId, start, end);
+        return bloatMapper.getBloatTrend(databaseId, instanceId, start, end);
     }
 
     // ========== Xmin Horizon (Raw 데이터) ==========
@@ -38,25 +35,37 @@ public class VacuumBloatRepository {
     public List<VacuumRawMetricDto> getXminHorizonData(
             Long databaseId, Long instanceId,
             OffsetDateTime start, OffsetDateTime end) {
-        return rawMapper.findXminHorizonData(databaseId, instanceId, start, end);
+        return bloatMapper.findXminHorizonData(databaseId, instanceId, start, end);
     }
 
     // ========== 테이블 목록 (Raw 데이터) ==========
 
     public List<String> getTableList(Long databaseId, Long instanceId) {
-        return rawMapper.findTableList(databaseId, instanceId);
+        return bloatMapper.findTableList(databaseId, instanceId);
     }
 
     // ========== 테이블별 상세 (Raw 데이터) ==========
 
     public VacuumRawMetricDto getLatestTableMetrics(
             Long databaseId, Long instanceId, String tableName) {
-        return rawMapper.findLatestByTable(databaseId, instanceId, tableName);
+        return bloatMapper.findLatestByTable(databaseId, instanceId, tableName);
     }
 
     public List<VacuumRawMetricDto> getTableBloatTrend(
             Long databaseId, Long instanceId, String tableName,
             OffsetDateTime start, OffsetDateTime end) {
-        return rawMapper.findTableBloatTrend(databaseId, instanceId, tableName, start, end);
+        return bloatMapper.findTableBloatTrend(databaseId, instanceId, tableName, start, end);
     }
+
+    // ========== Index Bloat (Raw 데이터) ==========
+
+    public List<VacuumRawMetricDto> getIndexBloatData(
+            Long databaseId, Long instanceId,
+            OffsetDateTime start, OffsetDateTime end) {
+        return bloatMapper.findIndexBloatData(databaseId, instanceId, start, end);
+    }
+
+    // ========== 메타데이터 ==========
+    // ⚠️ 주의: 메타데이터는 Service 레벨에서 실제 PostgreSQL 인스턴스에 연결하여 조회
+    // (MyBatis Mapper는 모니터링 시스템의 메인 DB에 연결되므로 사용하지 않음)
 }

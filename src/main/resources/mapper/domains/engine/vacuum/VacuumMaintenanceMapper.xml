@@ -29,6 +29,7 @@
         <result column="avg_blocked_seconds" property="avgBlockedSeconds"/>
         <result column="worker_utilization_pct" property="workerUtilizationPct"/>
         <result column="max_workers_configured" property="maxWorkersConfigured"/>
+        <result column="blocked_vacuum_count" property="blockedVacuumCount"/>
         <result column="created_at" property="createdAt"/>
     </resultMap>
 
@@ -55,6 +56,7 @@
         <result column="avg_blocked_seconds" property="avgBlockedSeconds"/>
         <result column="worker_utilization_pct" property="workerUtilizationPct"/>
         <result column="max_workers_configured" property="maxWorkersConfigured"/>
+        <result column="blocked_vacuum_count" property="blockedVacuumCount"/>
         <result column="created_at" property="createdAt"/>
     </resultMap>
 
@@ -84,7 +86,9 @@
             AVG(avg_cost_delay_ms) as avg_cost_delay_ms,
             SUM(total_dead_tuples) as total_dead_tuples,
             AVG(worker_utilization_pct) as worker_utilization_pct,
-            SUM(active_vacuum_sessions) as active_vacuum_sessions
+            SUM(active_vacuum_sessions) as active_vacuum_sessions,
+            SUM(blocked_vacuum_count) as blocked_vacuum_count,
+            MAX(max_workers_configured) as max_workers_configured
         FROM vacuum_metrics_agg_1m
         WHERE database_id = #{databaseId}
           AND instance_id = #{instanceId}
@@ -138,7 +142,9 @@
             AVG(avg_cost_delay_ms) as avg_cost_delay_ms,
             SUM(total_dead_tuples) as total_dead_tuples,
             AVG(worker_utilization_pct) as worker_utilization_pct,
-            SUM(active_vacuum_sessions) as active_vacuum_sessions
+            SUM(active_vacuum_sessions) as active_vacuum_sessions,
+            SUM(blocked_vacuum_count) as blocked_vacuum_count,
+            MAX(max_workers_configured) as max_workers_configured
         FROM vacuum_metrics_agg_5m
         WHERE database_id = #{databaseId}
           AND instance_id = #{instanceId}

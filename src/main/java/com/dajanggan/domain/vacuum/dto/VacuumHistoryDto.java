@@ -15,8 +15,8 @@ public class VacuumHistoryDto {
     @AllArgsConstructor
     public static class Request {
         private Long databaseId;
-        private Integer hours;        // 시간 필터 (1, 6, 24, 168)
-        private String status;        // 상태 필터 ("정상", "주의", null=전체)
+        private Integer hours;
+        private String status;
     }
 
     // ========== Raw DTOs ==========
@@ -44,11 +44,11 @@ public class VacuumHistoryDto {
     public static class Response {
         private String table;
         private String executedAt;
-        private String vacuumType;      // "vacuum" or "autovacuum"
+        private String vacuumType;
         private Integer durationSeconds;
         private String deadTuples;
         private String bloatRatio;
-        private String status;          // "정상" or "주의"
+        private String status;
     }
 
     // VacuumHistoryDto.java에 추가

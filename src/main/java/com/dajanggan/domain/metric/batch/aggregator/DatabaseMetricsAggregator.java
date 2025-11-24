@@ -3,6 +3,7 @@ package com.dajanggan.domain.metric.batch.aggregator;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.overview.dto.DatabaseMetricsAgg;
 import com.dajanggan.domain.overview.service.*;
+import com.dajanggan.global.crypto.AesGcmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.Job;
@@ -41,6 +42,7 @@ public class DatabaseMetricsAggregator {
     private final DataSource dataSource;
     private final NamedParameterJdbcTemplate namedJdbcTemplate;
     private final PlatformTransactionManager batchTransactionManager;
+    private final AesGcmService aesGcmService;
 
     // 도메인 서비스들
     private final TransactionMetricsService transactionMetricsService;
@@ -90,7 +92,7 @@ public class DatabaseMetricsAggregator {
                 .name("databaseInfoReader")
                 .dataSource(dataSource)
                 .sql(sql)
-                .rowMapper(new DatabaseInfoRowMapper())
+                .rowMapper(new DatabaseInfoRowMapper(aesGcmService))
                 .build();
     }
 
@@ -101,6 +103,11 @@ public class DatabaseMetricsAggregator {
     public ItemProcessor<DatabaseInfo, DatabaseMetricsAgg> databaseMetricsProcessor() {
         return dbInfo -> {
             try {
+                if (dbInfo.decryptedPassword == null) {
+                    log.error("복호화된 비밀번호가 없음: instanceId={}", dbInfo.instance.getInstanceId());
+                    return null;
+                }
+
                 OffsetDateTime collectedAt = OffsetDateTime.now().withSecond(0).withNano(0);
                 OffsetDateTime oneMinuteAgo = collectedAt.minusMinutes(1);
 
@@ -134,52 +141,46 @@ public class DatabaseMetricsAggregator {
                 );
 
                 // DTO 생성
-                DatabaseMetricsAgg dto = new DatabaseMetricsAgg();
-                dto.setInstanceId(instanceId);
-                dto.setDatabaseId(databaseId);
-                dto.setCollectedAt(collectedAt);
-
-                // 세션/커넥션
-                dto.setActiveSessions((int) sessionStats.avgActiveSessions());
-                dto.setUsedConnections((int) sessionStats.usedConnections());
-                dto.setMaxConnections(sessionStats.maxConnections());
-                dto.setConnectionUsagePercent(sessionStats.connectionUsagePercent());
-
-                // 트랜잭션
-                dto.setTpsTotal(txStats.tps());
-                dto.setXactCommit(txStats.xactCommit());
-                dto.setXactRollback(txStats.xactRollback());
-
-                // 대기 이벤트
-                dto.setLockWaitCount(diskStats.lockWaitCount());
-                dto.setIoWaitCount(diskStats.ioWaitCount());
-
-                // Disk I/O
-                dto.setBlksHit(diskStats.totalBlksHit());
-                dto.setBlksRead(diskStats.totalBlksRead());
-                dto.setCacheHitRatio(diskStats.avgCacheHitRatio());
-                dto.setAvgReadLatencyMs(diskStats.avgReadLatency());
-                dto.setAvgWriteLatencyMs(diskStats.avgWriteLatency());
-
-                // 슬로우 쿼리
-                dto.setSlowQueryCount(queryStats.slowQueryCount());
-                dto.setTopSlowQuery1(queryStats.topSlowQuery1());
-                dto.setTopSlowQuery1Time(queryStats.topSlowQuery1Time());
-                dto.setTopSlowQuery2(queryStats.topSlowQuery2());
-                dto.setTopSlowQuery2Time(queryStats.topSlowQuery2Time());
-                dto.setTopSlowQuery3(queryStats.topSlowQuery3());
-                dto.setTopSlowQuery3Time(queryStats.topSlowQuery3Time());
-                dto.setDeadTupleTotal(queryStats.deadTupleTotal());
-
-                // 시스템 이벤트
-                dto.setInfoEventCount(eventStats.infoCount());
-                dto.setWarningEventCount(eventStats.warningCount());
-                dto.setCriticalEventCount(eventStats.criticalCount());
-                dto.setRecentEventType(eventStats.recentEventType());
-                dto.setRecentEventLevel(eventStats.recentEventLevel());
-                dto.setRecentEventAgeMin(eventStats.recentEventAgeMin());
-
-                dto.setCreatedAt(OffsetDateTime.now());
+                DatabaseMetricsAgg dto = DatabaseMetricsAgg.builder()
+                        .instanceId(instanceId)
+                        .databaseId(databaseId)
+                        .collectedAt(collectedAt)
+                        // 세션/커넥션
+                        .activeSessions((int) sessionStats.avgActiveSessions())
+                        .usedConnections((int) sessionStats.usedConnections())
+                        .maxConnections(sessionStats.maxConnections())
+                        .connectionUsagePercent(sessionStats.connectionUsagePercent())
+                        // 트랜잭션
+                        .tpsTotal(txStats.tps())
+                        .xactCommit(txStats.xactCommit())
+                        .xactRollback(txStats.xactRollback())
+                        // 대기 이벤트
+                        .lockWaitCount(diskStats.lockWaitCount())
+                        .ioWaitCount(diskStats.ioWaitCount())
+                        // Disk I/O
+                        .blksHit(diskStats.totalBlksHit())
+                        .blksRead(diskStats.totalBlksRead())
+                        .cacheHitRatio(diskStats.avgCacheHitRatio())
+                        .avgReadLatencyMs(diskStats.avgReadLatency())
+                        .avgWriteLatencyMs(diskStats.avgWriteLatency())
+                        // 슬로우 쿼리
+                        .slowQueryCount(queryStats.slowQueryCount())
+                        .topSlowQuery1(queryStats.topSlowQuery1())
+                        .topSlowQuery1Time(queryStats.topSlowQuery1Time())
+                        .topSlowQuery2(queryStats.topSlowQuery2())
+                        .topSlowQuery2Time(queryStats.topSlowQuery2Time())
+                        .topSlowQuery3(queryStats.topSlowQuery3())
+                        .topSlowQuery3Time(queryStats.topSlowQuery3Time())
+                        .deadTupleTotal(queryStats.deadTupleTotal())
+                        // 시스템 이벤트
+                        .infoEventCount(eventStats.infoCount())
+                        .warningEventCount(eventStats.warningCount())
+                        .criticalEventCount(eventStats.criticalCount())
+                        .recentEventType(eventStats.recentEventType())
+                        .recentEventLevel(eventStats.recentEventLevel())
+                        .recentEventAgeMin(eventStats.recentEventAgeMin())
+                        .createdAt(OffsetDateTime.now())
+                        .build();
 
                 log.debug("데이터베이스 메트릭 처리 완료: instanceId={}, databaseId={}, TPS={}",
                         instanceId, databaseId, txStats.tps());
@@ -193,7 +194,6 @@ public class DatabaseMetricsAggregator {
             }
         };
     }
-
     /**
      * Writer: 집계 데이터 저장
      */
@@ -207,104 +207,104 @@ public class DatabaseMetricsAggregator {
             }
 
             String sql = """
-                INSERT INTO database_metrics_agg (
-                    instance_id, database_id, collected_at,
-                    active_sessions, used_connections, max_connections, connection_usage_percent,
-                    tps_total, xact_commit, xact_rollback,
-                    lock_wait_count, io_wait_count,
-                    blks_hit, blks_read, cache_hit_ratio, avg_read_latency_ms, avg_write_latency_ms,
-                    slow_query_count, top_slow_query_1, top_slow_query_1_time,
-                    top_slow_query_2, top_slow_query_2_time,
-                    top_slow_query_3, top_slow_query_3_time,
-                    dead_tuple_total,
-                    info_event_count, warning_event_count, critical_event_count,
-                    recent_event_type, recent_event_level, recent_event_age_min
-                )
-                VALUES (
-                    :instanceId, :databaseId, :collectedAt,
-                    :activeSessions, :usedConnections, :maxConnections, :connectionUsagePercent,
-                    :tpsTotal, :xactCommit, :xactRollback,
-                    :lockWaitCount, :ioWaitCount,
-                    :blksHit, :blksRead, :cacheHitRatio, :avgReadLatencyMs, :avgWriteLatencyMs,
-                    :slowQueryCount, :topSlowQuery1, :topSlowQuery1Time,
-                    :topSlowQuery2, :topSlowQuery2Time,
-                    :topSlowQuery3, :topSlowQuery3Time,
-                    :deadTupleTotal,
-                    :infoEventCount, :warningEventCount, :criticalEventCount,
-                    :recentEventType, :recentEventLevel, :recentEventAgeMin
-                )
-                ON CONFLICT (instance_id, database_id, collected_at)
-                DO UPDATE SET
-                    active_sessions = EXCLUDED.active_sessions,
-                    used_connections = EXCLUDED.used_connections,
-                    max_connections = EXCLUDED.max_connections,
-                    connection_usage_percent = EXCLUDED.connection_usage_percent,
-                    tps_total = EXCLUDED.tps_total,
-                    xact_commit = EXCLUDED.xact_commit,
-                    xact_rollback = EXCLUDED.xact_rollback,
-                    lock_wait_count = EXCLUDED.lock_wait_count,
-                    io_wait_count = EXCLUDED.io_wait_count,
-                    blks_hit = EXCLUDED.blks_hit,
-                    blks_read = EXCLUDED.blks_read,
-                    cache_hit_ratio = EXCLUDED.cache_hit_ratio,
-                    avg_read_latency_ms = EXCLUDED.avg_read_latency_ms,
-                    avg_write_latency_ms = EXCLUDED.avg_write_latency_ms,
-                    slow_query_count = EXCLUDED.slow_query_count,
-                    top_slow_query_1 = EXCLUDED.top_slow_query_1,
-                    top_slow_query_1_time = EXCLUDED.top_slow_query_1_time,
-                    top_slow_query_2 = EXCLUDED.top_slow_query_2,
-                    top_slow_query_2_time = EXCLUDED.top_slow_query_2_time,
-                    top_slow_query_3 = EXCLUDED.top_slow_query_3,
-                    top_slow_query_3_time = EXCLUDED.top_slow_query_3_time,
-                    dead_tuple_total = EXCLUDED.dead_tuple_total,
-                    info_event_count = EXCLUDED.info_event_count,
-                    warning_event_count = EXCLUDED.warning_event_count,
-                    critical_event_count = EXCLUDED.critical_event_count,
-                    recent_event_type = EXCLUDED.recent_event_type,
-                    recent_event_level = EXCLUDED.recent_event_level,
-                    recent_event_age_min = EXCLUDED.recent_event_age_min,
-                    created_at = NOW()
-                """;
+            INSERT INTO database_metrics_agg (
+                instance_id, database_id, collected_at,
+                active_sessions, used_connections, max_connections, connection_usage_percent,
+                tps_total, xact_commit, xact_rollback,
+                lock_wait_count, io_wait_count,
+                blks_hit, blks_read, cache_hit_ratio, avg_read_latency_ms, avg_write_latency_ms,
+                slow_query_count, top_slow_query_1, top_slow_query_1_time,
+                top_slow_query_2, top_slow_query_2_time,
+                top_slow_query_3, top_slow_query_3_time,
+                dead_tuple_total,
+                info_event_count, warning_event_count, critical_event_count,
+                recent_event_type, recent_event_level, recent_event_age_min
+            )
+            VALUES (
+                :instanceId, :databaseId, :collectedAt,
+                :activeSessions, :usedConnections, :maxConnections, :connectionUsagePercent,
+                :tpsTotal, :xactCommit, :xactRollback,
+                :lockWaitCount, :ioWaitCount,
+                :blksHit, :blksRead, :cacheHitRatio, :avgReadLatencyMs, :avgWriteLatencyMs,
+                :slowQueryCount, :topSlowQuery1, :topSlowQuery1Time,
+                :topSlowQuery2, :topSlowQuery2Time,
+                :topSlowQuery3, :topSlowQuery3Time,
+                :deadTupleTotal,
+                :infoEventCount, :warningEventCount, :criticalEventCount,
+                :recentEventType, :recentEventLevel, :recentEventAgeMin
+            )
+            ON CONFLICT (instance_id, database_id, collected_at)
+            DO UPDATE SET
+                active_sessions = EXCLUDED.active_sessions,
+                used_connections = EXCLUDED.used_connections,
+                max_connections = EXCLUDED.max_connections,
+                connection_usage_percent = EXCLUDED.connection_usage_percent,
+                tps_total = EXCLUDED.tps_total,
+                xact_commit = EXCLUDED.xact_commit,
+                xact_rollback = EXCLUDED.xact_rollback,
+                lock_wait_count = EXCLUDED.lock_wait_count,
+                io_wait_count = EXCLUDED.io_wait_count,
+                blks_hit = EXCLUDED.blks_hit,
+                blks_read = EXCLUDED.blks_read,
+                cache_hit_ratio = EXCLUDED.cache_hit_ratio,
+                avg_read_latency_ms = EXCLUDED.avg_read_latency_ms,
+                avg_write_latency_ms = EXCLUDED.avg_write_latency_ms,
+                slow_query_count = EXCLUDED.slow_query_count,
+                top_slow_query_1 = EXCLUDED.top_slow_query_1,
+                top_slow_query_1_time = EXCLUDED.top_slow_query_1_time,
+                top_slow_query_2 = EXCLUDED.top_slow_query_2,
+                top_slow_query_2_time = EXCLUDED.top_slow_query_2_time,
+                top_slow_query_3 = EXCLUDED.top_slow_query_3,
+                top_slow_query_3_time = EXCLUDED.top_slow_query_3_time,
+                dead_tuple_total = EXCLUDED.dead_tuple_total,
+                info_event_count = EXCLUDED.info_event_count,
+                warning_event_count = EXCLUDED.warning_event_count,
+                critical_event_count = EXCLUDED.critical_event_count,
+                recent_event_type = EXCLUDED.recent_event_type,
+                recent_event_level = EXCLUDED.recent_event_level,
+                recent_event_age_min = EXCLUDED.recent_event_age_min,
+                created_at = NOW()
+            """;
 
-            int totalInserted = 0;
-            for (DatabaseMetricsAgg item : items) {
-                MapSqlParameterSource params = new MapSqlParameterSource()
-                        .addValue("instanceId", item.getInstanceId())
-                        .addValue("databaseId", item.getDatabaseId())
-                        .addValue("collectedAt", item.getCollectedAt())
-                        .addValue("activeSessions", item.getActiveSessions())
-                        .addValue("usedConnections", item.getUsedConnections())
-                        .addValue("maxConnections", item.getMaxConnections())
-                        .addValue("connectionUsagePercent", item.getConnectionUsagePercent())
-                        .addValue("tpsTotal", item.getTpsTotal())
-                        .addValue("xactCommit", item.getXactCommit())
-                        .addValue("xactRollback", item.getXactRollback())
-                        .addValue("lockWaitCount", item.getLockWaitCount())
-                        .addValue("ioWaitCount", item.getIoWaitCount())
-                        .addValue("blksHit", item.getBlksHit())
-                        .addValue("blksRead", item.getBlksRead())
-                        .addValue("cacheHitRatio", item.getCacheHitRatio())
-                        .addValue("avgReadLatencyMs", item.getAvgReadLatencyMs())
-                        .addValue("avgWriteLatencyMs", item.getAvgWriteLatencyMs())
-                        .addValue("slowQueryCount", item.getSlowQueryCount())
-                        .addValue("topSlowQuery1", item.getTopSlowQuery1())
-                        .addValue("topSlowQuery1Time", item.getTopSlowQuery1Time())
-                        .addValue("topSlowQuery2", item.getTopSlowQuery2())
-                        .addValue("topSlowQuery2Time", item.getTopSlowQuery2Time())
-                        .addValue("topSlowQuery3", item.getTopSlowQuery3())
-                        .addValue("topSlowQuery3Time", item.getTopSlowQuery3Time())
-                        .addValue("deadTupleTotal", item.getDeadTupleTotal())
-                        .addValue("infoEventCount", item.getInfoEventCount())
-                        .addValue("warningEventCount", item.getWarningEventCount())
-                        .addValue("criticalEventCount", item.getCriticalEventCount())
-                        .addValue("recentEventType", item.getRecentEventType())
-                        .addValue("recentEventLevel", item.getRecentEventLevel())
-                        .addValue("recentEventAgeMin", item.getRecentEventAgeMin());
+            //  Batch Update로 한번에 저장
+            MapSqlParameterSource[] batchParams = items.stream()
+                    .map(item -> new MapSqlParameterSource()
+                            .addValue("instanceId", item.getInstanceId())
+                            .addValue("databaseId", item.getDatabaseId())
+                            .addValue("collectedAt", item.getCollectedAt())
+                            .addValue("activeSessions", item.getActiveSessions())
+                            .addValue("usedConnections", item.getUsedConnections())
+                            .addValue("maxConnections", item.getMaxConnections())
+                            .addValue("connectionUsagePercent", item.getConnectionUsagePercent())
+                            .addValue("tpsTotal", item.getTpsTotal())
+                            .addValue("xactCommit", item.getXactCommit())
+                            .addValue("xactRollback", item.getXactRollback())
+                            .addValue("lockWaitCount", item.getLockWaitCount())
+                            .addValue("ioWaitCount", item.getIoWaitCount())
+                            .addValue("blksHit", item.getBlksHit())
+                            .addValue("blksRead", item.getBlksRead())
+                            .addValue("cacheHitRatio", item.getCacheHitRatio())
+                            .addValue("avgReadLatencyMs", item.getAvgReadLatencyMs())
+                            .addValue("avgWriteLatencyMs", item.getAvgWriteLatencyMs())
+                            .addValue("slowQueryCount", item.getSlowQueryCount())
+                            .addValue("topSlowQuery1", item.getTopSlowQuery1())
+                            .addValue("topSlowQuery1Time", item.getTopSlowQuery1Time())
+                            .addValue("topSlowQuery2", item.getTopSlowQuery2())
+                            .addValue("topSlowQuery2Time", item.getTopSlowQuery2Time())
+                            .addValue("topSlowQuery3", item.getTopSlowQuery3())
+                            .addValue("topSlowQuery3Time", item.getTopSlowQuery3Time())
+                            .addValue("deadTupleTotal", item.getDeadTupleTotal())
+                            .addValue("infoEventCount", item.getInfoEventCount())
+                            .addValue("warningEventCount", item.getWarningEventCount())
+                            .addValue("criticalEventCount", item.getCriticalEventCount())
+                            .addValue("recentEventType", item.getRecentEventType())
+                            .addValue("recentEventLevel", item.getRecentEventLevel())
+                            .addValue("recentEventAgeMin", item.getRecentEventAgeMin()))
+                    .toArray(MapSqlParameterSource[]::new);
 
-                totalInserted += namedJdbcTemplate.update(sql, params);
-            }
+            int[] updateCounts = namedJdbcTemplate.batchUpdate(sql, batchParams);
 
-            log.info(">>>>>>>>>>>>>> 데이터베이스 메트릭 집계 완료: {} 건 저장", totalInserted);
+            log.info(">>>>>>>>>>>>>> 데이터베이스 메트릭 집계 완료: {} 건 저장", updateCounts.length);
         };
     }
 
@@ -315,18 +315,25 @@ public class DatabaseMetricsAggregator {
         Instance instance;
         Long databaseId;
         String databaseName;
-
-        DatabaseInfo(Instance instance, Long databaseId, String databaseName) {
+        String decryptedPassword;
+        DatabaseInfo(Instance instance, Long databaseId, String databaseName, String decryptedPassword) {
             this.instance = instance;
             this.databaseId = databaseId;
             this.databaseName = databaseName;
+            this.decryptedPassword = decryptedPassword;
         }
     }
 
     /**
-     * RowMapper: DB 결과를 DatabaseInfo로 매핑
+     * RowMapper: DB 결과를 DatabaseInfo로 매핑 + 복호화
      */
     private static class DatabaseInfoRowMapper implements RowMapper<DatabaseInfo> {
+        private final AesGcmService aesGcmService;
+
+        DatabaseInfoRowMapper(AesGcmService aesGcmService) {
+            this.aesGcmService = aesGcmService;
+        }
+
         @Override
         public DatabaseInfo mapRow(ResultSet rs, int rowNum) throws SQLException {
             Instance instance = Instance.builder()
@@ -339,10 +346,20 @@ public class DatabaseMetricsAggregator {
                     .sslmode(rs.getString("sslmode"))
                     .build();
 
+            //  복호화 처리
+            String decryptedPassword = null;
+            try {
+                decryptedPassword = aesGcmService.decryptToString(instance.getSecretRef());
+            } catch (Exception e) {
+                log.error("비밀번호 복호화 실패: instanceId={}, error={}",
+                        instance.getInstanceId(), e.getMessage());
+            }
+
             return new DatabaseInfo(
                     instance,
                     rs.getLong("database_id"),
-                    rs.getString("database_name")
+                    rs.getString("database_name"),
+                    decryptedPassword  //  복호화된 비밀번호 포함
             );
         }
     }

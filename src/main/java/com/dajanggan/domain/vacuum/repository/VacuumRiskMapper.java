@@ -9,8 +9,6 @@ import java.util.List;
 
 @Mapper
 public interface VacuumRiskMapper {
-
-    // ✅ aggTable 제거 (항상 vacuum_raw_metrics 사용)
     List<VacuumRiskDto.BlockersPerHourRaw> getBlockersPerHour(
             @Param("databaseId") Long databaseId,
             @Param("start") OffsetDateTime start,

@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    원시 쿼리 메트릭 Mapper
+    - pg_stat_statements에서 수집한 원시 데이터 저장
+
+    @author 이해든
+-->
 <mapper namespace="com.dajanggan.domain.query.repository.QueryRawRepository">
 
     <!-- 쿼리 메트릭 데이터를 모니터링 DB에 일괄 저장 -->
