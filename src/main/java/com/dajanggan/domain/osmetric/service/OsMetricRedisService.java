@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -12,6 +13,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -213,6 +215,53 @@ public class OsMetricRedisService {
         } catch (Exception e) {
             log.error("Redis 최신 데이터 조회 실패: instanceId={}, type={}", instanceId, metricType, e);
             return null;
+        }
+    }
+
+    /**
+     * CPU, MEMORY, DISK 최신 데이터를 배치로 조회 (SSE용 최적화)
+     * Redis Pipeline을 사용하여 네트워크 왕복을 1회로 줄임
+     * 
+     * @param instanceId 인스턴스 ID
+     * @return 메트릭 타입별 최신 데이터 맵 (key: "CPU", "MEMORY", "DISK")
+     */
+    public Map<String, RedisOsMetricData> getLatestMetricsBatch(Long instanceId) {
+        try {
+            // Redis Pipeline을 사용하여 3개 키를 한 번에 조회
+            @SuppressWarnings("unchecked")
+            List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                List<String> metricTypes = List.of("CPU", "MEMORY", "DISK");
+                for (String metricType : metricTypes) {
+                    String key = KEY_PREFIX + instanceId + ":" + metricType;
+                    // Redis List의 마지막 요소 조회 (LINDEX key -1)
+                    connection.listCommands().lIndex(key.getBytes(), -1);
+                }
+                return null; // Pipeline에서는 반환값이 무시됨
+            });
+
+            // 결과를 맵으로 변환
+            Map<String, RedisOsMetricData> metricsMap = new HashMap<>();
+            List<String> metricTypes = List.of("CPU", "MEMORY", "DISK");
+            
+            for (int i = 0; i < metricTypes.size() && i < results.size(); i++) {
+                String metricType = metricTypes.get(i);
+                Object result = results.get(i);
+                
+                if (result != null) {
+                    RedisOsMetricData metricData = convertToRedisOsMetricData(result);
+                    if (metricData != null) {
+                        metricsMap.put(metricType, metricData);
+                    }
+                }
+            }
+            
+            log.debug("Redis 배치 조회 성공: instanceId={}, 조회된 메트릭 수={}", instanceId, metricsMap.size());
+            return metricsMap;
+            
+        } catch (Exception e) {
+            log.error("Redis 배치 조회 실패: instanceId={}", instanceId, e);
+            // 실패 시 빈 맵 반환 (기존 동작과 동일하게 null 대신 빈 맵)
+            return new HashMap<>();
         }
     }
 

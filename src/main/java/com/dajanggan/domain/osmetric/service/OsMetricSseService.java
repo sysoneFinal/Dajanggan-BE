@@ -87,10 +87,12 @@ public class OsMetricSseService {
         }
 
         try {
-            // Redis에서 실제 저장된 메트릭 타입 조회 (CPU, MEMORY, DISK)
-            RedisOsMetricData cpuData = redisService.getLatestMetric(instanceId, "CPU");
-            RedisOsMetricData memoryData = redisService.getLatestMetric(instanceId, "MEMORY");
-            RedisOsMetricData diskData = redisService.getLatestMetric(instanceId, "DISK");
+            // Redis에서 배치로 최신 메트릭 데이터 조회 (최적화: 3번 조회 → 1번 조회)
+            Map<String, RedisOsMetricData> metricsMap = redisService.getLatestMetricsBatch(instanceId);
+            
+            RedisOsMetricData cpuData = metricsMap.get("CPU");
+            RedisOsMetricData memoryData = metricsMap.get("MEMORY");
+            RedisOsMetricData diskData = metricsMap.get("DISK");
             
             // 디버깅: Redis에서 가져온 데이터 확인
             if (diskData != null) {
@@ -163,18 +165,40 @@ public class OsMetricSseService {
                 
                 // Swap 데이터 처리
                 Object swapObj = memoryDetails.get("swap");
+                
+                // 디버깅: Memory details 전체 구조 확인
+                log.info("Memory details 전체 구조: instanceId={}, memoryDetails={}", instanceId, memoryDetails);
+                log.info("Swap 객체 확인: instanceId={}, swapObj={}, swapObj type={}", 
+                        instanceId, swapObj, swapObj != null ? swapObj.getClass().getName() : "null");
+                
                 if (swapObj instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> swapMap = (Map<String, Object>) swapObj;
+                    
+                    log.info("Swap Map 확인: instanceId={}, swapMap={}, swapMap keys={}", 
+                            instanceId, swapMap, swapMap.keySet());
                     
                     Long swapTotal = getLong(swapMap.get("total"));
                     Long swapUsed = getLong(swapMap.get("used"));
                     Long swapIn = getLong(swapMap.get("swapIn"));
                     Long swapOut = getLong(swapMap.get("swapOut"));
                     
-                    // 디버깅: Swap 데이터 확인
-                    log.debug("Swap 데이터 확인: instanceId={}, swapMap={}, swapTotal={}, swapUsed={}, swapIn={}, swapOut={}", 
-                            instanceId, swapMap, swapTotal, swapUsed, swapIn, swapOut);
+                    // swapIn, swapOut이 없으면 다른 키 이름으로 시도
+                    if (swapIn == null) {
+                        swapIn = getLong(swapMap.get("swapInPerSec"));
+                    }
+                    if (swapOut == null) {
+                        swapOut = getLong(swapMap.get("swapOutPerSec"));
+                    }
+                    if (swapIn == null) {
+                        swapIn = getLong(swapMap.get("in"));
+                    }
+                    if (swapOut == null) {
+                        swapOut = getLong(swapMap.get("out"));
+                    }
+                    
+                    log.info("Swap 데이터 추출: instanceId={}, swapTotal={}, swapUsed={}, swapIn={}, swapOut={}", 
+                            instanceId, swapTotal, swapUsed, swapIn, swapOut);
                     
                     if (swapTotal != null && swapTotal > 0) {
                         // GB 단위로 변환
@@ -199,13 +223,52 @@ public class OsMetricSseService {
                         response.setSwapOutPerSec(0L);
                     }
                 } else {
-                    // Swap 객체가 없는 경우
-                    log.debug("Swap 객체 없음: instanceId={}, swapObj={}", instanceId, swapObj);
-                    response.setSwapTotalGB(0.0);
-                    response.setSwapUsedGB(0.0);
-                    response.setSwapUsage(0.0);
-                    response.setSwapInPerSec(0L);
-                    response.setSwapOutPerSec(0L);
+                    // Swap 객체가 없는 경우 - memoryDetails에서 직접 확인
+                    log.warn("Swap 객체가 Map이 아님: instanceId={}, swapObj={}, swapObj type={}", 
+                            instanceId, swapObj, swapObj != null ? swapObj.getClass().getName() : "null");
+                    
+                    // memoryDetails에서 직접 swap 관련 필드 확인
+                    Long swapTotal = getLong(memoryDetails.get("swapTotal"));
+                    Long swapUsed = getLong(memoryDetails.get("swapUsed"));
+                    Long swapIn = getLong(memoryDetails.get("swapIn"));
+                    Long swapOut = getLong(memoryDetails.get("swapOut"));
+                    
+                    if (swapTotal == null) {
+                        swapTotal = getLong(memoryDetails.get("swap_total"));
+                    }
+                    if (swapUsed == null) {
+                        swapUsed = getLong(memoryDetails.get("swap_used"));
+                    }
+                    if (swapIn == null) {
+                        swapIn = getLong(memoryDetails.get("swap_in"));
+                    }
+                    if (swapOut == null) {
+                        swapOut = getLong(memoryDetails.get("swap_out"));
+                    }
+                    
+                    log.info("Memory details에서 직접 Swap 데이터 추출: instanceId={}, swapTotal={}, swapUsed={}, swapIn={}, swapOut={}", 
+                            instanceId, swapTotal, swapUsed, swapIn, swapOut);
+                    
+                    if (swapTotal != null && swapTotal > 0) {
+                        response.setSwapTotalGB(swapTotal / (1024.0 * 1024.0 * 1024.0));
+                        response.setSwapUsedGB(swapUsed != null ? swapUsed / (1024.0 * 1024.0 * 1024.0) : 0.0);
+                        response.setSwapUsage((swapUsed != null ? swapUsed.doubleValue() : 0.0) / swapTotal * 100.0);
+                    } else {
+                        response.setSwapTotalGB(0.0);
+                        response.setSwapUsedGB(0.0);
+                        response.setSwapUsage(0.0);
+                    }
+                    
+                    if (swapIn != null) {
+                        response.setSwapInPerSec(swapIn);
+                    } else {
+                        response.setSwapInPerSec(0L);
+                    }
+                    if (swapOut != null) {
+                        response.setSwapOutPerSec(swapOut);
+                    } else {
+                        response.setSwapOutPerSec(0L);
+                    }
                 }
                 
                 // 디버깅: Memory 상세 정보 로깅
