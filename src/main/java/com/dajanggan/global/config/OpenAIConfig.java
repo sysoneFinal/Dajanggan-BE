@@ -18,10 +18,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OpenAIConfig {
 
-    @Value("${yamlopenai.api-key:}")
+    @Value("${openai.api-key:}")
     private String apiKey;
 
-    @Value("${yamlopenai.model:gpt-4o-mini}")
+    @Value("${openai.model:gpt-4o-mini}")
     private String model;
 
     /**
@@ -32,7 +32,7 @@ public class OpenAIConfig {
      * @throws IllegalStateException API 키가 올바르게 설정되지 않은 경우
      */
     @Bean
-    @ConditionalOnProperty(name = "yamlopenai.api-key")
+    @ConditionalOnProperty(name = "openai.api-key")
     public OpenAiService openAiService() {
         if (apiKey == null || apiKey.trim().isEmpty() || apiKey.equals("your-api-key-here")) {
             log.error("OpenAI API 키가 올바르게 설정되지 않았습니다.");
