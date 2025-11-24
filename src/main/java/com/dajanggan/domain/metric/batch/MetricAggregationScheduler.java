@@ -44,11 +44,42 @@ public class MetricAggregationScheduler {
     @Qualifier("vacuumAgg5mJob")
     private final Job vacuumAgg5mJob;
 
+    @Qualifier("cpuAgg1mJob")
+    private final Job cpuAgg1mJob;
+
+    @Qualifier("diskIoAgg1mJob")
+    private final Job diskIoAgg1mJob;
+
+    @Qualifier("cpuAgg5mJob")
+    private final Job cpuAgg5mJob;
+
+    @Qualifier("diskIoAgg5mJob")
+    private final Job diskIoAgg5mJob;
+
+    @Qualifier("memoryAgg1mJob")
+    private final Job memoryAgg1mJob;
+
+    @Qualifier("memoryAgg5mJob")
+    private final Job memoryAgg5mJob;
+
+    @Qualifier("checkpointAgg1mJob")
+    private final Job checkpointAgg1mJob;
+
+    @Qualifier("checkpointAgg5mJob")
+    private final Job checkpointAgg5mJob;
+
+    @Qualifier("bgWriterAgg1mJob")
+    private final Job bgWriterAgg1mJob;
+
+    @Qualifier("bgWriterAgg5mJob")
+    private final Job bgWriterAgg5mJob;
+
     /**
      * 1분마다 1분 집계 Job들 실행
-     * 매분 5초에 실행 (수집이 완료된 후 실행하기 위해)
+     * 매분 10초에 실행 (수집이 5초에 완료된 후 실행)
+     * 타임라인: 수집(5초) → 1분 집계(10초) → 5분 집계(10초, 5분마다)
      */
-    @Scheduled(cron = "5 * * * * *")  // 매분 5초
+    @Scheduled(cron = "10 * * * * *")  // 매분 10초
     public void runAgg1mJobs() {
         LocalDateTime runTime = LocalDateTime.now();
         log.info("========== 1분 집계 배치 시작: {} ==========", runTime);
@@ -58,6 +89,21 @@ public class MetricAggregationScheduler {
 
         // Vacuum 1분 집계
         runJob(vacuumAgg1mJob, "Vacuum 1분 집계", runTime);
+
+        // CPU 1분 집계
+        runJob(cpuAgg1mJob, "CPU 1분 집계", runTime);
+
+        // BGWriter 1분 집계
+        runJob(bgWriterAgg1mJob, "BGWriter 1분 집계", runTime);
+
+        // Disk I/O 1분 집계
+        runJob(diskIoAgg1mJob, "Disk I/O 1분 집계", runTime);
+
+        // Memory 1분 집계
+        runJob(memoryAgg1mJob, "Memory 1분 집계", runTime);
+
+        // Checkpoint 1분 집계
+        runJob(checkpointAgg1mJob, "Checkpoint 1분 집계", runTime);
 
 
         log.info("========== 1분 집계 배치 완료 ==========");
@@ -77,6 +123,21 @@ public class MetricAggregationScheduler {
 
         // Vacuum 5분 집계
         runJob(vacuumAgg5mJob, "Vacuum 5분 집계", runTime);
+
+        // CPU 5분 집계
+        runJob(cpuAgg5mJob, "CPU 5분 집계", runTime);
+
+        // BGWriter 5분 집계
+        runJob(bgWriterAgg5mJob, "BGWriter 5분 집계", runTime);
+
+        // Disk I/O 5분 집계
+        runJob(diskIoAgg5mJob, "Disk I/O 5분 집계", runTime);
+
+        // Memory 5분 집계
+        runJob(memoryAgg5mJob, "Memory 5분 집계", runTime);
+
+        // Checkpoint 5분 집계
+        runJob(checkpointAgg5mJob, "Checkpoint 5분 집계", runTime);
 
 
         log.info("========== 5분 집계 배치 완료 ==========");
