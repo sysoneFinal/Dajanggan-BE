@@ -149,14 +149,15 @@ public class VacuumMaintenanceService {
 
     /**
      * Dead Tuple 차트 데이터 생성
-     * - 실제 dead tuple 총량 표시 (최근 24시간 내)
+     * - 증가율 vs 감소율 (vacuum 처리 속도)
      */
     private VacuumMaintenanceDto.Chart buildDeadTupleChart(
             OffsetDateTime start, OffsetDateTime end,
             Long databaseId, Long instanceId, int hours) {
 
         List<String> labels = new ArrayList<>();
-        List<Long> totalDeadTuples = new ArrayList<>();
+        List<Long> increaseRate = new ArrayList<>();
+        List<Long> decreaseRate = new ArrayList<>();
 
         try {
             if (hours <= 1) {
@@ -171,8 +172,8 @@ public class VacuumMaintenanceService {
                     if (t == null || t.getCollectedAt() == null) continue;
 
                     labels.add(formatTimeLabel(t.getCollectedAt()));
-                    // 실제 dead tuple 총량 사용
-                    totalDeadTuples.add(t.getTotalDeadTuples() != null ? t.getTotalDeadTuples() : 0L);
+                    increaseRate.add(t.getDeadTupleIncreaseRate() != null ? t.getDeadTupleIncreaseRate() : 0L);
+                    decreaseRate.add(t.getDeadTupleDecreaseRate() != null ? t.getDeadTupleDecreaseRate() : 0L);
                 }
             } else {
                 List<VacuumAgg5mDto> trends = repository.getTimeSeriesFrom5m(databaseId, instanceId, start, end);
@@ -186,8 +187,8 @@ public class VacuumMaintenanceService {
                     if (t == null || t.getCollectedAt() == null) continue;
 
                     labels.add(formatTimeLabel(t.getCollectedAt()));
-                    // 실제 dead tuple 총량 사용
-                    totalDeadTuples.add(t.getTotalDeadTuples() != null ? t.getTotalDeadTuples() : 0L);
+                    increaseRate.add(t.getDeadTupleIncreaseRate() != null ? t.getDeadTupleIncreaseRate() : 0L);
+                    decreaseRate.add(t.getDeadTupleDecreaseRate() != null ? t.getDeadTupleDecreaseRate() : 0L);
                 }
             }
 
@@ -196,18 +197,13 @@ public class VacuumMaintenanceService {
                 return getEmptyChart();
             }
 
-            log.info("✅ Dead Tuple 차트 생성 완료: labels={}, totalDeadTuples={}, 첫 값={}, 마지막 값={}",
-                    labels.size(), totalDeadTuples.size(),
-                    totalDeadTuples.isEmpty() ? 0 : totalDeadTuples.get(0),
-                    totalDeadTuples.isEmpty() ? 0 : totalDeadTuples.get(totalDeadTuples.size() - 1));
-
         } catch (Exception e) {
             log.error("❌ Dead Tuple 차트 생성 실패", e);
             return getEmptyChart();
         }
 
         return VacuumMaintenanceDto.Chart.builder()
-                .data(Collections.singletonList(totalDeadTuples))
+                .data(Arrays.asList(increaseRate, decreaseRate))
                 .labels(labels)
                 .build();
     }

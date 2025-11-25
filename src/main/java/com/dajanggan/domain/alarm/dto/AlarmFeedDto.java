@@ -97,6 +97,7 @@ public class AlarmFeedDto {
         private LatencyData latency;
         private Summary summary;
         private List<RelatedItem> related;
+        private Boolean isGenerating;  // 관련 객체 생성 중 여부 (프론트엔드 자동 폴링용)
     }
 
     @Data
