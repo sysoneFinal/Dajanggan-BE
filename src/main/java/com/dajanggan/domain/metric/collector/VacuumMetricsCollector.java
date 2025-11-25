@@ -43,11 +43,11 @@ public class VacuumMetricsCollector {
     public void collect(Instance instance, Database database, String decryptedPassword, OffsetDateTime collectedAt) {
         log.info("🧹 [VACUUM] ===== 수집 시작 ===== ");
         log.info("🧹 [VACUUM] DB: {}, Instance: {}:{}",
-                database.getDatabaseName(), instance.getHost(), instance.getPort(), decryptedPassword);
+                database.getDatabaseName(), instance.getHost(), instance.getPort());
 
         JdbcTemplate jdbc;
         try {
-            jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName());
+            jdbc = dataSourceFactory.createJdbcTemplate(instance, database.getDatabaseName(), decryptedPassword);
             log.info("🧹 [VACUUM] JdbcTemplate 생성 성공");
         } catch (Exception e) {
             log.error("🧹 [VACUUM] ❌ JdbcTemplate 생성 실패", e);
