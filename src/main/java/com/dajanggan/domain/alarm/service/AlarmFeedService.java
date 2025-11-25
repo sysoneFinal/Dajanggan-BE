@@ -9,19 +9,20 @@ import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.global.crypto.AesGcmService;
+import com.dajanggan.infrastructure.datasource.DataSourceFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,7 +36,11 @@ public class AlarmFeedService {
     private final InstanceRepository instanceRepository;
     private final DatabaseRepository databaseRepository;
     private final AesGcmService aesGcmService;
+    private final DataSourceFactory dataSourceFactory;
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    
+    // 비동기 처리용 ExecutorService
+    private final ExecutorService asyncExecutor = Executors.newFixedThreadPool(5);
 
     /**
      * 알림 목록 조회
@@ -108,11 +113,26 @@ public class AlarmFeedService {
 
         log.info("📋 관련 객체 조회: alarmFeedId={}, 조회된 개수={}", feed.getAlarmFeedId(), relatedRaw != null ? relatedRaw.size() : 0);
         
-        // 관련 객체가 없으면 동적으로 생성 시도
+        // 관련 객체가 없으면 비동기로 생성 (사용자 대기 없이 즉시 응답)
         if ((relatedRaw == null || relatedRaw.isEmpty()) && feed.getMetricType() != null) {
-            log.info("🔄 관련 객체가 없어서 동적으로 생성 시도: alarmFeedId={}, metricType={}", 
+            log.info("🔄 관련 객체가 없어서 비동기로 생성 시작: alarmFeedId={}, metricType={}", 
                     feed.getAlarmFeedId(), feed.getMetricType());
-            relatedRaw = generateRelatedObjectsOnDemand(feed);
+            
+            // 비동기로 생성 (사용자는 빈 리스트로 즉시 응답받음)
+            CompletableFuture.runAsync(() -> {
+                try {
+                    List<AlarmFeedDto.RelatedObjectRaw> generated = generateRelatedObjectsOnDemand(feed);
+                    if (!generated.isEmpty()) {
+                        log.info("✅ 관련 객체 비동기 생성 완료: alarmFeedId={}, 생성된 개수={}", 
+                                feed.getAlarmFeedId(), generated.size());
+                    }
+                } catch (Exception e) {
+                    log.error("❌ 관련 객체 비동기 생성 실패: alarmFeedId={}", feed.getAlarmFeedId(), e);
+                }
+            }, asyncExecutor);
+            
+            // 빈 리스트 반환 (즉시 응답)
+            relatedRaw = List.of();
         }
         
         if (relatedRaw != null && !relatedRaw.isEmpty()) {
@@ -288,6 +308,7 @@ public class AlarmFeedService {
 
     /**
      * 관련 객체가 없을 때 동적으로 생성
+     * Connection Pool을 사용하여 성능 최적화
      */
     private List<AlarmFeedDto.RelatedObjectRaw> generateRelatedObjectsOnDemand(AlarmFeed feed) {
         String metricType = feed.getMetricType();
@@ -324,53 +345,50 @@ public class AlarmFeedService {
                 return List.of();
             }
 
-            // DB 연결 생성 및 쿼리 실행
-            String host = instance.getHost() != null ? instance.getHost().trim() : "";
-            String userName = instance.getUserName() != null ? instance.getUserName().trim() : "";
-            String password = aesGcmService.decryptToString(instance.getSecretRef());
-            String url = String.format("jdbc:postgresql://%s:%d/%s",
-                    host, instance.getPort(), databaseName);
-
-            log.info("🔌 관련 객체 생성용 DB 연결: instanceId={}, databaseId={}", 
+            // 비밀번호 복호화 (1회만 수행)
+            String decryptedPassword = aesGcmService.decryptToString(instance.getSecretRef());
+            
+            log.info("🔌 관련 객체 생성용 DB 연결 (Connection Pool 사용): instanceId={}, databaseId={}", 
                     feed.getInstanceId(), feed.getDatabaseId());
             log.debug("📝 실행할 쿼리: {}", sql);
 
-            try (Connection conn = DriverManager.getConnection(url, userName, password);
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(sql)) {
+            // Connection Pool을 사용하여 JdbcTemplate 생성
+            JdbcTemplate jdbc = dataSourceFactory.createJdbcTemplate(
+                    instance, databaseName, decryptedPassword);
+            
+            // 쿼리 타임아웃 설정 (5초)
+            jdbc.setQueryTimeout(5);
 
-                List<AlarmFeedDto.RelatedObjectRaw> generated = new java.util.ArrayList<>();
-                while (rs.next()) {
-                    AlarmFeedDto.RelatedObjectRaw raw = new AlarmFeedDto.RelatedObjectRaw();
-                    raw.setObjectType(rs.getString("object_type"));
-                    raw.setObjectName(rs.getString("object_name"));
-                    raw.setMetricValue(rs.getString("metric_value"));
-                    raw.setStatus(rs.getString("status"));
-                    generated.add(raw);
-                }
+            // RowMapper를 사용하여 결과 매핑
+            RowMapper<AlarmFeedDto.RelatedObjectRaw> rowMapper = (rs, rowNum) -> {
+                AlarmFeedDto.RelatedObjectRaw raw = new AlarmFeedDto.RelatedObjectRaw();
+                raw.setObjectType(rs.getString("object_type"));
+                raw.setObjectName(rs.getString("object_name"));
+                raw.setMetricValue(rs.getString("metric_value"));
+                raw.setStatus(rs.getString("status"));
+                return raw;
+            };
 
-                if (generated.isEmpty()) {
-                    log.warn("⚠️ 관련 객체 쿼리 결과가 0개입니다: alarmFeedId={}, metricType={}", 
-                            feed.getAlarmFeedId(), metricType);
-                } else {
-                    log.info("✅ 관련 객체 동적 생성 완료: alarmFeedId={}, 생성된 개수={}", 
-                            feed.getAlarmFeedId(), generated.size());
-                }
+            // 쿼리 실행
+            List<AlarmFeedDto.RelatedObjectRaw> generated = jdbc.query(sql, rowMapper);
 
-                // 생성된 객체를 DB에 저장 (선택사항)
-                if (!generated.isEmpty()) {
-                    saveRelatedObjectsToDb(feed.getAlarmFeedId(), feed.getAlarmRuleId(), generated);
-                }
-
-                return generated;
+            if (generated.isEmpty()) {
+                log.warn("⚠️ 관련 객체 쿼리 결과가 0개입니다: alarmFeedId={}, metricType={}", 
+                        feed.getAlarmFeedId(), metricType);
+            } else {
+                log.info("✅ 관련 객체 동적 생성 완료: alarmFeedId={}, 생성된 개수={}", 
+                        feed.getAlarmFeedId(), generated.size());
             }
 
-        } catch (SQLException e) {
-            log.error("❌ 관련 객체 동적 생성 실패: alarmFeedId={}, metricType={}", 
-                    feed.getAlarmFeedId(), metricType, e);
-            return List.of();
+            // 생성된 객체를 DB에 저장 (선택사항)
+            if (!generated.isEmpty()) {
+                saveRelatedObjectsToDb(feed.getAlarmFeedId(), feed.getAlarmRuleId(), generated);
+            }
+
+            return generated;
+
         } catch (Exception e) {
-            log.error("❌ 관련 객체 동적 생성 중 예외 발생: alarmFeedId={}, metricType={}", 
+            log.error("❌ 관련 객체 동적 생성 실패: alarmFeedId={}, metricType={}", 
                     feed.getAlarmFeedId(), metricType, e);
             return List.of();
         }
