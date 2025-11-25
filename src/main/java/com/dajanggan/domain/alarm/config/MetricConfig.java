@@ -1,6 +1,9 @@
 package com.dajanggan.domain.alarm.config;
 
+import com.dajanggan.domain.alarm.dto.AlarmRuleDto;
 import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
 
 @Component
 public class MetricConfig {
@@ -80,6 +83,15 @@ public class MetricConfig {
      * 지표별 관련 객체 조회 쿼리
      */
     public String getRelatedObjectsQuery(String metricType) {
+        return getRelatedObjectsQuery(metricType, null);
+    }
+    
+    /**
+     * 지표별 관련 객체 조회 쿼리 (임계치 기반 동적 생성)
+     * @param metricType 지표 타입
+     * @param levels 알람 규칙의 임계치 (null이면 기본값 사용)
+     */
+    public String getRelatedObjectsQuery(String metricType, AlarmRuleDto.Levels levels) {
         return switch (metricType) {
             
 
@@ -118,29 +130,7 @@ public class MetricConfig {
                 LIMIT 10
                 """;
 
-            case "wraparound_progress" -> """
-                SELECT 
-                    'table' AS object_type,
-                    n.nspname || '.' || c.relname AS object_name,
-                    ROUND(
-                        (age(c.relfrozenxid)::NUMERIC / 
-                         NULLIF((SELECT setting::NUMERIC FROM pg_settings WHERE name = 'autovacuum_freeze_max_age'), 0) * 100)::NUMERIC,
-                        2
-                    ) AS metric_value,
-                    CASE 
-                        WHEN age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * 0.9 THEN '위험'
-                        WHEN age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * 0.7 THEN '경고'
-                        WHEN age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * 0.5 THEN '주의'
-                        ELSE '정상'
-                    END AS status
-                FROM pg_class c
-                JOIN pg_namespace n ON c.relnamespace = n.oid
-                WHERE c.relkind = 'r'
-                  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-                  AND age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * 0.1
-                ORDER BY age(c.relfrozenxid) DESC
-                LIMIT 10
-                """;
+            case "wraparound_progress" -> buildWraparoundProgressQuery(levels);
 
             case "autovacuum_worker_utilization" -> """
                 SELECT 
@@ -296,5 +286,62 @@ public class MetricConfig {
 
             default -> null;
         };
+    }
+    
+    /**
+     * wraparound_progress 관련 객체 쿼리 동적 생성
+     * 사용자가 설정한 알람 규칙의 임계치를 사용
+     */
+    private String buildWraparoundProgressQuery(AlarmRuleDto.Levels levels) {
+        // 기본값: 90%, 70%, 50%
+        double criticalThreshold = 0.9;
+        double warningThreshold = 0.7;
+        double noticeThreshold = 0.5;
+        double minThreshold = 0.1; // 최소 조회 기준
+        
+        // 사용자가 설정한 임계치가 있으면 사용
+        if (levels != null) {
+            // critical, warn, info의 threshold를 백분율로 변환
+            // threshold는 autovacuum_freeze_max_age 대비 비율로 가정
+            if (levels.getCritical() != null && levels.getCritical().getThreshold() != null) {
+                // threshold가 백분율 값(예: 90)이면 0.9로 변환
+                BigDecimal critical = levels.getCritical().getThreshold();
+                criticalThreshold = critical.doubleValue() / 100.0;
+            }
+            if (levels.getWarn() != null && levels.getWarn().getThreshold() != null) {
+                BigDecimal warn = levels.getWarn().getThreshold();
+                warningThreshold = warn.doubleValue() / 100.0;
+            }
+            if (levels.getInfo() != null && levels.getInfo().getThreshold() != null) {
+                BigDecimal info = levels.getInfo().getThreshold();
+                noticeThreshold = info.doubleValue() / 100.0;
+            }
+            // 최소 조회 기준은 notice의 20%로 설정
+            minThreshold = Math.min(noticeThreshold * 0.2, 0.1);
+        }
+        
+        return String.format("""
+                SELECT 
+                    'table' AS object_type,
+                    n.nspname || '.' || c.relname AS object_name,
+                    ROUND(
+                        (age(c.relfrozenxid)::NUMERIC / 
+                         NULLIF((SELECT setting::NUMERIC FROM pg_settings WHERE name = 'autovacuum_freeze_max_age'), 0) * 100)::NUMERIC,
+                        2
+                    ) AS metric_value,
+                    CASE 
+                        WHEN age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * %.2f THEN '위험'
+                        WHEN age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * %.2f THEN '경고'
+                        WHEN age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * %.2f THEN '주의'
+                        ELSE '정상'
+                    END AS status
+                FROM pg_class c
+                JOIN pg_namespace n ON c.relnamespace = n.oid
+                WHERE c.relkind = 'r'
+                  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                  AND age(c.relfrozenxid) > (SELECT setting::BIGINT FROM pg_settings WHERE name = 'autovacuum_freeze_max_age') * %.2f
+                ORDER BY age(c.relfrozenxid) DESC
+                LIMIT 10
+                """, criticalThreshold, warningThreshold, noticeThreshold, minThreshold);
     }
 }
