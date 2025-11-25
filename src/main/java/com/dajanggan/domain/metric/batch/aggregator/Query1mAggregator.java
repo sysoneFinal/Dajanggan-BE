@@ -104,7 +104,7 @@ public class Query1mAggregator {
             
         FROM query_metrics_raw
         WHERE collected_at >= NOW() - INTERVAL '2 minutes'
-          AND collected_at < NOW() - INTERVAL '1 minute'
+          AND collected_at < DATE_TRUNC('minute', NOW())
         GROUP BY instance_id, database_id, DATE_TRUNC('minute', collected_at)
         ORDER BY instance_id, database_id, collected_at
         """;
