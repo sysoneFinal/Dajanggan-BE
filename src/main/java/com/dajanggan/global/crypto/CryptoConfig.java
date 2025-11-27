@@ -1,3 +1,4 @@
+// 작성자: 김민서
 package com.dajanggan.global.crypto;
 
 import org.springframework.beans.factory.annotation.Value;

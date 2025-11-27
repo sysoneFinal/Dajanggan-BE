@@ -1,5 +1,11 @@
 package com.dajanggan.domain.instance.service;
 
+import com.dajanggan.domain.instance.domain.Instance;
+import com.dajanggan.domain.instance.repository.InstanceRepository;
+import com.dajanggan.global.crypto.AesGcmService;
+import com.dajanggan.global.exception.NotFoundException;
+import com.dajanggan.global.exception.ExceptionMessage;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -33,7 +39,11 @@ import java.util.Map;
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class PostgresConnectionService {
+
+    private final InstanceRepository instanceRepository;
+    private final AesGcmService aesGcmService;
 
     /** 기본 PostgreSQL 관리 데이터베이스명 */
     private static final String DEFAULT_DATABASE = "postgres";
@@ -182,5 +192,40 @@ public class PostgresConnectionService {
     private String buildJdbcUrl(String host, Integer port, String database, String sslMode) {
         return String.format("jdbc:postgresql://%s:%d/%s?sslmode=%s",
                 host, port, database, sslMode);
+    }
+
+    /**
+     * PostgreSQL 연결 생성
+     *
+     * @param instanceId 인스턴스 ID
+     * @param databaseName 데이터베이스명
+     * @return PostgreSQL 연결
+     * @throws SQLException 연결 실패 시
+     * @throws NotFoundException 인스턴스를 찾을 수 없는 경우
+     */
+    public Connection createConnection(Long instanceId, String databaseName) throws SQLException {
+        Instance instance = instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+
+        String host = instance.getHost() != null ? instance.getHost().trim() : "";
+        String userName = instance.getUserName() != null ? instance.getUserName().trim() : "";
+        String password = aesGcmService.decryptToString(instance.getSecretRef());
+        String dbName = databaseName != null ? databaseName.trim() : "";
+
+        String url = String.format("jdbc:postgresql://%s:%d/%s",
+                host,
+                instance.getPort(),
+                dbName);
+
+        log.debug("DB 연결 시도: {}:{}/{}", host, instance.getPort(), dbName);
+
+        try {
+            Connection conn = DriverManager.getConnection(url, userName, password);
+            log.debug("DB 연결 성공: {}:{}/{}", host, instance.getPort(), dbName);
+            return conn;
+        } catch (SQLException e) {
+            log.error("DB 연결 실패: {}:{}/{} - {}", host, instance.getPort(), dbName, e.getMessage());
+            throw e;
+        }
     }
 }

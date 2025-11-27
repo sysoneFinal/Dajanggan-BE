@@ -1,3 +1,4 @@
+// 작성자: 김민서
 package com.dajanggan.global.crypto.mybatis;
 
 import com.dajanggan.global.crypto.AesGcmService;

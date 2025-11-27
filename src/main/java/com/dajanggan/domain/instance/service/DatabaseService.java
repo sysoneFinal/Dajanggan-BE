@@ -38,26 +38,34 @@ public class DatabaseService {
     private final DatabaseRepository databaseRepository;
 
     /**
-     * 특정 인스턴스의 데이터베이스 목록 조회
-     *
-     * 조회되는 정보:
-     * 
-     *   데이터베이스 ID 및 이름
-     *   현재 연결 수
-     *   데이터베이스 크기 (바이트)
-     *   캐시 히트율
-     *   최종 업데이트 시간
-     * 
+     * 인스턴스별 DB 목록 조회
      *
      * @param instanceId 인스턴스 ID
-     * @return 데이터베이스 정보 리스트 (DatabaseResponse DTO)
+     * @return 데이터베이스 목록
      */
     public List<DatabaseResponse> getByInstanceId(Long instanceId) {
-        log.debug("데이터베이스 목록 조회: instanceId={}", instanceId);
+        return databaseRepository.findByInstanceId(instanceId);
+    }
 
-        List<DatabaseResponse> databases = databaseRepository.findByInstanceId(instanceId);
-
-        log.debug("조회된 데이터베이스 개수: {}", databases.size());
-        return databases;
+    /**
+     * 활성화된 모든 데이터베이스 조회
+     *
+     * 용도: 알람 메트릭 수집
+     *
+     * @return 활성화된 데이터베이스 목록 (is_enabled = true)
+     */
+    public List<DatabaseResponse> findAllEnabled() {
+        return databaseRepository.findAllEnabled().stream()
+                .map(db -> DatabaseResponse.builder()
+                        .databaseId(db.getDatabaseId())
+                        .instanceId(db.getInstanceId())
+                        .databaseName(db.getDatabaseName())
+                        .status(db.getStatus())
+                        .connections(db.getConnections())
+                        .sizeBytes(db.getSizeBytes())
+                        .cacheHitRate(db.getCacheHitRate())
+                        .updatedAt(db.getUpdatedAt())
+                        .build())
+                .toList();
     }
 }

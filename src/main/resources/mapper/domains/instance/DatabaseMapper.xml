@@ -37,7 +37,6 @@
         <id property="databaseId" column="database_id"/>
         <result property="instanceId" column="instance_id"/>
         <result property="databaseName" column="database_name"/>
-        <result property="status" column="status"/>
         <result property="connections" column="connections"/>
         <result property="sizeBytes" column="size_bytes"/>
         <result property="cacheHitRate" column="cache_hit_rate"/>
@@ -54,7 +53,6 @@
         <id property="databaseId" column="database_id"/>
         <result property="instanceId" column="instance_id"/>
         <result property="databaseName" column="database_name"/>
-        <result property="status" column="status"/>
         <result property="connections" column="connections"/>
         <result property="sizeBytes" column="size_bytes"/>
         <result property="cacheHitRate" column="cache_hit_rate"/>
@@ -80,7 +78,6 @@
             database_id,
             instance_id,
             database_name,
-            status,
             connections,
             size_bytes,
             cache_hit_rate,
@@ -91,34 +88,12 @@
         ORDER BY database_name
     </select>
 
-    <!--
-        여러 인스턴스의 데이터베이스 일괄 조회 (N+1 방지)
 
-        반환 타입: DatabaseResponse (DTO)
-        용도: GET /api/instances?include=databases (성능 최적화)
-
-        성능 최적화:
-        - WHERE instance_id IN (...) 사용
-        - 한 번의 쿼리로 여러 인스턴스의 DB 조회
-
-        사용 예시:
-        N+1 문제 발생:
-            for (Instance i : instances) {
-                findByInstanceId(i.getId());  // N번 쿼리
-            }
-
-        한 번의 쿼리로 해결:
-            List<Long> ids = instances.stream()
-                .map(Instance::getId)
-                .toList();
-            findByInstanceIds(ids);  // 1번 쿼리
-    -->
     <select id="findByInstanceIds" resultMap="databaseResponseMap">
         SELECT
         database_id,
         instance_id,
         database_name,
-        status,
         connections,
         size_bytes,
         cache_hit_rate,
@@ -156,7 +131,6 @@
             database_id,
             instance_id,
             database_name,
-            status,
             connections,
             size_bytes,
             cache_hit_rate,
@@ -181,7 +155,6 @@
             database_id,
             instance_id,
             database_name,
-            status,
             connections,
             size_bytes,
             cache_hit_rate,
@@ -206,7 +179,6 @@
             database_id,
             instance_id,
             database_name,
-            status,
             connections,
             size_bytes,
             cache_hit_rate,
@@ -242,7 +214,6 @@
         INSERT INTO monitor_database (
             instance_id,
             database_name,
-            status,
             is_enabled,
             created_at,
             updated_at
@@ -277,7 +248,6 @@
         SET connections = #{connections},
             size_bytes = #{sizeBytes},
             cache_hit_rate = #{cacheHitRate},
-            status = #{status},
             is_enabled = #{isEnabled},
             updated_at = NOW()
         WHERE database_id = #{databaseId}

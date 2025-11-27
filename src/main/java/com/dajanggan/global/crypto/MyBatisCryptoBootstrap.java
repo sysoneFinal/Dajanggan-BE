@@ -1,3 +1,4 @@
+// 작성자: 김민서
 package com.dajanggan.global.crypto;
 
 import com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler;

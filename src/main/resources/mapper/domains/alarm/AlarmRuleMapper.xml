@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 작성자: 김민서 -->
 
 <mapper namespace="com.dajanggan.domain.alarm.repository.AlarmRuleMapper">
 
@@ -54,7 +55,6 @@
             COALESCE(i.instance_name, 'Unknown') AS instanceName,
             COALESCE(d.database_name, 'Unknown') AS databaseName,
             ar.metric_type AS metricType,
-            ar.aggregation_type AS aggregationType,
             ar.operator,
             ar.levels::text AS levels,
             ar.created_at AS createdAt,
@@ -75,10 +75,10 @@
     <!-- 규칙 생성 -->
     <insert id="insertRule" useGeneratedKeys="true" keyProperty="alarmRuleId">
         INSERT INTO alarm_rule(
-            instance_id, database_id, metric_type, aggregation_type, operator,
+            instance_id, database_id, metric_type, operator,
             enabled, levels, created_at, updated_at
         ) VALUES (
-                     #{instanceId}, #{databaseId}, #{metricType}, #{aggregationType}, COALESCE(#{operator},'gt'),
+                     #{instanceId}, #{databaseId}, #{metricType}, COALESCE(#{operator},'gt'),
                      COALESCE(#{enabled}, true), CAST(#{levels} AS JSONB), NOW(), NOW()
                  )
     </insert>
@@ -86,7 +86,6 @@
     <update id="updateRuleLevels">
         UPDATE alarm_rule
         SET levels = CAST(#{levels} AS JSONB),
-            aggregation_type = #{aggregationType},
             enabled = #{enabled},
             <if test="operator != null">
                 operator = #{operator},
@@ -120,7 +119,6 @@
         instance_id AS instanceId,
         database_id AS databaseId,
         metric_type AS metricType,
-        aggregation_type AS aggregationType,
         operator,
         levels,
         enabled

@@ -82,7 +82,7 @@ public class ExplainAnalyzeService {
 
         query = cleanedQuery;
 
-        Database database = databaseRepository.findById(databaseId);
+        Database database = databaseRepository.findById(databaseId).orElse(null);
         if (database == null) {
             throw new IllegalArgumentException("Database not found: " + databaseId);
         }

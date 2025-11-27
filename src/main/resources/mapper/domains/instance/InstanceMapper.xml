@@ -57,7 +57,6 @@
         <result property="secretRef" column="secret_ref"
                 typeHandler="com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler"/>
         <result property="sslmode" column="sslmode"/>
-        <result property="status" column="status"/>
         <result property="version" column="version"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
@@ -89,7 +88,6 @@
         <result property="userName" column="username"/>
         <!-- secret_ref 제외 (보안) -->
         <result property="sslmode" column="sslmode"/>
-        <result property="status" column="status"/>
         <result property="version" column="version"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
@@ -139,7 +137,6 @@
             username,
             secret_ref,
             sslmode,
-            status,
             version,
             created_at,
             updated_at
@@ -184,7 +181,6 @@
             username,
             secret_ref,
             sslmode,
-            status,
             version,
             created_at,
             updated_at,
@@ -216,7 +212,6 @@
             username,
             -- secret_ref 제외 (보안)
             sslmode,
-            status,
             version,
             created_at,
             updated_at,
@@ -289,7 +284,6 @@
         username,
         secret_ref,  <!-- 메트릭 수집을 위해 포함 -->
         sslmode,
-        status,
         version,
         created_at,
         updated_at,
@@ -340,7 +334,6 @@
             username = #{userName},
             secret_ref = #{secretRef, jdbcType=VARCHAR, typeHandler=com.dajanggan.global.crypto.mybatis.SecretStringTypeHandler},
             sslmode = #{sslmode},
-            status = #{status},
             version = #{version},
             updated_at = NOW()
         WHERE instance_id = #{instanceId}
