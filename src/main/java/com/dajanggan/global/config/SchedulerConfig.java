@@ -1,3 +1,5 @@
+/** 작성자 : 서샘이 */
+
 package com.dajanggan.global.config;
 
 import org.springframework.context.annotation.Configuration;

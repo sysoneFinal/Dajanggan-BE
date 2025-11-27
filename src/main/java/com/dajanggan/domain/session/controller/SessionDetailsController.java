@@ -1,3 +1,4 @@
+/** 작성자 : 서샘이 */
 package com.dajanggan.domain.session.controller;
 
 import com.dajanggan.domain.session.dto.SessionActive;

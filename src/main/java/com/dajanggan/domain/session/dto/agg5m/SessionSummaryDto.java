@@ -1,3 +1,4 @@
+/** 작성자 : 서샘이 */
 package com.dajanggan.domain.session.dto.agg5m;
 
 import lombok.*;
@@ -9,7 +10,8 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 @Setter
 @Getter
-public class SessionSummaryDto {
+public class
+SessionSummaryDto {
     private Long instanceId;
     private Long databaseId;
     private Double activeSessions;     // 활성 세션 수
