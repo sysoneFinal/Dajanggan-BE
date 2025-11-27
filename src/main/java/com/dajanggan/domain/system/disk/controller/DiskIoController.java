@@ -1,6 +1,5 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.controller;
-
-
 
 import com.dajanggan.domain.system.disk.dto.*;
 import com.dajanggan.domain.system.disk.service.DiskIoService;
@@ -36,12 +35,6 @@ public class DiskIoController {
 
     /**
      * Disk I/O 리스트 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID (optional)
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d) - 기본값: 24h
-     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
-     * @param page 페이지 번호 (0부터 시작) - 기본값: 0
-     * @param size 페이지당 항목 수 - 기본값: 20
-     * @return Disk I/O 리스트 데이터
      */
     @GetMapping("/list")
     public ResponseEntity<DiskIoListResponse> getDiskIoList(
@@ -66,12 +59,6 @@ public class DiskIoController {
 
     /**
      * 낮은 Cache Hit 리스트만 조회 (페이징 포함)
-     * @param instanceId PostgreSQL 인스턴스 ID (required)
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d) - 기본값: 7d
-     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
-     * @param page 페이지 번호 (0부터 시작) - 기본값: 0
-     * @param size 페이지당 항목 수 - 기본값: 10
-     * @return 낮은 Cache Hit 리스트 데이터 (페이징 포함)
      */
     @GetMapping("/list/low-cache-hit")
     public ResponseEntity<DiskIoListResponse> getLowCacheHitList(

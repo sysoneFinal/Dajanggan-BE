@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.bgwriter.controller;
 
 import com.dajanggan.domain.engine.bgwriter.dto.*;
@@ -19,8 +20,6 @@ public class BgWriterController {
 
     /**
      * BGWriter 대시보드 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID (optional, 기본값은 설정된 기본 인스턴스)
-     * @return BGWriter 대시보드 데이터
      */
     @GetMapping
     public ResponseEntity<BgWriterDashboardResponse> getBgWriterDashboard(
@@ -34,10 +33,6 @@ public class BgWriterController {
 
     /**
      * BGWriter 리스트 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID (optional)
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
-     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
-     * @return BGWriter 리스트 데이터
      */
     @GetMapping("/list")
     public ResponseEntity<BgWriterListResponse> getBgWriterList(

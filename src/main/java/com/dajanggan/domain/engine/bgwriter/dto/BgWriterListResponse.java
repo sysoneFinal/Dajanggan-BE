@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.bgwriter.dto;
 
 import lombok.AllArgsConstructor;
@@ -18,6 +19,7 @@ public class BgWriterListResponse {
     private List<BgWriterListItem> data;
     private Long total;
 }
+
 
 
 

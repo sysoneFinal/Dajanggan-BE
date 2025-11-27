@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.domain;
 
 import lombok.AllArgsConstructor;
@@ -10,7 +11,6 @@ import java.time.OffsetDateTime;
 /**
  * Disk I/O 집계 데이터 엔티티 (pg_stat_io 기반)
  * 테이블: disk_io_agg
- * 이전 Raw 데이터와 비교하여 증분(delta)을 계산
  */
 @Data
 @Builder

@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.scheduler;
 
 import com.dajanggan.domain.common.util.MetricCollectionUtils;
@@ -24,11 +25,6 @@ import java.util.Map;
 
 /**
  * Memory 메트릭 수집 스케줄러 (pg_statio 기반)
- * 1분마다 실행:
- * 1. pg_statio_user_tables/indexes에서 I/O 통계 수집
- * 2. pg_stat_database에서 메모리/I/O 통계 수집
- * 3. Raw 데이터 저장
- * 4. 이전 Raw와 비교하여 증분 계산 후 Agg 저장
  */
 @Slf4j
 @Component

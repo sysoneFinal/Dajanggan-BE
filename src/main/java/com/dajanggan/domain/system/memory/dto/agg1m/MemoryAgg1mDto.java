@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.dto.agg1m;
 
 import lombok.AllArgsConstructor;
@@ -20,6 +21,7 @@ public class MemoryAgg1mDto {
     private String relname;
     private String databaseName;
 }
+
 
 
 

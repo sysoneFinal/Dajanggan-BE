@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.checkpoint.dto;
 
 import lombok.AllArgsConstructor;

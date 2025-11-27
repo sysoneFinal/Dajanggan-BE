@@ -1,3 +1,4 @@
+// 작성자 : 김동현s
 package com.dajanggan.domain.osmetric.dto;
 
 import lombok.AllArgsConstructor;
