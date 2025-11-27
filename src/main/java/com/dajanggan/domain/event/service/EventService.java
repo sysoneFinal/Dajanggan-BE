@@ -1,3 +1,4 @@
+/** 작성자 : 서샘이 */
 package com.dajanggan.domain.event.service;
 
 import com.dajanggan.domain.event.dto.EventLog;

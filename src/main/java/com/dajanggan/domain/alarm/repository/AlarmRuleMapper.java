@@ -49,4 +49,7 @@ public interface AlarmRuleMapper {
             @Param("databaseId") Long databaseId,
             @Param("metricType") String metricType
     );
+
+    List<AlarmRuleDto.DetailResponse> findEnabledDetailsByInstance(@Param("instanceId") Long instanceId);
+
 }

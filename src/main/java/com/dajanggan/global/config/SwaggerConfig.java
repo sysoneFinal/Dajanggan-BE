@@ -1,3 +1,4 @@
+/** 작성자 : 서샘이 */
 package com.dajanggan.global.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
