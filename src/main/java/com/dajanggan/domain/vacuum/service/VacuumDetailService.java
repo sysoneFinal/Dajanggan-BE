@@ -11,6 +11,21 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+/**
+ * VacuumDetail 서비스
+ *
+ * 주요 책임:
+ * - Vacuum 세션 상세 정보 조회
+ * - Progress 데이터 변환
+ * - Summary 정보 생성
+ *
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-11  김민서    1. 최초작성
+ *
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -26,18 +41,25 @@ public class VacuumDetailService {
 
     /**
      * Vacuum 세션 상세 정보 조회
+     *
+     * @param databaseId 데이터베이스 ID
+     * @param tableName 테이블명
+     * @param executedAt 실행 시간 (선택)
+     * @return Vacuum 세션 상세 응답
      */
-    public VacuumDetailDto.Response getVacuumDetail(Long databaseId, String tableName, String executedAt) {
-        log.info("Vacuum Detail 조회 시작 - databaseId: {}, tableName: {}",
-                databaseId, tableName);
+    public VacuumDetailDto.Response getVacuumDetail(
+            Long databaseId,
+            String tableName,
+            String executedAt
+    ) {
+        log.info("Vacuum Detail 조회 - databaseId: {}, tableName: {}", databaseId, tableName);
 
         // 1. 최신 세션 정보 조회
         VacuumDetailDto.SessionInfoRaw sessionInfo =
                 vacuumDetailMapper.findLatestSessionInfo(databaseId, tableName);
 
         if (sessionInfo == null) {
-            log.warn("세션 정보가 없습니다 - databaseId: {}, tableName: {}",
-                    databaseId, tableName);
+            log.warn("세션 정보 없음 - databaseId: {}, tableName: {}", databaseId, tableName);
             return createEmptyResponse(tableName);
         }
 
@@ -48,7 +70,7 @@ public class VacuumDetailService {
         List<VacuumDetailDto.ProgressRaw> progressList =
                 vacuumDetailMapper.findProgressData(databaseId, tableName, startTime, endTime);
 
-        log.info("Progress 데이터 조회 결과: {} 건", progressList.size());
+        log.info("Progress 데이터: {}건", progressList.size());
 
         // 3. Progress 데이터 변환
         VacuumDetailDto.Progress progress = buildProgress(progressList, sessionInfo);
@@ -77,13 +99,17 @@ public class VacuumDetailService {
                 .build();
     }
 
+    // ========================================================================
+    // Private Helper 메서드
+    // ========================================================================
+
     /**
      * Progress 데이터 생성
      */
     private VacuumDetailDto.Progress buildProgress(
             List<VacuumDetailDto.ProgressRaw> progressList,
-            VacuumDetailDto.SessionInfoRaw sessionInfo) {
-
+            VacuumDetailDto.SessionInfoRaw sessionInfo
+    ) {
         if (progressList == null || progressList.isEmpty()) {
             return VacuumDetailDto.Progress.builder()
                     .labels(new ArrayList<>())
@@ -98,7 +124,7 @@ public class VacuumDetailService {
         List<Double> vacuumed = new ArrayList<>();
         List<Double> deadRows = new ArrayList<>();
 
-        // 총 사이즈 (GB 단위로 변환)
+        // 총 사이즈 (GB 단위)
         double totalSizeGB = sessionInfo.getRelsizeTotalBytes() != null
                 ? sessionInfo.getRelsizeTotalBytes() / (1024.0 * 1024.0 * 1024.0)
                 : 0.0;
@@ -119,9 +145,9 @@ public class VacuumDetailService {
                     : 0.0;
             vacuumed.add(Math.round(vacuumedGB * 10.0) / 10.0);
 
-            // Dead Rows (GB 단위로 추정)
+            // Dead Rows (GB 단위 추정)
             double deadGB = raw.getTuplesDeleted() != null
-                    ? (raw.getTuplesDeleted() / 1_000_000.0) * 0.1 // 대략적인 변환
+                    ? (raw.getTuplesDeleted() / 1_000_000.0) * 0.1
                     : 0.0;
             deadRows.add(Math.round(deadGB * 10.0) / 10.0);
         }
@@ -139,8 +165,8 @@ public class VacuumDetailService {
      */
     private Map<String, String> buildSummary(
             VacuumDetailDto.SessionInfoRaw sessionInfo,
-            List<VacuumDetailDto.ProgressRaw> progressList) {
-
+            List<VacuumDetailDto.ProgressRaw> progressList
+    ) {
         Map<String, String> summary = new LinkedHashMap<>();
 
         // Time Elapsed
@@ -149,7 +175,7 @@ public class VacuumDetailService {
                 sessionInfo.getCollectedAt());
         summary.put("Time Elapsed", duration);
 
-        // CPU Time (실제 데이터가 없으면 예상 값)
+        // CPU Time
         Double elapsed = sessionInfo.getElapsedSeconds();
         if (elapsed != null) {
             double cpuUser = elapsed * 0.7;
@@ -175,7 +201,7 @@ public class VacuumDetailService {
                 formatNumber(sessionInfo.getTuplesDeadButNotRemovable()));
         summary.put("Max Dead Tuples / Phase", formatNumber(sessionInfo.getNDeadTup()));
 
-        // Data I/O (추정 값)
+        // Data I/O
         if (sessionInfo.getRelsizeTotalBytes() != null) {
             String sizeStr = formatBytes(sessionInfo.getRelsizeTotalBytes());
             summary.put("Data Read from Cache", sizeStr);
@@ -184,7 +210,7 @@ public class VacuumDetailService {
                     formatBytes(sessionInfo.getRelsizeTotalBytes() / 3));
         }
 
-        // Read/Write Rate (추정)
+        // Read/Write Rate
         if (elapsed != null && elapsed > 0 && sessionInfo.getRelsizeTotalBytes() != null) {
             double mbPerSec = (sessionInfo.getRelsizeTotalBytes() / (1024.0 * 1024.0)) / elapsed;
             summary.put("Avg Read Rate", String.format("%.2f MB/s", mbPerSec));
@@ -218,7 +244,9 @@ public class VacuumDetailService {
                 .build();
     }
 
-    // ========== 유틸리티 메서드 ==========
+    // ========================================================================
+    // Format 유틸리티
+    // ========================================================================
 
     private String calculateDuration(OffsetDateTime start, OffsetDateTime end) {
         if (start == null || end == null) return "0:00:00";

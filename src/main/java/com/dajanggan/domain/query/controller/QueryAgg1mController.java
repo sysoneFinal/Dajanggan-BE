@@ -21,7 +21,7 @@ import java.util.Map;
  * - QueryOverview용 집계 API 제공
  * - 요약 데이터 및 트렌드 데이터 조회
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Slf4j
 @RestController

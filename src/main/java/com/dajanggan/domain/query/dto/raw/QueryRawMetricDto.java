@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
  * - pg_stat_statements와 pg_stat_activity 조인 데이터
  * - 모니터링 DB에 저장하기 전 중간 데이터 전달용
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @Builder

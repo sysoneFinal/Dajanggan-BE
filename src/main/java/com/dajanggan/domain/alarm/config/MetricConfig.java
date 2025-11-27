@@ -1,3 +1,4 @@
+// 작성자: 김민서
 package com.dajanggan.domain.alarm.config;
 
 import com.dajanggan.domain.alarm.dto.AlarmRuleDto;
@@ -73,7 +74,6 @@ public class MetricConfig {
 
     /**
      * 집계 타입별 지표 쿼리
-     * 집계 기능 제거 - 항상 null 반환 (실시간 값만 사용)
      */
     public String getAggregatedMetricQuery(String metricType, String aggregationType) {
         return null;

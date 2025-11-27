@@ -1,15 +1,27 @@
 package com.dajanggan.domain.alarm.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
+/**
+ * AlarmTracking DTO 모음
+ *
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-13  김민서    1. 최초작성
+ *
+ */
 public class AlarmTrackingDto {
 
     // ========== Raw DTOs ==========
 
-    @Data
+    @Getter
+    @Setter
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TrackingStatusRaw {
@@ -31,10 +43,11 @@ public class AlarmTrackingDto {
 
     // ========== Response DTOs ==========
 
-    @Data
+    @Getter
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class TrackingStatus {
         private Long alarmTrackingId;
         private Long alarmRuleId;

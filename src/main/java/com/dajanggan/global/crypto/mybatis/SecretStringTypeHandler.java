@@ -5,6 +5,31 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.type.*;
 import java.sql.*;
 
+
+/**
+ * MyBatis 암호화 TypeHandler
+ *
+ * 주요 책임:
+ * - MyBatis에서 String 타입의 자동 암호화/복호화
+ * - DB INSERT/UPDATE 시 자동 암호화
+ * - DB SELECT 시 자동 복호화
+ *
+ * 동작 방식:
+ * - setNonNullParameter: DB 저장 전 암호화
+ * - getNullableResult: DB 조회 후 복호화
+ * - 암호화 서비스가 초기화되지 않으면 SQLException 발생
+ *
+ * 보안 고려사항:
+ * - 복호화 실패 시 상세 에러 로그 (디버깅용)
+ * - 민감 정보는 로그에 일부만 출력 (최대 50자)
+ *
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-11  김민서    1. 최초작성
+ */
+
 @Slf4j
 @MappedJdbcTypes(JdbcType.VARCHAR)
 @MappedTypes(String.class)

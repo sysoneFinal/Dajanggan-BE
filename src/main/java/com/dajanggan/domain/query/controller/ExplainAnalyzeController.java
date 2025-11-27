@@ -6,6 +6,8 @@ import com.dajanggan.domain.query.dto.ExplainAnalyzeResult;
 import com.dajanggan.domain.query.dto.QueryAnalysisResponse;
 import com.dajanggan.domain.query.service.ExplainAnalyzeService;
 import com.dajanggan.domain.query.service.QueryAIAnalysisService;
+import com.dajanggan.global.exception.BadRequestException;
+import com.dajanggan.global.exception.ExceptionMessage;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +25,7 @@ import java.util.Map;
  * - SELECT: EXPLAIN ANALYZE (실제 실행)
  * - UPDATE/INSERT/DELETE: EXPLAIN만 (안전 모드)
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Slf4j
 @RestController
@@ -54,15 +56,11 @@ public class ExplainAnalyzeController {
         try {
             // 입력 검증
             if (request.getDatabaseId() == null) {
-                response.put("success", false);
-                response.put("message", "databaseId는 필수입니다");
-                return ResponseEntity.badRequest().body(response);
+                throw new BadRequestException(ExceptionMessage.INVALID_PARAMETER);
             }
 
             if (request.getQuery() == null || request.getQuery().trim().isEmpty()) {
-                response.put("success", false);
-                response.put("message", "query는 필수입니다");
-                return ResponseEntity.badRequest().body(response);
+                throw new BadRequestException(ExceptionMessage.INVALID_REQUEST);
             }
 
             // EXPLAIN ANALYZE 실행

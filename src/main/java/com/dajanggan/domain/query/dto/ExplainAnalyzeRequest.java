@@ -12,7 +12,8 @@ import lombok.AllArgsConstructor;
  * - databaseId: 분석할 데이터베이스 식별자
  * - query: 분석 대상 SQL 쿼리문
  *
- * @author 이해든
+ * 작성자: 이해든
+ * 작성자: 이해든
  */
 @Data
 @NoArgsConstructor

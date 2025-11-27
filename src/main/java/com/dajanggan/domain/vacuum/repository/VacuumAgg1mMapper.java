@@ -1,3 +1,4 @@
+// 작성자: 김민서
 package com.dajanggan.domain.vacuum.repository;
 
 import com.dajanggan.domain.vacuum.dto.agg.VacuumAgg1mDto;

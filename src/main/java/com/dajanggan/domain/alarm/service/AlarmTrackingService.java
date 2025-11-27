@@ -11,6 +11,20 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * AlarmTracking 서비스
+ *
+ * 주요 책임:
+ * - 알람 추적 상태 조회
+ * - 실시간 알람 모니터링 데이터 제공
+ *
+ * <pre>
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-13  김민서    1. 최초작성
+ * </pre>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -21,7 +35,7 @@ public class AlarmTrackingService {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     /**
-     * 트래킹 상태 조회
+     * 추적 상태 조회
      */
     public List<AlarmTrackingDto.TrackingStatus> getTrackingStatus(Long instanceId, String status) {
         List<AlarmTrackingDto.TrackingStatusRaw> rawList =

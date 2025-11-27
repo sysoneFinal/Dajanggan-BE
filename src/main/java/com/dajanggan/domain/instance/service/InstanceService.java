@@ -1,11 +1,9 @@
 package com.dajanggan.domain.instance.service;
 
-import com.dajanggan.domain.instance.domain.Database;
 import com.dajanggan.domain.instance.domain.Instance;
 import com.dajanggan.domain.instance.dto.*;
 import com.dajanggan.domain.instance.repository.DatabaseRepository;
 import com.dajanggan.domain.instance.repository.InstanceRepository;
-import com.dajanggan.domain.overview.service.OverviewService; // 🔥 추가
 import com.dajanggan.global.crypto.AesGcmService;
 import com.dajanggan.global.exception.ExceptionMessage;
 import com.dajanggan.global.exception.NotFoundException;
@@ -15,458 +13,309 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 인스턴스 서비스
+ *
+ * 주요 책임:
+ * 
+ *   인스턴스 CRUD 작업
+ *   인스턴스와 데이터베이스 목록 조회
+ *   PostgreSQL 연결 테스트
+ * 
+ *
+ * 위임된 책임:
+ * 
+ *   PostgreSQL 연결 관리 → {@link PostgresConnectionService}
+ *   데이터베이스 동기화 → {@link DatabaseSyncService}
+ *   Slack 설정 관리 → {@link SlackSettingsService}
+ * 
+ *
+ * DTO 반환 원칙 준수:
+ * 
+ *   Controller에는 반드시 DTO 반환
+ *   Repository로부터 Entity를 받아 내부에서 사용
+ *   다른 Service에는 DTO 또는 primitive 타입 전달
+ * 
+ *
+ *     ----------  ------  --------------------------------------------------
+ *      작업일자      작성자    Description
+ *      ----------  ------  --------------------------------------------------
+ *      2025-10-23  김민서    1. 최초작성자
+ *      2025-11-04  김민서    2. 데이터베이스 연결
+ *      2025-11-13  김민서    3. postgreSQL 연동 로직
+ *      2025-11-21  김민서    4. 슬랙 연동
+ *
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class InstanceService {
+
+    // ========== Dependencies ==========
     private final InstanceRepository instanceRepository;
     private final DatabaseRepository databaseRepository;
     private final AesGcmService aesGcmService;
-    private final OverviewService overviewService; // 🔥 추가
 
-    // (cud는 도메인 반환)
+    // 위임 서비스
+    private final PostgresConnectionService postgresConnectionService;
+    private final DatabaseSyncService databaseSyncService;
+    private final SlackSettingsService slackSettingsService;
+
+    // ========== 상수 ==========
+    /** 기본 SSL 모드 */
+    private static final String DEFAULT_SSL_MODE = "disable";
+
+    // ========== 생성 (Create) ==========
+
+    /**
+     * 인스턴스 생성
+     *
+     * 처리 흐름:
+     * <ol>
+     *   비밀번호 암호화
+     *   인스턴스 레코드 저장
+     *   PostgreSQL 연결 및 데이터베이스 목록 조회
+     *   데이터베이스 레코드 생성
+     *   기본 대시보드 자동 생성
+     * </ol>
+     *
+     * @param dto 인스턴스 생성 요청 DTO
+     * @return 생성된 인스턴스 정보 DTO
+     * @throws RuntimeException 데이터베이스 동기화 실패 시
+     */
     @Transactional
     public InstanceResponse create(InstanceCreateRequest dto) {
         log.info("=== 인스턴스 등록 시작 ===");
         log.info("Host: {}, Port: {}, UserName: {}", dto.getHost(), dto.getPort(), dto.getUserName());
 
-        // 1. 비밀번호 암호화
-        Instance entity = dto.toEntity();
-        String encryptedPassword = aesGcmService.encryptString(dto.getSecretRef());
-        entity.setSecretRef(encryptedPassword);
+        // 1. 엔티티 생성 및 비밀번호 암호화
+        Instance entity = buildInstanceEntity(dto);
         log.info("비밀번호 암호화 완료");
-
-        // SSL 모드 기본값 설정 (null이거나 빈 값이면 disable로)
-        entity.setSslmode("disable");
-
 
         // 2. 인스턴스 저장
         instanceRepository.createInstance(entity);
         log.info("인스턴스 저장 완료. instanceId: {}", entity.getInstanceId());
 
-        // 3. PostgreSQL 연결하여 DB 이름 조회
-        try {
-            String password = aesGcmService.decryptToString(entity.getSecretRef());
-            log.info("비밀번호 복호화 완료");
+        // 3. 비밀번호 복호화 (DB 동기화에 필요)
+        String decryptedPassword = aesGcmService.decryptToString(entity.getSecretRef());
 
-            List<String> dbNames = fetchDatabaseNames(entity, password);
-            log.info("조회된 DB 개수: {}, DB 목록: {}", dbNames.size(), dbNames);
+        // 4. 데이터베이스 동기화 (primitive 타입과 DTO 전달)
+        databaseSyncService.syncDatabasesOnCreate(
+                entity.getInstanceId(),
+                entity.getHost(),
+                entity.getPort(),
+                entity.getUserName(),
+                decryptedPassword,
+                entity.getSslmode()
+        );
 
-            // 4. Database 레코드 생성
-            List<Database> createdDatabases = new ArrayList<>();
-            for (String dbName : dbNames) {
-                Database database = new Database();
-                database.setInstanceId(entity.getInstanceId());
-                database.setDatabaseName(dbName);
-                database.setIsEnabled(true);
+        log.info("=== 인스턴스 등록 완료 ===");
 
-                log.info("DB 저장 시도: instanceId={}, dbName={}", entity.getInstanceId(), dbName);
-                databaseRepository.insert(database);
-                log.info("DB 저장 완료: databaseId={}", database.getDatabaseId());
-                
-                createdDatabases.add(database);
-            }
-
-            // 🔥 5. 디폴트 대시보드 자동 생성
-            if (!createdDatabases.isEmpty()) {
-                overviewService.createDefaultDashboard(entity.getInstanceId(), createdDatabases);
-                log.info("디폴트 대시보드 생성 완료");
-            }
-
-            log.info("=== 인스턴스 등록 완료 ===");
-        } catch (Exception e) {
-            log.error("DB 목록 조회/저장 실패", e);
-            throw new RuntimeException("DB 목록 처리 실패: " + e.getMessage(), e);
-        }
-
+        // 5. DTO 반환 (Entity → DTO 변환)
         return InstanceResponse.from(entity);
     }
 
-    // fetchDatabaseNames 메서드 수정 (sslMode 기본값 처리 강화)
-    private List<String> fetchDatabaseNames(Instance instance, String password) {
-        // sslMode가 null이거나 빈 문자열이면 "disable"로 설정
-        String sslMode = (instance.getSslmode() != null && !instance.getSslmode().trim().isEmpty())
-                ? instance.getSslmode()
-                : "disable";
-
-        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/postgres?sslmode=%s",
-                instance.getHost(), instance.getPort(), sslMode);
-
-        log.info("PostgreSQL 연결 시도: {} (sslMode: {})", jdbcUrl, sslMode);
-
-        String query = """
-        SELECT datname 
-        FROM pg_database 
-        WHERE datistemplate = false
-        AND datname NOT IN ('template0', 'template1')
-        """;
-
-        List<String> result = new ArrayList<>();
-
-        try (Connection conn = DriverManager.getConnection(jdbcUrl, instance.getUserName(), password)) {
-            log.info("PostgreSQL 연결 성공");
-
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(query)) {
-
-                while (rs.next()) {
-                    String dbName = rs.getString("datname");
-                    result.add(dbName);
-                    log.debug("DB 발견: {}", dbName);
-                }
-            }
-
-            log.info("총 {}개 DB 조회 완료", result.size());
-        } catch (SQLException e) {
-            log.error("PostgreSQL 연결/조회 실패: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to fetch database names: " + e.getMessage(), e);
-        }
-
-        return result;
-    }
-
-    // testConnection 메서드도 DTO의 sslMode를 존중하도록 수정
+    /**
+     * PostgreSQL 연결 테스트
+     *
+     * 인스턴스 생성 전 연결 가능 여부를 확인하는 용도
+     *
+     * @param dto 인스턴스 생성 요청 DTO
+     * @return 연결 테스트 결과 (success, message, version, errorCode)
+     */
     public Map<String, Object> testConnection(InstanceCreateRequest dto) {
-        Map<String, Object> result = new HashMap<>();
+        log.info("연결 테스트 시작: Host={}, Port={}", dto.getHost(), dto.getPort());
 
-        // sslMode 처리 (DTO에 없으면 disable 사용)
-        String sslMode = (dto.getSslmode() != null && !dto.getSslmode().trim().isEmpty())
-                ? dto.getSslmode()
-                : "disable";
-
-        String jdbcUrl = String.format("jdbc:postgresql://%s:%d/postgres?sslmode=%s",
-                dto.getHost(), dto.getPort(), sslMode);
-
-        log.info("연결 테스트 시작: {} (sslMode: {})", jdbcUrl, sslMode);
-
-        try (Connection conn = DriverManager.getConnection(
-                jdbcUrl,
+        // DTO에서 필요한 정보만 추출하여 전달
+        Map<String, Object> result = postgresConnectionService.testConnection(
+                dto.getHost(),
+                dto.getPort(),
                 dto.getUserName(),
-                dto.getSecretRef())) {
+                dto.getSecretRef(),  // 평문 비밀번호
+                dto.getSslmode()
+        );
 
-            // 버전 정보 조회
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT version()")) {
-
-                if (rs.next()) {
-                    String version = rs.getString(1);
-                    log.info("연결 성공! PostgreSQL 버전: {}", version);
-
-                    result.put("success", true);
-                    result.put("message", "연결 성공!");
-                    result.put("version", version);
-                }
-            }
-
-        } catch (SQLException e) {
-            log.error("연결 실패: {}", e.getMessage());
-            result.put("success", false);
-            result.put("message", "연결 실패: " + e.getMessage());
-            result.put("errorCode", e.getSQLState());
-        }
-
+        log.info("연결 테스트 완료: success={}", result.get("success"));
         return result;
     }
 
+    // ========== 조회 (Read) ==========
 
-    // 하나 조회 (dto 반환)
+    /**
+     * 인스턴스 단건 조회
+     *
+     * @param id 인스턴스 ID
+     * @return 인스턴스 정보 DTO
+     * @throws NotFoundException 인스턴스를 찾을 수 없는 경우
+     */
     public InstanceResponse findOne(Long id) {
-        // 1. entity 조회
-        Instance entity = instanceRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
-        return InstanceResponse.from(entity);  // DTO로 변환
+        log.debug("인스턴스 조회: id={}", id);
+
+        // Repository에서 Entity 조회
+        Instance entity = findInstanceById(id);
+
+        // Entity → DTO 변환하여 반환
+        return InstanceResponse.from(entity);
     }
 
-    // 조회 (dto 반환)
+    /**
+     * 인스턴스 전체 조회
+     *
+     * @return 전체 인스턴스 목록 DTO
+     */
     public List<InstanceResponse> findAll() {
-        // 1. entity 리스트 조회
+        log.debug("인스턴스 전체 조회");
+
+        // Repository에서 Entity 목록 조회
         List<Instance> entities = instanceRepository.findAll();
 
-        // 2. entity -> dto 변환
+        // Entity → DTO 변환하여 반환
         return entities.stream()
                 .map(InstanceResponse::from)
                 .toList();
     }
 
     /**
-     * Slack 설정 업데이트 (인스턴스 이름 기준)
+     * 인스턴스와 데이터베이스 목록 함께 조회
+     *
+     * 성능 최적화:
+     * 
+     *   N+1 문제 방지를 위해 데이터베이스 목록을 일괄 조회
+     *   인스턴스 ID별로 그룹핑하여 메모리에서 조합
+     * 
+     *
+     * @return 인스턴스와 데이터베이스 목록 DTO
      */
-    @Transactional
-    public void updateSlackSettings(String instanceName, SlackSettingsRequest request) {
-        log.info("=== Slack 설정 업데이트 시작 ===");
-        log.info("instanceName: {}, enabled: {}, webhookUrl: {}", 
-                instanceName, request.getEnabled(), request.getWebhookUrl());
+    public List<InstanceWithDatabasesDto> findAllWithDatabases() {
+        log.debug("인스턴스 + 데이터베이스 목록 조회");
 
-        // 인스턴스 존재 여부 확인
-        Optional<Long> instanceIdOpt = instanceRepository.findIdByInstanceName(instanceName);
-        if (instanceIdOpt.isEmpty()) {
-            throw new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND);
+        // 1. Repository에서 DTO 직접 조회 (성능 최적화)
+        List<InstanceResponse> instanceDtos = instanceRepository.findAll()
+                .stream()
+                .map(InstanceResponse::from)
+                .toList();
+
+        if (instanceDtos.isEmpty()) {
+            return List.of();
         }
 
-        // Slack 설정 업데이트
-        int rows = instanceRepository.updateSlackSettings(
-                instanceName,
-                request.getEnabled() != null ? request.getEnabled() : false,
-                request.getWebhookUrl(),
-                request.getDefaultChannel(),
-                request.getMention()
-        );
+        // 2. 인스턴스 ID 목록 추출
+        List<Long> instanceIds = instanceDtos.stream()
+                .map(InstanceResponse::getInstanceId)
+                .toList();
 
-        if (rows != 1) {
-            throw new IllegalStateException("Slack 설정 업데이트 실패: instanceName=" + instanceName);
-        }
+        // 3. 데이터베이스 일괄 조회 (N+1 방지) - Repository에서 DTO 반환
+        List<DatabaseResponse> allDatabases = databaseRepository.findByInstanceIds(instanceIds);
 
-        log.info("Slack 설정 업데이트 완료: instanceName={}", instanceName);
-    }
+        // 4. 인스턴스 ID별로 데이터베이스 그룹핑
+        Map<Long, List<DatabaseResponse>> databaseMap = allDatabases.stream()
+                .collect(Collectors.groupingBy(DatabaseResponse::getInstanceId));
 
-    /**
-     * Slack 설정 업데이트 (인스턴스 ID 기준)
-     */
-    @Transactional
-    public void updateSlackSettingsById(Long instanceId, SlackSettingsRequest request) {
-        log.info("=== Slack 설정 업데이트 시작 ===");
-        log.info("instanceId: {}, enabled: {}, webhookUrl: {}", 
-                instanceId, request.getEnabled(), request.getWebhookUrl());
-
-        // 인스턴스 존재 여부 확인
-        instanceRepository.findById(instanceId)
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
-
-        // Slack 설정 업데이트
-        int rows = instanceRepository.updateSlackSettingsById(
-                instanceId,
-                request.getEnabled() != null ? request.getEnabled() : false,
-                request.getWebhookUrl(),
-                request.getDefaultChannel(),
-                request.getMention()
-        );
-
-        if (rows != 1) {
-            throw new IllegalStateException("Slack 설정 업데이트 실패: instanceId=" + instanceId);
-        }
-
-        log.info("Slack 설정 업데이트 완료: instanceId={}", instanceId);
-    }
-
-    /**
-     * Slack 설정 조회 (인스턴스 이름 기준)
-     */
-    public SlackSettingsRequest getSlackSettings(String instanceName) {
-        Optional<Long> instanceIdOpt = instanceRepository.findIdByInstanceName(instanceName);
-        if (instanceIdOpt.isEmpty()) {
-            throw new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND);
-        }
-
-        Instance instance = instanceRepository.findById(instanceIdOpt.get())
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
-
-        SlackSettingsRequest settings = new SlackSettingsRequest();
-        settings.setEnabled(instance.getSlackEnabled());
-        settings.setWebhookUrl(instance.getSlackWebhookUrl());
-        settings.setDefaultChannel(instance.getSlackChannel());
-        settings.setMention(instance.getSlackMention());
-
-        return settings;
-    }
-
-    /**
-     * Slack 설정 조회 (인스턴스 ID 기준)
-     */
-    public SlackSettingsRequest getSlackSettingsById(Long instanceId) {
-        Instance instance = instanceRepository.findById(instanceId)
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
-
-        SlackSettingsRequest settings = new SlackSettingsRequest();
-        settings.setEnabled(instance.getSlackEnabled());
-        settings.setWebhookUrl(instance.getSlackWebhookUrl());
-        settings.setDefaultChannel(instance.getSlackChannel());
-        settings.setMention(instance.getSlackMention());
-
-        return settings;
-    }
-
-    /**
-     * Slack 설정 삭제/초기화 (인스턴스 이름 기준)
-     */
-    @Transactional
-    public void deleteSlackSettings(String instanceName) {
-        log.info("=== Slack 설정 삭제 시작 ===");
-        log.info("instanceName: {}", instanceName);
-
-        // 인스턴스 존재 여부 확인
-        Optional<Long> instanceIdOpt = instanceRepository.findIdByInstanceName(instanceName);
-        if (instanceIdOpt.isEmpty()) {
-            throw new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND);
-        }
-
-        // Slack 설정 삭제
-        int rows = instanceRepository.deleteSlackSettingsByName(instanceName);
-
-        if (rows != 1) {
-            throw new IllegalStateException("Slack 설정 삭제 실패: instanceName=" + instanceName);
-        }
-
-        log.info("Slack 설정 삭제 완료: instanceName={}", instanceName);
-    }
-
-    /**
-     * Slack 설정 삭제/초기화 (인스턴스 ID 기준)
-     */
-    @Transactional
-    public void deleteSlackSettingsById(Long instanceId) {
-        log.info("=== Slack 설정 삭제 시작 ===");
-        log.info("instanceId: {}", instanceId);
-
-        // 인스턴스 존재 여부 확인
-        instanceRepository.findById(instanceId)
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
-
-        // Slack 설정 삭제
-        int rows = instanceRepository.deleteSlackSettingsById(instanceId);
-
-        if (rows != 1) {
-            throw new IllegalStateException("Slack 설정 삭제 실패: instanceId=" + instanceId);
-        }
-
-        log.info("Slack 설정 삭제 완료: instanceId={}", instanceId);
-    }
-
-    /**
-     * 모든 인스턴스의 Slack 설정 목록 조회
-     */
-    public List<InstanceSlackSettingsResponse> getAllSlackSettings() {
-        List<Instance> instances = instanceRepository.findAll();
-        
-        return instances.stream()
-                .map(instance -> InstanceSlackSettingsResponse.builder()
-                        .instanceId(instance.getInstanceId())
-                        .instanceName(instance.getInstanceName())
-                        .slackEnabled(instance.getSlackEnabled())
-                        .slackWebhookUrl(instance.getSlackWebhookUrl())
-                        .slackChannel(instance.getSlackChannel())
-                        .slackMention(instance.getSlackMention())
-                        .build())
+        // 5. DTO 조합하여 반환
+        return instanceDtos.stream()
+                .map(instanceDto -> {
+                    List<DatabaseResponse> databases = databaseMap.getOrDefault(
+                            instanceDto.getInstanceId(),
+                            List.of()
+                    );
+                    return DtoMappers.toInstanceWithDbDto(instanceDto, databases);
+                })
                 .toList();
     }
 
+    // ========== 수정 (Update) ==========
+
+    /**
+     * 인스턴스 수정
+     *
+     * 처리 흐름:
+     * <ol>
+     *   인스턴스 기본 정보 업데이트
+     *   비밀번호 제공 시 암호화하여 업데이트
+     *   연결 정보 변경 시 데이터베이스 재동기화
+     * </ol>
+     *
+     * @param id 인스턴스 ID
+     * @param req 인스턴스 수정 요청 DTO
+     * @return 수정된 인스턴스 정보 DTO
+     * @throws NotFoundException 인스턴스를 찾을 수 없는 경우
+     * @throws IllegalStateException 업데이트 실패 시
+     */
     @Transactional
     public InstanceResponse update(Long id, @Valid InstanceUpdateRequest req) {
         log.info("=== 인스턴스 수정 시작 ===");
-        log.info("instanceId: {}, Host: {}, Port: {}, UserName: {}", id, req.getHost(), req.getPort(), req.getUserName());
+        log.info("instanceId: {}, Host: {}, Port: {}", id, req.getHost(), req.getPort());
 
-        // 1. DB에서 entity 조회
-        Instance entity = instanceRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+        // 1. 기존 인스턴스 조회 (Repository에서 Entity 반환)
+        Instance entity = findInstanceById(id);
 
-        // 2. 기본 정보 수정
-        entity.setInstanceName(req.getInstanceName());
-        entity.setHost(req.getHost());
-        entity.setPort(req.getPort());
-        entity.setUserName(req.getUserName());
+        // 2. 기본 정보 업데이트
+        updateBasicInfo(entity, req);
 
-        // 3. 비밀번호가 제공된 경우에만 암호화하여 업데이트
-        if (req.getSecretRef() != null && !req.getSecretRef().trim().isEmpty()) {
-            String encryptedPassword = aesGcmService.encryptString(req.getSecretRef());
-            entity.setSecretRef(encryptedPassword);
-            log.info("비밀번호 업데이트 완료");
-        }
+        // 3. 비밀번호 업데이트 (제공된 경우에만)
+        boolean passwordUpdated = updatePasswordIfProvided(entity, req);
 
-        // 4. 인스턴스 업데이트
-        int rows = instanceRepository.updateInstance(entity);
-        if (rows != 1) {
-            throw new IllegalStateException("업데이트 대상이 없거나 변경 실패: id=" + id);
-        }
-        log.info("인스턴스 업데이트 완료. instanceId: {}", id);
+        // 4. 인스턴스 업데이트 실행
+        executeInstanceUpdate(entity, id);
 
-        // 5. 호스트/포트/계정이 변경되었거나 비밀번호가 제공된 경우, DB 목록 재동기화
-        if (isConnectionInfoChanged(req)) {
-            try {
-                String password = aesGcmService.decryptToString(entity.getSecretRef());
-                log.info("비밀번호 복호화 완료");
+        // 5. 연결 정보 변경 시 데이터베이스 재동기화
+        if (passwordUpdated) {
+            String decryptedPassword = aesGcmService.decryptToString(entity.getSecretRef());
 
-                // 기존 DB 목록 조회
-                List<Database> existingDbs = databaseRepository.findDatabaseEntitiesByInstanceId(id);
-                Set<String> existingDbNames = existingDbs.stream()
-                        .map(Database::getDatabaseName)
-                        .collect(Collectors.toSet());
-
-                // PostgreSQL에서 현재 DB 목록 조회
-                List<String> currentDbNames = fetchDatabaseNames(entity, password);
-                log.info("조회된 DB 개수: {}, DB 목록: {}", currentDbNames.size(), currentDbNames);
-
-                // 새로 추가된 DB만 insert
-                for (String dbName : currentDbNames) {
-                    if (!existingDbNames.contains(dbName)) {
-                        Database database = new Database();
-                        database.setInstanceId(id);
-                        database.setDatabaseName(dbName);
-                        database.setIsEnabled(true);
-
-                        log.info("새 DB 저장 시도: instanceId={}, dbName={}", id, dbName);
-                        databaseRepository.insert(database);
-                        log.info("새 DB 저장 완료: databaseId={}", database.getDatabaseId());
-                    }
-                }
-
-                // 삭제된 DB는 비활성화 (실제 삭제는 하지 않음 - 메트릭 데이터 보존)
-                Set<String> currentDbNameSet = new HashSet<>(currentDbNames);
-                for (Database existingDb : existingDbs) {
-                    if (!currentDbNameSet.contains(existingDb.getDatabaseName()) && existingDb.getIsEnabled()) {
-                        existingDb.setIsEnabled(false);
-                        log.info("DB 비활성화: databaseId={}, dbName={}",
-                                existingDb.getDatabaseId(), existingDb.getDatabaseName());
-                    }
-                }
-
-                log.info("=== 인스턴스 수정 및 DB 동기화 완료 ===");
-            } catch (Exception e) {
-                log.error("DB 목록 동기화 실패 (인스턴스 수정은 완료됨)", e);
-                // DB 동기화 실패해도 인스턴스 업데이트는 유지
-            }
+            databaseSyncService.syncDatabasesOnUpdate(
+                    entity.getInstanceId(),
+                    entity.getHost(),
+                    entity.getPort(),
+                    entity.getUserName(),
+                    decryptedPassword,
+                    entity.getSslmode()
+            );
         } else {
-            log.info("=== 인스턴스 수정 완료 (DB 동기화 스킵) ===");
+            log.info("=== 인스턴스 수정 완료 (데이터베이스 동기화 스킵) ===");
         }
 
+        // 6. DTO 반환
         return InstanceResponse.from(entity);
     }
 
-    /**
-     * 연결 정보가 변경되었는지 확인
-     */
-    private boolean isConnectionInfoChanged(InstanceUpdateRequest req) {
-        // 호스트, 포트, 사용자명, 비밀번호 중 하나라도 변경되면 true
-        // 실제로는 이전 값과 비교해야 하지만, 간단하게 비밀번호 제공 여부로 판단
-        return req.getSecretRef() != null && !req.getSecretRef().trim().isEmpty();
-    }
+    // ========== 삭제 (Delete) ==========
 
+    /**
+     * 인스턴스 삭제
+     *
+     * 연관 데이터 삭제 순서:
+     * <ol>
+     *   해당 인스턴스의 모든 데이터베이스 레코드 삭제
+     *   인스턴스 레코드 삭제
+     * </ol>
+     *
+     * @param id 인스턴스 ID
+     * @throws NotFoundException 인스턴스를 찾을 수 없는 경우
+     */
     @Transactional
     public void delete(Long id) {
         log.info("=== 인스턴스 삭제 시작 ===");
 
-        // 존재 확인
-        Instance instance = instanceRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+        // 1. 인스턴스 존재 확인
+        Instance instance = findInstanceById(id);
+        log.info("인스턴스 삭제: instanceId={}, instanceName={}",
+                id, instance.getInstanceName());
 
-        log.info("인스턴스 삭제: instanceId={}, instanceName={}", id, instance.getInstanceName());
+        // 2. 연관된 데이터베이스 조회 (Repository에서 DTO 반환)
+        List<DatabaseResponse> databases = databaseRepository.findByInstanceId(id);
 
-        // 1. 해당 인스턴스의 모든 데이터베이스 조회
-        List<Database> databases = databaseRepository.findDatabaseEntitiesByInstanceId(id);
-
+        // 3. 데이터베이스 레코드 삭제
         if (!databases.isEmpty()) {
             List<Long> databaseIds = databases.stream()
-                    .map(Database::getDatabaseId)
+                    .map(DatabaseResponse::getDatabaseId)
                     .collect(Collectors.toList());
 
             log.info("삭제할 데이터베이스 개수: {}, IDs: {}", databaseIds.size(), databaseIds);
-
-
-            // 3. 데이터베이스 레코드 삭제
             databaseRepository.deleteByInstanceId(id);
-            log.info("데이터베이스 레코드 삭제 완료: instanceId={}", id);
+            log.info("데이터베이스 레코드 삭제 완료");
         }
 
         // 4. 인스턴스 삭제
@@ -474,32 +323,126 @@ public class InstanceService {
         log.info("=== 인스턴스 삭제 완료: instanceId={} ===", id);
     }
 
-    // (entity -> dto 변환)
-    public List<InstanceWithDatabasesDto> findAllWithDatabases() {
-        // 1. 인스턴스 조회 (dto)
-        List<Instance> instances = instanceRepository.findAll();
-        if (instances.isEmpty()) return List.of();
+    // ========== Slack 설정 위임 메서드 ==========
 
-        // 2. id 모으기
-        List<Long> instanceIds = instances.stream()
-                .map(Instance::getInstanceId)
-                .toList();
+    /**
+     * Slack 설정 업데이트 (인스턴스 이름 기준)
+     */
+    @Transactional
+    public void updateSlackSettings(String instanceName, SlackSettingsRequest request) {
+        slackSettingsService.updateSlackSettings(instanceName, request);
+    }
 
-        // 3. 모든 DB 한 번에 조회
-        var allDbs = databaseRepository.findByInstanceIds(instanceIds);
+    /**
+     * Slack 설정 업데이트 (인스턴스 ID 기준)
+     */
+    @Transactional
+    public void updateSlackSettingsById(Long instanceId, SlackSettingsRequest request) {
+        slackSettingsService.updateSlackSettingsById(instanceId, request);
+    }
 
-        // 4) instanceId -> List<Database> 그룹핑
-        Map<Long, List<com.dajanggan.domain.instance.domain.Database>> dbMap =
-                allDbs.stream().collect(Collectors.groupingBy(com.dajanggan.domain.instance.domain.Database::getInstanceId));
+    /**
+     * Slack 설정 조회 (인스턴스 이름 기준)
+     */
+    public SlackSettingsRequest getSlackSettings(String instanceName) {
+        return slackSettingsService.getSlackSettings(instanceName);
+    }
 
-        // 5. Entity + Database -> DTO 조합
-        return instances.stream()
-                .map(instance -> {
-                    InstanceResponse instanceDto = InstanceResponse.from(instance);
-                    List<com.dajanggan.domain.instance.domain.Database> databases =
-                            dbMap.getOrDefault(instance.getInstanceId(), List.of());
-                    return DtoMappers.toInstanceWithDbDto(instanceDto, databases);
-                })
-                .toList();
+    /**
+     * Slack 설정 조회 (인스턴스 ID 기준)
+     */
+    public SlackSettingsRequest getSlackSettingsById(Long instanceId) {
+        return slackSettingsService.getSlackSettingsById(instanceId);
+    }
+
+    /**
+     * Slack 설정 삭제 (인스턴스 이름 기준)
+     */
+    @Transactional
+    public void deleteSlackSettings(String instanceName) {
+        slackSettingsService.deleteSlackSettings(instanceName);
+    }
+
+    /**
+     * Slack 설정 삭제 (인스턴스 ID 기준)
+     */
+    @Transactional
+    public void deleteSlackSettingsById(Long instanceId) {
+        slackSettingsService.deleteSlackSettingsById(instanceId);
+    }
+
+    /**
+     * 모든 인스턴스의 Slack 설정 목록 조회
+     */
+    public List<InstanceSlackSettingsResponse> getAllSlackSettings() {
+        return slackSettingsService.getAllSlackSettings();
+    }
+
+    // ========== Private Helper Methods ==========
+
+    /**
+     * 인스턴스 ID로 엔티티 조회
+     *
+     * Service 내부 메서드이므로 Entity 반환 가능
+     *
+     * @param id 인스턴스 ID
+     * @return Instance 엔티티
+     * @throws NotFoundException 인스턴스를 찾을 수 없는 경우
+     */
+    private Instance findInstanceById(Long id) {
+        return instanceRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException(ExceptionMessage.INSTANCE_NOT_FOUND));
+    }
+
+    /**
+     * DTO로부터 Instance 엔티티 생성 (암호화 포함)
+     */
+    private Instance buildInstanceEntity(InstanceCreateRequest dto) {
+        Instance entity = dto.toEntity();
+
+        // 비밀번호 암호화
+        String encryptedPassword = aesGcmService.encryptString(dto.getSecretRef());
+        entity.setSecretRef(encryptedPassword);
+
+        // SSL 모드 기본값 설정
+        entity.setSslmode(DEFAULT_SSL_MODE);
+
+        return entity;
+    }
+
+    /**
+     * 인스턴스 기본 정보 업데이트
+     */
+    private void updateBasicInfo(Instance entity, InstanceUpdateRequest req) {
+        entity.setInstanceName(req.getInstanceName());
+        entity.setHost(req.getHost());
+        entity.setPort(req.getPort());
+        entity.setUserName(req.getUserName());
+    }
+
+    /**
+     * 비밀번호 업데이트 (제공된 경우에만)
+     */
+    private boolean updatePasswordIfProvided(Instance entity, InstanceUpdateRequest req) {
+        if (req.getSecretRef() != null && !req.getSecretRef().trim().isEmpty()) {
+            String encryptedPassword = aesGcmService.encryptString(req.getSecretRef());
+            entity.setSecretRef(encryptedPassword);
+            log.info("비밀번호 업데이트 완료");
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 인스턴스 업데이트 실행 및 결과 검증
+     */
+    private void executeInstanceUpdate(Instance entity, Long id) {
+        int updatedRows = instanceRepository.updateInstance(entity);
+
+        if (updatedRows != 1) {
+            throw new IllegalStateException("업데이트 대상이 없거나 변경 실패: id=" + id);
+        }
+
+        log.info("인스턴스 업데이트 완료. instanceId: {}", id);
     }
 }

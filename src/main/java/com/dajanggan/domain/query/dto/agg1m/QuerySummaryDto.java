@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
  * - QueryOverview 페이지의 요약 카드용
  * - 최근 5분간의 1분 집계 데이터를 SUM/AVG하여 계산
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @Builder

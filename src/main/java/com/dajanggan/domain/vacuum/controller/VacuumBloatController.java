@@ -1,3 +1,4 @@
+// 작성자: 김민서
 package com.dajanggan.domain.vacuum.controller;
 
 import com.dajanggan.domain.vacuum.dto.VacuumBloatDto;

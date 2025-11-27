@@ -17,6 +17,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * VacuumBloatDetail 서비스
+ *
+ * 주요 책임:
+ * - Bloat 상세 대시보드 데이터 조회
+ * - KPI 계산 (Bloat 비율, 테이블 크기, 낭비 공간)
+ * - Bloat/Dead Tuple/Index Bloat 트렌드 생성
+ *
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-10  김민서    1. 최초작성
+ */
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -52,7 +67,7 @@ public class VacuumBloatDetailService {
                 databaseId, instanceId, tableName);
 
         if (latest == null) {
-            log.warn("⚠️ No latest metrics found for table: {}", tableName);
+            log.warn("No latest metrics found for table: {}", tableName);
             return VacuumBloatDetailDto.Kpi.builder()
                     .bloatPct("0%")
                     .tableSize("0 B")
@@ -97,7 +112,7 @@ public class VacuumBloatDetailService {
         List<Double> values = new ArrayList<>();
         List<String> labels = new ArrayList<>();
 
-        // null 체크 추가! ✨
+        // null 체크
         if (data == null || data.isEmpty()) {
             log.warn("⚠️ No bloat trend data for table: {}", tableName);
             return VacuumBloatDetailDto.BloatTrend.builder()
@@ -106,9 +121,9 @@ public class VacuumBloatDetailService {
                     .build();
         }
 
-        // 날짜별 그룹화 (일별 평균) - null 필터링 추가! ✨
+        // 날짜별 그룹화 (일별 평균) - null 필터링
         Map<String, List<VacuumRawMetricDto>> groupedByDate = data.stream()
-                .filter(m -> m != null && m.getCollectedAt() != null)  // ✨ null 체크!
+                .filter(m -> m != null && m.getCollectedAt() != null)
                 .collect(Collectors.groupingBy(m ->
                         m.getCollectedAt().toLocalDate().format(LABEL_FORMATTER)));
 
@@ -119,7 +134,7 @@ public class VacuumBloatDetailService {
 
                     // 일별 평균 bloat ratio
                     double avgRatio = entry.getValue().stream()
-                            .filter(m -> m != null && m.getBloatRatio() != null)  // ✨ null 체크!
+                            .filter(m -> m != null && m.getBloatRatio() != null)
                             .mapToDouble(VacuumRawMetricDto::getBloatRatio)
                             .average()
                             .orElse(0.0);
@@ -127,7 +142,7 @@ public class VacuumBloatDetailService {
                     values.add(avgRatio * 100); // 퍼센트로 변환
                 });
 
-        log.info("📈 Bloat Trend: {} data points", values.size());
+        log.info("Bloat Trend: {} data points", values.size());
 
         return VacuumBloatDetailDto.BloatTrend.builder()
                 .data(values)
@@ -150,7 +165,7 @@ public class VacuumBloatDetailService {
         List<Long> values = new ArrayList<>();
         List<String> labels = new ArrayList<>();
 
-        // null 체크 추가! ✨
+        // null 체크
         if (data == null || data.isEmpty()) {
             log.warn("⚠️ No dead tuples trend data for table: {}", tableName);
             return VacuumBloatDetailDto.DeadTuplesTrend.builder()
@@ -159,9 +174,9 @@ public class VacuumBloatDetailService {
                     .build();
         }
 
-        // 날짜별 그룹화 - null 필터링 추가! ✨
+        // 날짜별 그룹화 - null 필터링
         Map<String, List<VacuumRawMetricDto>> groupedByDate = data.stream()
-                .filter(m -> m != null && m.getCollectedAt() != null)  // ✨ null 체크!
+                .filter(m -> m != null && m.getCollectedAt() != null)
                 .collect(Collectors.groupingBy(m ->
                         m.getCollectedAt().toLocalDate().format(LABEL_FORMATTER)));
 
@@ -172,7 +187,7 @@ public class VacuumBloatDetailService {
 
                     // 일별 평균 dead tuples
                     long avgDeadTuples = (long) entry.getValue().stream()
-                            .filter(m -> m != null && m.getNDeadTup() != null)  // ✨ null 체크!
+                            .filter(m -> m != null && m.getNDeadTup() != null)
                             .mapToLong(VacuumRawMetricDto::getNDeadTup)
                             .average()
                             .orElse(0.0);
@@ -180,7 +195,7 @@ public class VacuumBloatDetailService {
                     values.add(avgDeadTuples);
                 });
 
-        log.info("📈 Dead Tuples Trend: {} data points", values.size());
+        log.info("Dead Tuples Trend: {} data points", values.size());
 
         return VacuumBloatDetailDto.DeadTuplesTrend.builder()
                 .data(values)
@@ -206,7 +221,7 @@ public class VacuumBloatDetailService {
         Map<String, List<Double>> indexDataMap = new HashMap<>();
         List<String> labels = new ArrayList<>();
 
-        // null 체크 추가! ✨
+        // null 체크
         if (data == null || data.isEmpty()) {
             log.warn("⚠️ No index bloat trend data for table: {}", tableName);
             return VacuumBloatDetailDto.IndexBloatTrend.builder()
@@ -216,9 +231,9 @@ public class VacuumBloatDetailService {
                     .build();
         }
 
-        // 날짜별 그룹화 - null 필터링 추가! ✨
+        // 날짜별 그룹화 - null 필터링
         Map<String, List<VacuumRawMetricDto>> groupedByDate = data.stream()
-                .filter(m -> m != null && m.getCollectedAt() != null)  // ✨ null 체크!
+                .filter(m -> m != null && m.getCollectedAt() != null)
                 .collect(Collectors.groupingBy(m ->
                         m.getCollectedAt().toLocalDate().format(LABEL_FORMATTER)));
 
@@ -296,7 +311,7 @@ public class VacuumBloatDetailService {
                                         }
                                     }
                                 } catch (Exception e) {
-                                    log.warn("⚠️ Failed to parse index_bloat_info JSON for table {}: {}", 
+                                    log.warn("Failed to parse index_bloat_info JSON for table {}: {}",
                                             tableName, e.getMessage());
                                 }
                             });
@@ -329,7 +344,7 @@ public class VacuumBloatDetailService {
             seriesData.add(new ArrayList<>(indexData));
         }
 
-        log.info("📈 Index Bloat Trend: {} indexes, {} data points",
+        log.info("Index Bloat Trend: {} indexes, {} data points",
                 indexNames.size(), labels.size());
 
         return VacuumBloatDetailDto.IndexBloatTrend.builder()
@@ -347,8 +362,8 @@ public class VacuumBloatDetailService {
 
         List<String> tables = bloatRepository.getTableList(databaseId, instanceId);
 
-        log.info("✅ Found {} tables", tables.size());
-        return tables != null ? tables : new ArrayList<>();  // ✨ null 체크!
+        log.info("Found {} tables", tables.size());
+        return tables != null ? tables : new ArrayList<>();
     }
 
     // ========== 유틸리티 메서드 ==========
