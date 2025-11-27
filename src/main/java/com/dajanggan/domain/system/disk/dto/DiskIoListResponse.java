@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.dto;
 
 import lombok.AllArgsConstructor;
@@ -19,6 +20,9 @@ public class DiskIoListResponse {
     private List<HighFsyncItem> highFsyncList;
     private List<LowCacheHitItem> lowCacheHitList;
     private Long totalCount;
+    private Integer page;
+    private Integer size;
+    private Integer totalPages;
 
     @Data
     @Builder

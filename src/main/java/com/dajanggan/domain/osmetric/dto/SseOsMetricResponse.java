@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -46,9 +47,44 @@ public class SseOsMetricResponse {
     private Double memory;
 
     /**
+     * 메모리 총량 (GB)
+     */
+    private Double memoryTotalGB;
+
+    /**
+     * 메모리 사용량 (GB)
+     */
+    private Double memoryUsedGB;
+
+    /**
+     * 메모리 사용 가능량 (GB)
+     */
+    private Double memoryAvailableGB;
+
+    /**
+     * 메모리 캐시 (GB)
+     */
+    private Double memoryCacheGB;
+
+    /**
      * 디스크 사용률 (%)
      */
     private Double diskUsage;
+
+    /**
+     * 디스크 총량 (GB)
+     */
+    private Double diskTotalGB;
+
+    /**
+     * 디스크 사용량 (GB)
+     */
+    private Double diskUsedGB;
+
+    /**
+     * 디스크 사용 가능량 (GB)
+     */
+    private Double diskAvailableGB;
 
     /**
      * 디스크 읽기 속도 (MB/s)
@@ -64,6 +100,31 @@ public class SseOsMetricResponse {
      * Load Average [1분, 5분, 15분]
      */
     private List<Double> loadAverage;
+
+    /**
+     * Swap 사용률 (%)
+     */
+    private Double swapUsage;
+
+    /**
+     * Swap 총량 (GB)
+     */
+    private Double swapTotalGB;
+
+    /**
+     * Swap 사용량 (GB)
+     */
+    private Double swapUsedGB;
+
+    /**
+     * Swap In Rate (per sec)
+     */
+    private Long swapInPerSec;
+
+    /**
+     * Swap Out Rate (per sec)
+     */
+    private Long swapOutPerSec;
 
     /**
      * 이벤트 타입 (SSE event type)

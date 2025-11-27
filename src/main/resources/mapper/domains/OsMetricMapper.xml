@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!-- 작성자 : 김동현 -->
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
@@ -17,7 +18,7 @@
 
     <!-- ResultMap for OsMetricAgg -->
     <resultMap id="OsMetricAggResultMap" type="com.dajanggan.domain.osmetric.domain.OsMetricAgg">
-        <id property="osMetricAggId" column="os_metric_agg_id"/>
+        <id property="osMetricAggId" column="os_metric_agg_1m_id"/>
         <result property="instanceId" column="instance_id"/>
         <result property="collectedAt" column="collected_at"/>
         <result property="metricType" column="metric_type"/>
@@ -29,28 +30,27 @@
     </resultMap>
 
     <!-- Insert Raw Data -->
+    <!-- metric_type 컬럼이 테이블에 없으므로 제거하고 details JSONB에만 저장 -->
     <insert id="insertRaw" parameterType="com.dajanggan.domain.osmetric.domain.OsMetricRaw">
         INSERT INTO os_metric_raw (
             instance_id,
             collected_at,
-            metric_type,
             details,
             created_at
         ) VALUES (
             #{instanceId},
             #{collectedAt},
-            #{metricType},
             #{details, typeHandler=com.dajanggan.global.config.JsonbTypeHandler}::jsonb,
             NOW()
         )
     </insert>
 
     <!-- Insert Raw Data Batch -->
+    <!-- metric_type 컬럼이 테이블에 없으므로 제거하고 details JSONB에만 저장 -->
     <insert id="insertRawBatch" parameterType="java.util.List">
         INSERT INTO os_metric_raw (
             instance_id,
             collected_at,
-            metric_type,
             details,
             created_at
         ) VALUES
@@ -58,7 +58,6 @@
             (
                 #{item.instanceId},
                 #{item.collectedAt},
-                #{item.metricType},
                 #{item.details, typeHandler=com.dajanggan.global.config.JsonbTypeHandler}::jsonb,
                 NOW()
             )
@@ -66,39 +65,42 @@
     </insert>
 
     <!-- Find Raw Data by Instance and Period -->
+    <!-- metric_type 컬럼이 없으므로 details JSONB에서 추출 -->
     <select id="findRawByInstanceAndPeriod" resultMap="OsMetricRawResultMap">
         SELECT
             os_metric_raw_id,
             instance_id,
             collected_at,
-            metric_type,
+            details->>'metricType' as metric_type,
             details,
             created_at
         FROM os_metric_raw
         WHERE instance_id = #{instanceId}
-          AND metric_type = #{metricType}
+          AND details->>'metricType' = #{metricType}
           AND collected_at BETWEEN #{startTime} AND #{endTime}
         ORDER BY collected_at ASC
     </select>
 
     <!-- Insert Agg Data -->
     <insert id="insertAgg" parameterType="com.dajanggan.domain.osmetric.domain.OsMetricAgg">
-        INSERT INTO os_metric_agg (
+        INSERT INTO os_metric_agg_1m (
             instance_id,
             collected_at,
-            metric_type,
-            avg_value,
-            max_value,
-            min_value,
-            sample_count,
+            <if test="metricType == 'CPU'">avg_cpu_usage,</if>
+            <if test="metricType == 'MEMORY'">avg_memory_usage,</if>
+            <if test="metricType == 'DISK_USAGE'">avg_disk_used_bytes, avg_disk_total_bytes,</if>
+            <if test="metricType == 'DISK_READ'">avg_net_rx_bytes,</if>
+            <if test="metricType == 'DISK_WRITE'">avg_net_tx_bytes,</if>
+            record_count,
             created_at
         ) VALUES (
             #{instanceId},
             #{collectedAt},
-            #{metricType},
-            #{avgValue},
-            #{maxValue},
-            #{minValue},
+            <if test="metricType == 'CPU'">#{avgValue},</if>
+            <if test="metricType == 'MEMORY'">#{avgValue},</if>
+            <if test="metricType == 'DISK_USAGE'">#{avgValue}, #{maxValue},</if>
+            <if test="metricType == 'DISK_READ'">#{avgValue},</if>
+            <if test="metricType == 'DISK_WRITE'">#{avgValue},</if>
             #{sampleCount},
             NOW()
         )
@@ -106,45 +108,73 @@
 
     <!-- Insert Agg Data Batch -->
     <insert id="insertAggBatch" parameterType="java.util.List">
-        INSERT INTO os_metric_agg (
+        INSERT INTO os_metric_agg_1m (
             instance_id,
             collected_at,
-            metric_type,
-            avg_value,
-            max_value,
-            min_value,
-            sample_count,
+            avg_cpu_usage,
+            avg_memory_usage,
+            avg_disk_used_bytes,
+            avg_disk_total_bytes,
+            avg_net_rx_bytes,
+            avg_net_tx_bytes,
+            record_count,
             created_at
-        ) VALUES
+        )
+        SELECT 
+            instance_id,
+            collected_at,
+            MAX(CASE WHEN metric_type = 'CPU' THEN avg_value END) as avg_cpu_usage,
+            MAX(CASE WHEN metric_type = 'MEMORY' THEN avg_value END) as avg_memory_usage,
+            MAX(CASE WHEN metric_type = 'DISK_USAGE' THEN avg_value END) as avg_disk_used_bytes,
+            MAX(CASE WHEN metric_type = 'DISK_USAGE' THEN max_value END) as avg_disk_total_bytes,
+            MAX(CASE WHEN metric_type = 'DISK_READ' THEN avg_value END) as avg_net_rx_bytes,
+            MAX(CASE WHEN metric_type = 'DISK_WRITE' THEN avg_value END) as avg_net_tx_bytes,
+            MAX(sample_count) as record_count,
+            NOW()
+        FROM (
+            VALUES
         <foreach collection="list" item="item" separator=",">
-            (
-                #{item.instanceId},
-                #{item.collectedAt},
-                #{item.metricType},
-                #{item.avgValue},
-                #{item.maxValue},
-                #{item.minValue},
-                #{item.sampleCount},
-                NOW()
-            )
+                (#{item.instanceId}, #{item.collectedAt}, #{item.metricType}, #{item.avgValue}, #{item.maxValue}, #{item.sampleCount})
         </foreach>
+        ) AS t(instance_id, collected_at, metric_type, avg_value, max_value, sample_count)
+        GROUP BY instance_id, collected_at
     </insert>
 
     <!-- Find Agg Data by Instance and Period -->
     <select id="findAggByInstanceAndPeriod" resultMap="OsMetricAggResultMap">
         SELECT 
-            os_metric_agg_id,
+            os_metric_agg_1m_id,
             instance_id,
             collected_at,
-            metric_type,
-            avg_value,
-            max_value,
-            min_value,
-            sample_count,
+            #{metricType} as metric_type,
+            CASE 
+                WHEN #{metricType} = 'CPU' THEN avg_cpu_usage
+                WHEN #{metricType} = 'MEMORY' THEN avg_memory_usage
+                WHEN #{metricType} = 'DISK_USAGE' THEN (avg_disk_used_bytes::float / NULLIF(avg_disk_total_bytes, 0) * 100)
+                WHEN #{metricType} = 'DISK_READ' THEN avg_net_rx_bytes::float
+                WHEN #{metricType} = 'DISK_WRITE' THEN avg_net_tx_bytes::float
+                ELSE NULL
+            END as avg_value,
+            CASE 
+                WHEN #{metricType} = 'CPU' THEN avg_cpu_usage
+                WHEN #{metricType} = 'MEMORY' THEN avg_memory_usage
+                WHEN #{metricType} = 'DISK_USAGE' THEN (avg_disk_used_bytes::float / NULLIF(avg_disk_total_bytes, 0) * 100)
+                WHEN #{metricType} = 'DISK_READ' THEN avg_net_rx_bytes::float
+                WHEN #{metricType} = 'DISK_WRITE' THEN avg_net_tx_bytes::float
+                ELSE NULL
+            END as max_value,
+            CASE 
+                WHEN #{metricType} = 'CPU' THEN avg_cpu_usage
+                WHEN #{metricType} = 'MEMORY' THEN avg_memory_usage
+                WHEN #{metricType} = 'DISK_USAGE' THEN (avg_disk_used_bytes::float / NULLIF(avg_disk_total_bytes, 0) * 100)
+                WHEN #{metricType} = 'DISK_READ' THEN avg_net_rx_bytes::float
+                WHEN #{metricType} = 'DISK_WRITE' THEN avg_net_tx_bytes::float
+                ELSE NULL
+            END as min_value,
+            record_count as sample_count,
             created_at
-        FROM os_metric_agg
+        FROM os_metric_agg_1m
         WHERE instance_id = #{instanceId}
-          AND metric_type = #{metricType}
           AND collected_at BETWEEN #{startTime} AND #{endTime}
         ORDER BY collected_at ASC
     </select>
@@ -166,14 +196,42 @@
     <select id="selectAggregatedMetrics" resultType="java.util.HashMap">
         SELECT
             collected_at,
-            avg_value AS usage_percent,
-            max_value,
-            min_value,
-            sample_count
-        FROM os_metric_agg
+            CASE 
+                WHEN #{metricType} = 'CPU' THEN avg_cpu_usage
+                WHEN #{metricType} = 'MEMORY' THEN avg_memory_usage
+                WHEN #{metricType} = 'DISK_USAGE' THEN (avg_disk_used_bytes::float / NULLIF(avg_disk_total_bytes, 0) * 100)
+                WHEN #{metricType} = 'DISK_READ' THEN avg_net_rx_bytes::float
+                WHEN #{metricType} = 'DISK_WRITE' THEN avg_net_tx_bytes::float
+                ELSE NULL
+            END AS avg_value,
+            CASE 
+                WHEN #{metricType} = 'CPU' THEN avg_cpu_usage
+                WHEN #{metricType} = 'MEMORY' THEN avg_memory_usage
+                WHEN #{metricType} = 'DISK_USAGE' THEN (avg_disk_used_bytes::float / NULLIF(avg_disk_total_bytes, 0) * 100)
+                WHEN #{metricType} = 'DISK_READ' THEN avg_net_rx_bytes::float
+                WHEN #{metricType} = 'DISK_WRITE' THEN avg_net_tx_bytes::float
+                ELSE NULL
+            END AS usage_percent,
+            CASE 
+                WHEN #{metricType} = 'CPU' THEN avg_cpu_usage
+                WHEN #{metricType} = 'MEMORY' THEN avg_memory_usage
+                WHEN #{metricType} = 'DISK_USAGE' THEN (avg_disk_used_bytes::float / NULLIF(avg_disk_total_bytes, 0) * 100)
+                WHEN #{metricType} = 'DISK_READ' THEN avg_net_rx_bytes::float
+                WHEN #{metricType} = 'DISK_WRITE' THEN avg_net_tx_bytes::float
+                ELSE NULL
+            END AS max_value,
+            CASE 
+                WHEN #{metricType} = 'CPU' THEN avg_cpu_usage
+                WHEN #{metricType} = 'MEMORY' THEN avg_memory_usage
+                WHEN #{metricType} = 'DISK_USAGE' THEN (avg_disk_used_bytes::float / NULLIF(avg_disk_total_bytes, 0) * 100)
+                WHEN #{metricType} = 'DISK_READ' THEN avg_net_rx_bytes::float
+                WHEN #{metricType} = 'DISK_WRITE' THEN avg_net_tx_bytes::float
+                ELSE NULL
+            END AS min_value,
+            record_count AS sample_count
+        FROM os_metric_agg_1m
         WHERE instance_id = #{instanceId}
-          AND metric_type = #{metricType}
-          AND collected_at BETWEEN #{startTime} AND #{endTime}
+          AND collected_at >= #{startTime} AND collected_at <![CDATA[ <= ]]> #{endTime}
         ORDER BY collected_at ASC
     </select>
 

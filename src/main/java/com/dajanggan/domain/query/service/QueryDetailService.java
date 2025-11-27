@@ -6,6 +6,12 @@ import org.springframework.stereotype.Service;
 
 import java.util.Map;
 
+/**
+ * 쿼리 상세 정보 조회 Service
+ * - QueryOverview 페이지의 모든 데이터 통합 제공
+ *
+ * @author 이해든
+ */
 @Slf4j
 @Service
 public class QueryDetailService {
@@ -18,14 +24,20 @@ public class QueryDetailService {
         this.queryAgg1mService = queryAgg1mService;
     }
 
-    /** 쿼리 디테일 지표 전체 조회 (단일 DB용) */
+    /**
+     * 쿼리 디테일 지표 전체 조회
+     * 요약 정보, 슬로우 쿼리, 각종 트렌드 데이터 통합 반환
+     *
+     * @param params instanceId, databaseId 포함
+     * @return 쿼리 상세 정보 DTO
+     */
     public QueryDetailsDto getQueryDetail(Map<String, Object> params) {
         log.info("QueryDetail 조회 시작 - instanceId: {}, databaseId: {}",
                 params.get("instanceId"), params.get("databaseId"));
 
         try {
             QueryDetailsDto result = QueryDetailsDto.builder()
-                    .querySummary(queryAgg1mService.findLatestSummary(params))  // 
+                    .querySummary(queryAgg1mService.findLatestSummary(params))
                     .topSlowQueries(queryAgg5mService.findTopSlowQueries(params))
                     .queryTypeTrend(queryAgg1mService.findQueryTypeTrend(params))
                     .avgExecutionTimeTrend(queryAgg1mService.findAvgExecutionTimeTrend(params))

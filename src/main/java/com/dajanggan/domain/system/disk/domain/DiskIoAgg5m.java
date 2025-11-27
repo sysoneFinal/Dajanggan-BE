@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.domain;
 
 import lombok.AllArgsConstructor;
@@ -10,7 +11,6 @@ import java.time.OffsetDateTime;
 /**
  * Disk I/O 5분 집계 데이터 엔티티
  * 테이블: disk_io_agg_5m
- * 용도: 6시간 차트
  */
 @Data
 @Builder

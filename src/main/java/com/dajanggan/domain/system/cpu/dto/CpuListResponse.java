@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.dto;
 
 import lombok.AllArgsConstructor;
@@ -17,5 +18,9 @@ import java.util.List;
 public class CpuListResponse {
     private List<CpuListItem> data;
     private Integer total;
+    private Integer page;
+    private Integer size;
+    private Integer totalPages;
 }
+
 

@@ -98,6 +98,50 @@
         where instance_id = #{instanceId}
     </update>
 
+    <!-- Slack 설정 업데이트 (인스턴스 이름 기준) -->
+    <update id="updateSlackSettings">
+        UPDATE monitor_instance
+        SET slack_enabled = #{enabled},
+            slack_webhook_url = #{webhookUrl},
+            slack_channel = #{defaultChannel},
+            slack_mention = #{mention},
+            updated_at = NOW()
+        WHERE instance_name = #{instanceName}
+    </update>
+
+    <!-- Slack 설정 업데이트 (인스턴스 ID 기준) -->
+    <update id="updateSlackSettingsById">
+        UPDATE monitor_instance
+        SET slack_enabled = #{enabled},
+            slack_webhook_url = #{webhookUrl},
+            slack_channel = #{defaultChannel},
+            slack_mention = #{mention},
+            updated_at = NOW()
+        WHERE instance_id = #{instanceId}
+    </update>
+
+    <!-- Slack 설정 삭제/초기화 (인스턴스 ID 기준) -->
+    <update id="deleteSlackSettingsById">
+        UPDATE monitor_instance
+        SET slack_enabled = false,
+            slack_webhook_url = NULL,
+            slack_channel = NULL,
+            slack_mention = NULL,
+            updated_at = NOW()
+        WHERE instance_id = #{instanceId}
+    </update>
+
+    <!-- Slack 설정 삭제/초기화 (인스턴스 이름 기준) -->
+    <update id="deleteSlackSettingsByName">
+        UPDATE monitor_instance
+        SET slack_enabled = false,
+            slack_webhook_url = NULL,
+            slack_channel = NULL,
+            slack_mention = NULL,
+            updated_at = NOW()
+        WHERE instance_name = #{instanceName}
+    </update>
+
     <delete id="deleteById">
         delete from monitor_instance where instance_id = #{id}
     </delete>

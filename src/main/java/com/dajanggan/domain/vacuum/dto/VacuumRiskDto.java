@@ -5,50 +5,45 @@ import lombok.Setter;
 
 import java.util.List;
 
-/** 대시보드 응답 (프론트 스키마와 1:1 매핑) */
 @Getter @Setter
 public class VacuumRiskDto {
 
     @Getter @Setter
     public static class Response {
-        private ChartDto blockers;                // Blockers per Hour
-        private ChartDto wraparound;              // Wraparound Progress
-        private List<TopBloatTableDto> bloat;     // Top bloat table rows
-        private List<VacuumBlockerDto> vacuumblockers; // Blockers detail rows
-        private ScatterDto transactionScatter;    // (선택) 산포도
+        private ChartDto blockers;
+        private ChartDto wraparound;
+        private List<TopBloatTableDto> bloat;
+        private List<VacuumBlockerDto> vacuumblockers;
+        private ScatterDto transactionScatter;
     }
 
-    /** 공통 차트 스키마 */
     @Getter @Setter
     public static class ChartDto {
         private List<String> labels;
         private List<List<? extends Number>> data;
     }
 
-    /** Top bloat 테이블용 */
     @Getter @Setter
     public static class TopBloatTableDto {
-        private String table;       // tableName
-        private String bloat;       // "9.4%"
-        private String deadTuple;   // "81K"
+        private String table;
+        private String bloat;
+        private String deadTuple;
     }
 
-    /** Vacuum blockers 상세 테이블용 */
     @Getter @Setter
     public static class VacuumBlockerDto {
         private String table;
         private String pid;
         private String lockType;
-        private String txAge;              // "2h 31m"
-        private String blocked_seconds;    // "12m"
-        private String status;             // queryState
+        private String txAge;
+        private String blocked_seconds;
+        private String status;
     }
 
-    /** 산포도 (x=txAgeSec, y=blockedSec) */
     @Getter @Setter
     public static class ScatterDto {
-        private List<List<Long>> data;     // [[x, y], ...]
-        private List<String> labels;       // ["txAgeSec", "blockedSec"]
+        private List<List<Long>> data;
+        private List<String> labels;
     }
 
     /* --------- Mapper Raw DTO --------- */
@@ -64,7 +59,7 @@ public class VacuumRiskDto {
         private Long databaseId;
         private String tableName;
         private Long bloatBytes;
-        private Double bloatRatio;   // 0.094 → 9.4%
+        private Double bloatRatio;
         private Long deadTuples;
     }
 
@@ -74,14 +69,14 @@ public class VacuumRiskDto {
         private String tableName;
         private Integer pid;
         private String lockType;
-        private Long transactionAge;     // seconds
-        private Long blockDuration;      // seconds
+        private Long transactionAge;
+        private Long blockDuration;
         private String queryState;
     }
 
     @Getter @Setter
     public static class WraparoundProgressRaw {
         private Long databaseId;
-        private Double wraparoundProgressPct;  // 0~100
+        private Double wraparoundProgressPct;
     }
 }

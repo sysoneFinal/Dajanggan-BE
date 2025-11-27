@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.global.exception;
 
 import lombok.Getter;
@@ -46,17 +47,6 @@ public enum ExceptionMessage {
     AUTOVACUUM_DATA_NOT_FOUND("AutoVacuum 데이터를 찾을 수 없습니다."),
     VACUUM_STATS_COLLECTION_FAILED("Vacuum 통계 수집 중 오류가 발생했습니다."),
 
-    // 인덱스 관련 (Hot Index)
-    INDEX_DATA_NOT_FOUND("인덱스 데이터를 찾을 수 없습니다."),
-    INDEX_STATS_NOT_FOUND("인덱스 통계를 찾을 수 없습니다."),
-    INDEX_BLOAT_CALCULATION_FAILED("인덱스 Bloat 계산 중 오류가 발생했습니다."),
-    INDEX_SCAN_DATA_NOT_FOUND("인덱스 스캔 데이터를 찾을 수 없습니다."),
-
-    // 테이블 관련 (Hot Table)
-    TABLE_DATA_NOT_FOUND("테이블 데이터를 찾을 수 없습니다."),
-    TABLE_STATS_NOT_FOUND("테이블 통계를 찾을 수 없습니다."),
-    DEAD_TUPLES_DATA_NOT_FOUND("Dead Tuples 데이터를 찾을 수 없습니다."),
-    TABLE_BLOAT_CALCULATION_FAILED("테이블 Bloat 계산 중 오류가 발생했습니다."),
 
     // Storage/Hotspot 관련
     STORAGE_DATA_NOT_FOUND("스토리지 데이터를 찾을 수 없습니다."),

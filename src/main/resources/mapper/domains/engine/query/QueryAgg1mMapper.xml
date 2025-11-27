@@ -2,6 +2,12 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
+<!--
+    1분 집계 데이터 Mapper
+    - QueryOverview 및 ExecutionStatus 페이지 데이터 제공
+
+    @author 이해든
+-->
 <mapper namespace="com.dajanggan.domain.query.repository.QueryAgg1mRepository">
 
     <!-- 1분 집계 데이터 일괄 저장 -->
@@ -46,7 +52,7 @@
         created_at = NOW()
     </insert>
 
-    <!-- 쿼리 타입별 추이 -->
+    <!-- 쿼리 타입별 추이 조회 -->
     <select id="getQueryTypeTrend" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QueryTypeTrendDto">
         SELECT
             collected_at AS collectedAt,
@@ -61,7 +67,7 @@
         ORDER BY collected_at
     </select>
 
-    <!-- 평균 실행 시간 추이 -->
+    <!-- 평균 실행 시간 추이 조회 -->
     <select id="getAvgExecutionTimeTrend" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.AvgExecutionTimeTrendDto">
         SELECT
             collected_at AS collectedAt,
@@ -73,7 +79,7 @@
         ORDER BY collected_at
     </select>
 
-    <!-- IO 블록 추이 -->
+    <!-- IO 블록 추이 조회 -->
     <select id="getIoBlockTrend" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.IoBlockTrendDto">
         SELECT
             collected_at AS collectedAt,
@@ -85,7 +91,7 @@
         ORDER BY collected_at
     </select>
 
-    <!-- 슬로우 쿼리 추이 -->
+    <!-- 슬로우 쿼리 추이 조회 -->
     <select id="getSlowQueryTrend" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.SlowQueryTrendDto">
         SELECT
             collected_at AS collectedAt,
@@ -97,38 +103,31 @@
         ORDER BY collected_at
     </select>
 
-    <!-- 🆕 요약 데이터 조회 (최근 5분 집계) - QueryOverview 요약 카드용 -->
-    <!-- ✅ TPS = DML 쿼리만, QPS = 전체 쿼리 -->
+    <!-- 요약 데이터 조회 (최근 5분 집계) -->
+    <!-- QueryOverview 요약 카드용 -->
+    <!-- TPS = DML 쿼리만, QPS = 전체 쿼리 -->
     <select id="findRecentSummary" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QuerySummaryDto">
         SELECT
             instance_id AS instanceId,
             database_id AS databaseId,
 
-            -- 기존 필드 (agg5m 호환)
             CAST(COALESCE(SUM(total_queries), 0) AS INTEGER) AS totalQueries,
             CAST(AVG(avg_execution_time_ms) AS NUMERIC(10,2)) AS avgExecutionTimeMs,
             CAST(COALESCE(SUM(slow_query_count), 0) AS INTEGER) AS slowQueryCount,
 
-            -- ✅ TPS 계산 수정: DML 쿼리만 (INSERT + UPDATE + DELETE) / 300초
             CAST(COALESCE(SUM(insert_queries + update_queries + delete_queries), 0) / 300.0 AS INTEGER) AS currentTps,
-
-            -- ✅ QPS 계산: 전체 쿼리 / 300초
             CAST(COALESCE(SUM(total_queries), 0) / 300.0 AS INTEGER) AS currentQps,
-
             CAST(COALESCE(SUM(total_queries), 0) AS INTEGER) AS activeSessions,
 
-            -- 쿼리 타입별 합계
             CAST(COALESCE(SUM(select_queries), 0) AS INTEGER) AS selectCount,
             CAST(COALESCE(SUM(insert_queries), 0) AS INTEGER) AS insertCount,
             CAST(COALESCE(SUM(update_queries), 0) AS INTEGER) AS updateCount,
             CAST(COALESCE(SUM(delete_queries), 0) AS INTEGER) AS deleteCount,
 
-            -- 🆕 리소스 사용률
             AVG(current_cpu_usage_percent) AS currentCpuUsagePercent,
             AVG(current_memory_usage_percent) AS currentMemoryUsagePercent,
             AVG(current_disk_io_usage_percent) AS currentDiskIoUsagePercent,
 
-            -- 시간 정보
             MAX(created_at) AS createdAt,
             '최근 5분 기준' AS timeRange
 
@@ -139,7 +138,8 @@
         GROUP BY instance_id, database_id
     </select>
 
-    <!-- 🆕 트렌드 데이터 조회 (최근 N시간) - QueryOverview TPS/QPS 차트용 -->
+    <!-- 트렌드 데이터 조회 (최근 N시간) -->
+    <!-- QueryOverview TPS/QPS 차트용 -->
     <select id="findTrendData" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QueryAgg1mDto">
         SELECT
             instance_id AS instanceId,
@@ -165,7 +165,8 @@
         ORDER BY collected_at ASC
     </select>
 
-    <!-- 🆕 Top Query 조회 (리소스별) -->
+    <!-- Top Query 조회 (리소스별) -->
+    <!-- CPU, 메모리, I/O, 실행시간 기준 상위 쿼리 -->
     <select id="findTopQueries" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QueryAgg1mDto">
         SELECT
         r.query_metric_id AS queryMetricId,
@@ -217,4 +218,79 @@
         LIMIT #{limit}
     </select>
 
+<!--    &lt;!&ndash; Top Query 조회 (리소스별) &ndash;&gt;-->
+<!--    &lt;!&ndash; CPU, 메모리, I/O, 실행시간 기준 상위 쿼리 &ndash;&gt;-->
+<!--    &lt;!&ndash; GROUP BY로 같은 쿼리 묶음 &ndash;&gt;-->
+<!--    <select id="findTopQueries" parameterType="map" resultType="com.dajanggan.domain.query.dto.agg1m.QueryAgg1mDto">-->
+<!--        SELECT-->
+<!--        MIN(r.query_metric_id) AS queryMetricId,-->
+<!--        r.instance_id AS instanceId,-->
+<!--        r.database_id AS databaseId,-->
+<!--        MAX(r.collected_at) AS collectedAt,-->
+
+<!--        r.query_text AS queryText,-->
+<!--        r.short_query AS shortQuery,-->
+<!--        r.query_type AS queryType,-->
+<!--        r.query_hash AS queryHash,-->
+
+<!--        COUNT(*) AS executionCount,-->
+<!--        AVG(r.execution_time_ms) AS avgExecutionTimeMs,-->
+<!--        MAX(r.execution_time_ms) AS maxExecutionTimeMs,-->
+<!--        MIN(r.execution_time_ms) AS minExecutionTimeMs,-->
+
+<!--        AVG(r.planning_time_ms) AS avgPlanningTimeMs,-->
+<!--        AVG(r.io_blocks) AS avgIoBlocks,-->
+<!--        SUM(r.io_blocks) AS totalIoBlocks,-->
+<!--        AVG(r.cpu_usage_percent) AS avgCpuUsagePercent,-->
+<!--        AVG(r.memory_usage_mb) AS avgMemoryUsageMb,-->
+
+<!--        MIN(r.collected_at) AS firstSeenAt,-->
+<!--        MAX(r.collected_at) AS lastSeenAt,-->
+<!--        MAX(r.created_at) AS createdAt-->
+
+<!--        FROM query_metrics_raw r-->
+<!--        WHERE r.instance_id = #{instanceId}-->
+<!--        AND r.database_id = #{databaseId}-->
+<!--        AND r.collected_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour'-->
+
+<!--        <choose>-->
+<!--            <when test="orderBy == 'cpu'">-->
+<!--                AND r.cpu_usage_percent IS NOT NULL-->
+<!--            </when>-->
+<!--            <when test="orderBy == 'memory'">-->
+<!--                AND r.memory_usage_mb IS NOT NULL-->
+<!--            </when>-->
+<!--            <when test="orderBy == 'io'">-->
+<!--                AND r.io_blocks IS NOT NULL-->
+<!--            </when>-->
+<!--            <when test="orderBy == 'execution_time'">-->
+<!--                AND r.execution_time_ms IS NOT NULL-->
+<!--            </when>-->
+<!--            <otherwise>-->
+<!--                AND r.cpu_usage_percent IS NOT NULL-->
+<!--            </otherwise>-->
+<!--        </choose>-->
+
+<!--        GROUP BY r.instance_id, r.database_id, r.query_text, r.short_query, r.query_type, r.query_hash-->
+
+<!--        <choose>-->
+<!--            <when test="orderBy == 'cpu'">-->
+<!--                ORDER BY avgCpuUsagePercent DESC-->
+<!--            </when>-->
+<!--            <when test="orderBy == 'memory'">-->
+<!--                ORDER BY avgMemoryUsageMb DESC-->
+<!--            </when>-->
+<!--            <when test="orderBy == 'io'">-->
+<!--                ORDER BY totalIoBlocks DESC-->
+<!--            </when>-->
+<!--            <when test="orderBy == 'execution_time'">-->
+<!--                ORDER BY avgExecutionTimeMs DESC-->
+<!--            </when>-->
+<!--            <otherwise>-->
+<!--                ORDER BY avgCpuUsagePercent DESC-->
+<!--            </otherwise>-->
+<!--        </choose>-->
+
+<!--        LIMIT #{limit}-->
+<!--    </select>-->
 </mapper>

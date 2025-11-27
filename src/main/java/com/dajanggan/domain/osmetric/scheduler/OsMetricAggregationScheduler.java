@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.scheduler;
 
 import com.dajanggan.domain.osmetric.domain.OsMetricAgg;
@@ -38,6 +39,7 @@ public class OsMetricAggregationScheduler {
     @PostConstruct
     public void init() {
         log.info("========== OsMetricAggregationScheduler 초기화 완료 ==========");
+        log.info("스케줄러 등록 확인: @Scheduled 메서드가 1분마다 실행됩니다.");
     }
     
     /**
@@ -48,12 +50,17 @@ public class OsMetricAggregationScheduler {
         log.info("========== OS 메트릭 집계 시작 ==========");
         
         try {
-            LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
-            LocalDateTime startTime = now.minusMinutes(1).truncatedTo(ChronoUnit.MINUTES);
-            LocalDateTime endTime = now.truncatedTo(ChronoUnit.MINUTES);
+            OffsetDateTime now = OffsetDateTime.now(java.time.ZoneOffset.UTC);
+            OffsetDateTime startTime = now.minusMinutes(1).truncatedTo(ChronoUnit.MINUTES);
+            OffsetDateTime endTime = now.truncatedTo(ChronoUnit.MINUTES);
             
             List<Long> instanceIds = getActiveInstanceIds();
             log.info("처리 대상 인스턴스: {} 개", instanceIds.size());
+            
+            if (instanceIds.isEmpty()) {
+                log.warn("활성 인스턴스가 없습니다. DB의 instance 테이블에 is_active=true인 인스턴스가 있는지 확인하세요.");
+                return;
+            }
             
             int successCount = 0;
             int failCount = 0;
@@ -79,8 +86,8 @@ public class OsMetricAggregationScheduler {
      * 특정 인스턴스의 메트릭 처리
      */
     private void processInstanceMetrics(Long instanceId, 
-                                         LocalDateTime startTime, 
-                                         LocalDateTime endTime) {
+                                         OffsetDateTime startTime, 
+                                         OffsetDateTime endTime) {
         List<RedisOsMetricData> allMetrics = redisService.getRecentMetrics(
                 instanceId, startTime, endTime);
         
@@ -106,12 +113,16 @@ public class OsMetricAggregationScheduler {
             // Raw 데이터 저장 (첫 번째 데이터)
             if (!typeMetrics.isEmpty()) {
                 RedisOsMetricData firstMetric = typeMetrics.get(0);
+                // details에 metricType 추가 (테이블에 metric_type 컬럼이 없으므로)
+                Map<String, Object> detailsWithType = new HashMap<>(firstMetric.getDetails());
+                detailsWithType.put("metricType", metricType);
+                
                 OsMetricRaw raw = OsMetricRaw.builder()
                         .instanceId(instanceId)
                         .collectedAt(OffsetDateTime.of(firstMetric.getCollectedAt(), 
                                 OffsetDateTime.now().getOffset()))
                         .metricType(metricType)
-                        .details(firstMetric.getDetails())  // details 전달
+                        .details(detailsWithType)  // metricType이 포함된 details 전달
                         .build();
                 rawList.add(raw);
             }
@@ -126,9 +137,11 @@ public class OsMetricAggregationScheduler {
         }
         
         // DB 저장
+        // os_metric_raw 테이블에 details 컬럼이 없으므로 Raw 데이터 저장 건너뛰기
+        // Raw 데이터는 Redis에만 저장하고, 집계 데이터만 DB에 저장
+        // Raw 데이터는 Agent에서 Redis에 저장되므로, 여기서는 집계 데이터만 저장
         if (!rawList.isEmpty()) {
-            osMetricMapper.insertRawBatch(rawList);
-            log.debug("Raw 데이터 일괄 저장 완료: instanceId={}, count={}", instanceId, rawList.size());
+            log.debug("Raw 데이터는 Redis에만 저장됨 (DB 저장 건너뜀): instanceId={}, count={}", instanceId, rawList.size());
         }
         
         if (!aggList.isEmpty()) {

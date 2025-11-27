@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.repository;
 
 import com.dajanggan.domain.system.memory.domain.MemoryAgg;
@@ -22,9 +23,12 @@ public interface MemoryMapper {
     List<Long> selectActiveInstanceIds();
 
     /**
-     * 이전 Raw 데이터 조회 (relname + database_name별로 가장 최근)
+     * 이전 Raw 데이터 조회 (relname + database_name별로, 특정 시간 이전의 최신 데이터)
      */
-    List<MemoryRaw> selectPreviousRawByRelname(@Param("instanceId") Long instanceId);
+    List<MemoryRaw> selectPreviousRawByRelname(
+            @Param("instanceId") Long instanceId,
+            @Param("currentCollectedAt") OffsetDateTime currentCollectedAt
+    );
 
     /**
      * Memory Raw 데이터 삽입
@@ -51,11 +55,6 @@ public interface MemoryMapper {
      */
     void insertAgg5m(com.dajanggan.domain.system.memory.domain.MemoryAgg5m memoryAgg5m);
 
-    /**
-     * Memory Agg 30분 데이터 삽입
-     */
-    void insertAgg30m(com.dajanggan.domain.system.memory.domain.MemoryAgg30m memoryAgg30m);
-
     // ========================================
     // 대시보드 위젯 조회 (5개)
     // ========================================
@@ -71,17 +70,20 @@ public interface MemoryMapper {
     /**
      * Shared Buffer Hit Ratio Widget
      */
-    Map<String, Object> selectSharedBufferHitWidget(@Param("instanceId") Long instanceId);
-
-    /**
-     * Buffer Usage Widget
-     */
-    Map<String, Object> selectBufferUsageWidget(@Param("instanceId") Long instanceId);
+    Map<String, Object> selectSharedBufferHitWidget(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
+    );
 
     /**
      * Temp File Usage Widget
      */
-    Map<String, Object> selectTempFileUsageWidget(@Param("instanceId") Long instanceId);
+    Map<String, Object> selectTempFileUsageWidget(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime
+    );
 
     // ========================================
     // 1시간 차트 조회 (memory_agg)
@@ -104,25 +106,6 @@ public interface MemoryMapper {
      * Buffer Cache Hit Ratio Chart 1h (LIMIT)
      */
     List<Map<String, Object>> selectBufferCacheHitChart1hWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
-    );
-
-    /**
-     * Buffer Utilization Chart 1h
-     */
-    List<Map<String, Object>> selectBufferUtilizationChart1h(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Buffer Utilization Chart 1h (LIMIT)
-     */
-    List<Map<String, Object>> selectBufferUtilizationChart1hWithLimit(
             @Param("instanceId") Long instanceId,
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime,
@@ -184,25 +167,6 @@ public interface MemoryMapper {
      */
 
     /**
-     * Buffer Reuse Score Chart 24h
-     */
-    List<Map<String, Object>> selectBufferReuseScoreChart24h(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime
-    );
-
-    /**
-     * Buffer Reuse Score Chart 24h (LIMIT)
-     */
-    List<Map<String, Object>> selectBufferReuseScoreChart24hWithLimit(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("limit") Integer limit
-    );
-
-    /**
      * Top Tables by Buffer Chart 24h
      */
     List<Map<String, Object>> selectTopTablesByBufferChart24h(
@@ -216,16 +180,6 @@ public interface MemoryMapper {
     // ========================================
 
     /**
-     * 섹션 1: 높은 버퍼 사용 테이블 Top 20
-     */
-    List<Map<String, Object>> selectHighBufferUsageTop20(
-            @Param("instanceId") Long instanceId,
-            @Param("startTime") OffsetDateTime startTime,
-            @Param("endTime") OffsetDateTime endTime,
-            @Param("statusList") List<String> statusList
-    );
-
-    /**
      * 섹션 2: 낮은 캐시 히트율 테이블 Top 20
      */
     List<Map<String, Object>> selectLowCacheHitTop20(
@@ -233,5 +187,29 @@ public interface MemoryMapper {
             @Param("startTime") OffsetDateTime startTime,
             @Param("endTime") OffsetDateTime endTime,
             @Param("statusList") List<String> statusList
+    );
+
+    /**
+     * 섹션 2: 낮은 캐시 히트율 테이블 (페이징)
+     */
+    List<Map<String, Object>> selectLowCacheHitWithPaging(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList,
+            @Param("typeList") List<String> typeList,
+            @Param("offset") Integer offset,
+            @Param("limit") Integer limit
+    );
+
+    /**
+     * 섹션 2 총 개수 조회
+     */
+    Long countLowCacheHitList(
+            @Param("instanceId") Long instanceId,
+            @Param("startTime") OffsetDateTime startTime,
+            @Param("endTime") OffsetDateTime endTime,
+            @Param("statusList") List<String> statusList,
+            @Param("typeList") List<String> typeList
     );
 }

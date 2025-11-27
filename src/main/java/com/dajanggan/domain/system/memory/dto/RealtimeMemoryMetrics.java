@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.dto;
 
 import lombok.AllArgsConstructor;
@@ -16,7 +17,7 @@ public class RealtimeMemoryMetrics {
     private MemoryDashboardResponse.OsMemoryUsageWidget osMemoryUsage;
     private MemoryDashboardResponse.SwapUsageWidget swapUsage;
     private MemoryDashboardResponse.SharedBufferHitWidget sharedBufferHit;
-    private MemoryDashboardResponse.BufferUsageWidget bufferUsage;
     private MemoryDashboardResponse.TempFileUsageWidget tempFileUsage;
 }
+
 

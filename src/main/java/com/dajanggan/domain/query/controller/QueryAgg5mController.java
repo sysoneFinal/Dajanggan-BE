@@ -44,7 +44,7 @@ public class QueryAgg5mController {
 
     /**
      * Top 슬로우 쿼리 조회 (Top 5)
-     * GET /api/query-agg-5m/top-slow?instanceId={instanceId}&databaseId={databaseId}
+     * 가장 느린 쿼리 Top 5를 조회
      */
     @GetMapping("/top-slow")
     @Operation(summary = "Top 슬로우 쿼리 조회", description = "가장 느린 쿼리 Top 5를 조회합니다")
@@ -69,11 +69,10 @@ public class QueryAgg5mController {
             response.put("data", data);
             response.put("message", "조회 성공");
 
-            log.info("✅ Top 슬로우 쿼리 조회 완료");
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ Top 슬로우 쿼리 조회 중 오류 발생", e);
+            log.error("Top 슬로우 쿼리 조회 실패", e);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
@@ -85,7 +84,7 @@ public class QueryAgg5mController {
 
     /**
      * 슬로우 쿼리 리스트 조회
-     * GET /api/query-agg-5m/slow-list?instanceId={instanceId}&databaseId={databaseId}&limit={limit}
+     * 슬로우 쿼리 목록을 조회
      */
     @GetMapping("/slow-list")
     @Operation(summary = "슬로우 쿼리 리스트 조회", description = "슬로우 쿼리 목록을 조회합니다")
@@ -114,11 +113,10 @@ public class QueryAgg5mController {
             response.put("count", data.size());
             response.put("message", "조회 성공");
 
-            log.info("✅ 슬로우 쿼리 리스트 조회 완료 - {}개", data.size());
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ 슬로우 쿼리 리스트 조회 중 오류 발생", e);
+            log.error("슬로우 쿼리 리스트 조회 실패", e);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);

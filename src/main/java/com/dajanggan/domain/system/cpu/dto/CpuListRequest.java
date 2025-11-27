@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.dto;
 
 import lombok.AllArgsConstructor;
@@ -15,5 +16,8 @@ import lombok.NoArgsConstructor;
 public class CpuListRequest {
     private String timeRange;
     private String status;
+    private Integer page;  // 0부터 시작
+    private Integer size;  // 페이지당 항목 수 (기본값: 20)
 }
+
 

@@ -7,9 +7,6 @@ import org.apache.ibatis.annotations.Param;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * Vacuum 1분 집계 Repository
- */
 @Mapper
 public interface VacuumAgg1mMapper {
 

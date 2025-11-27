@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.checkpoint.dto;
 
 import lombok.AllArgsConstructor;
@@ -17,5 +18,9 @@ import java.util.List;
 public class CheckpointListResponse {
     private List<CheckpointListItem> data;
     private Long total;
+    private Integer page;
+    private Integer size;
+    private Integer totalPages;
 }
+
 

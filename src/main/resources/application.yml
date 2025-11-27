@@ -15,16 +15,16 @@ spring:
   # Redis 설정
   data:
     redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
-      password: ${REDIS_PASSWORD}
+      host: localhost
+      port: 6379
+      password:
 
 
 
 mybatis:
 
   # crypto 설정
-  type-handlers-package: com.dajanggan.global.crypto.mybatis
+  type-handlers-package: com.dajanggan.global.crypto.mybatis, com.dajanggan.global.config.mybatis
 
   # Mapper XML ??
   mapper-locations: classpath:mapper/**/*.xml
@@ -50,12 +50,11 @@ postgres:
 
 logging:
   level:
-    com.dajanggan: DEBUG
-    com.dajanggan.domain.engine: DEBUG
-    com.dajanggan.domain.query: DEBUG  # 추가: 쿼리 도메인 로깅
-    org.apache.ibatis: DEBUG             # MyBatis ?? ??
-    com.zaxxer.hikari: INFO              # HikariCP ??
-
+    root: INFO                           # 기본은 INFO
+    com.dajanggan: INFO                  # 전체 INFO
+    com.dajanggan.domain.metric.collector: DEBUG  # 수집기만 DEBUG
+    org.apache.ibatis: WARN
+    com.zaxxer.hikari: WARN
 server:
   port: 8080
 
@@ -67,7 +66,6 @@ app:
     salt-len: 16
     iv-len: 12
 
-slack:
-  webhook:
-    url: ${SLACK_WEBHOOK_URL}
-  enabled: false
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini

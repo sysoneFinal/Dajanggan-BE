@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.dto;
 
 import lombok.AllArgsConstructor;
@@ -15,26 +16,23 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MemoryDashboardResponse {
-    // 실시간 위젯 (5개)
+    // 실시간 위젯 (4개)
     private OsMemoryUsageWidget osMemoryUsage;
     private SwapUsageWidget swapUsage;
     private SharedBufferHitWidget sharedBufferHit;
-    private BufferUsageWidget bufferUsage;
     private TempFileUsageWidget tempFileUsage;
     
-    // 1시간 차트 (3개)
+    // 1시간 차트 (2개)
     private OsMemoryUsageChart1h osMemoryChart1h;
     private BufferCacheHitChart1h bufferCacheChart1h;
-    private BufferUtilizationChart1h bufferUtilChart1h;
     
     // 6시간 차트 (2개)
     private TempFileChart6h tempFileChart6h;
     private IoWaitTimeChart6h ioWaitTimeChart6h;
     
-    // 24시간 차트 (4개)
+    // 24시간 차트 (3개)
     private OsMemoryTrendChart24h osMemoryTrend24h;
     private SwapUsageTrendChart24h swapTrend24h;
-    private BufferReuseScoreChart24h bufferReuseChart24h;
     private TopTablesByBufferChart24h topTablesChart24h;
 
     // ========================================
@@ -83,19 +81,6 @@ public class MemoryDashboardResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class BufferUsageWidget {
-        private Double bufferUsagePercent;
-        private Double dirtyRatio;
-        private Double pinnedRatio;
-        private String status;
-        private Long usedBuffers;
-        private Long totalBuffers;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class TempFileUsageWidget {
         private Double tempFileRate;
         private String status;
@@ -128,16 +113,6 @@ public class MemoryDashboardResponse {
         private List<Double> hitRatio;
         private Double warningThreshold;
         private Double normalThreshold;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class BufferUtilizationChart1h {
-        private List<String> categories;
-        private List<Long> dirtyBuffers;
-        private List<Long> pinnedBuffers;
     }
 
     @Data
@@ -186,20 +161,9 @@ public class MemoryDashboardResponse {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class BufferReuseScoreChart24h {
-        private List<String> categories;
-        private List<Double> reuseScore;
-        private List<Double> avgUsagecount;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class TopTablesByBufferChart24h {
         private List<String> tableNames;
         private List<Long> bufferCounts;
         private List<Double> usagePercent;
     }
 }
-

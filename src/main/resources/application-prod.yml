@@ -7,12 +7,12 @@ spring:
     username: ${GOOGLE_DB_USERNAME}
     password: ${GOOGLE_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
-  batch:
-    jdbc:
-      initialize-schema: always
-      platform: postgres
-      table-prefix: BATCH_          # Postgres DDL과 일치시키기
-      schema: public                # 테이블을 만들 스키마 지정 (기본 public)
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
 
 server:
   port: 8080
@@ -31,15 +31,20 @@ mybatis:
 
 logging:
   level:
-#    com.dajanggan: DEBUG
-#    com.dajanggan.domain.engine: DEBUG
-#    org.apache.ibatis: DEBUG
-#    com.zaxxer.hikari: INFO
-    org.springframework.web: DEBUG
+    root: INFO                           # 기본은 INFO
+    com.dajanggan: INFO                  # 전체 INFO
+    com.dajanggan.domain.metric.collector: DEBUG  # 수집기만 DEBUG
+    org.apache.ibatis: WARN
+    com.zaxxer.hikari: WARN
 
-    com.zaxxer.hikari: DEBUG     # HikariCP 연결 로그
-    org.apache.ibatis: DEBUG     # MyBatis 실행 로그
-    org.mybatis: DEBUG
+app:
+  crypto:
+    active-key-id: 1
+    keys-v1: ${APP_CRYPTO_KEYS_V1}
+    pbkdf2-iter: 200000
+    salt-len: 16
+    iv-len: 12
 
-    com.dajanggan: DEBUG         # 네 프로젝트 전체
-    com.dajanggan.domain.engine: DEBUG
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4o-mini

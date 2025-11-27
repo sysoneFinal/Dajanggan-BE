@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.checkpoint.dto;
 
 import lombok.AllArgsConstructor;
@@ -28,4 +29,13 @@ public class CheckpointListItem {
     private Double avgBuffersPerSec;
     private String status;
 }
+
+
+
+
+
+
+
+
+
 

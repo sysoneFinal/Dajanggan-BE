@@ -7,9 +7,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
 
-/**
- * Vacuum 5분 집계 DTO
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -48,7 +45,7 @@ public class VacuumAgg5mDto {
     private Double avgCostDelayMs;
 
     // 대기 시간 정보 (추가됨!)
-    private Double avgBlockedSeconds;        // 평균 블로킹 대기 시간
+    private Double avgBlockedSeconds;
 
 
 
@@ -64,6 +61,9 @@ public class VacuumAgg5mDto {
     private Double maxBloatRatio;
     private Integer criticalBloatTables;
     private Long totalTableSizeBytes;
+
+    // Index Bloat 통계
+    private Long totalIndexBloatBytes;
 
     // Top 5 Bloat 테이블
     private String topBloatTable1;

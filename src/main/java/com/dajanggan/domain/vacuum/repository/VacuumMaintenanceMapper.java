@@ -10,12 +10,6 @@ import org.springframework.stereotype.Repository;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * Vacuum Maintenance 통합 Repository
- * - 1분/5분 집계 조회
- * - 현재 세션 조회
- * - KPI 및 시계열 데이터 제공
- */
 @Mapper
 @Repository
 public interface VacuumMaintenanceMapper {

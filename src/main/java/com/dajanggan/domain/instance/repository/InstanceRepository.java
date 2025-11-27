@@ -24,5 +24,38 @@ public interface InstanceRepository {
     List<Instance> findAllWithSecrets(@Param("instanceIds") List<Long> instanceIds);
     
     int updateInstance(Instance instance);
+    
+    /**
+     * 인스턴스 이름으로 Slack 설정 업데이트
+     */
+    int updateSlackSettings(
+            @Param("instanceName") String instanceName,
+            @Param("enabled") Boolean enabled,
+            @Param("webhookUrl") String webhookUrl,
+            @Param("defaultChannel") String defaultChannel,
+            @Param("mention") String mention
+    );
+
+    /**
+     * 인스턴스 ID로 Slack 설정 업데이트
+     */
+    int updateSlackSettingsById(
+            @Param("instanceId") Long instanceId,
+            @Param("enabled") Boolean enabled,
+            @Param("webhookUrl") String webhookUrl,
+            @Param("defaultChannel") String defaultChannel,
+            @Param("mention") String mention
+    );
+
+    /**
+     * 인스턴스 ID로 Slack 설정 삭제/초기화
+     */
+    int deleteSlackSettingsById(@Param("instanceId") Long instanceId);
+
+    /**
+     * 인스턴스 이름으로 Slack 설정 삭제/초기화
+     */
+    int deleteSlackSettingsByName(@Param("instanceName") String instanceName);
+    
     void deleteById(@Param("id") Long id);
 }

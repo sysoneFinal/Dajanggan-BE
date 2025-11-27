@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -11,13 +12,6 @@ import java.util.Map;
 
 /**
  * Agent로부터 받는 OS 메트릭 데이터 요청 DTO
- * Agent 전송 형식:
- * {
- *   "instanceName": "gcp-wiki-dong-vm",
- *   "metricType": "CPU",
- *   "timestamp": "2024-11-15T10:30:45",
- *   "details": { ... }
- * }
  */
 @Getter
 @Builder

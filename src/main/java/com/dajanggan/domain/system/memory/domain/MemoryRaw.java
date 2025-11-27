@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.domain;
 
 import lombok.AllArgsConstructor;
@@ -8,9 +9,9 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 
 /**
- * Memory Raw 데이터 엔티티 (pg_buffercache + pg_statio 기반)
+ * Memory Raw 데이터 엔티티 (pg_statio 기반)
  * 테이블: memory_raw
- * PostgreSQL의 공유 버퍼 캐시 상태 및 I/O 통계
+ * PostgreSQL의 I/O 통계 및 메모리 관련 메트릭
  */
 @Data
 @Builder
@@ -26,7 +27,7 @@ public class MemoryRaw {
     private String relname;                 // 테이블/인덱스명 (NULL이면 전체)
     private String relkind;                 // 객체 종류 (r=table, i=index)
     
-    // pg_buffercache 통계
+    // 버퍼 통계 (기본값 0, pg_buffercache 미사용)
     private Long buffers;                   // 버퍼 수
     private Long dirtyBuffers;              // Dirty 버퍼 수
     private Long pinnedBuffers;             // 고정된 버퍼 수
@@ -37,7 +38,7 @@ public class MemoryRaw {
     private Long idxBlksRead;               // 인덱스 블록 읽기
     private Long idxBlksHit;                // 인덱스 블록 히트
     
-    // pg_buffercache usagecount
+    // usagecount 통계 (기본값 0, pg_buffercache 미사용)
     private Double avgUsagecount;           // usagecount 평균 (버퍼 재사용 빈도)
     private Long maxUsagecount;             // usagecount 최대값
     private Long minUsagecount;             // usagecount 최소값
