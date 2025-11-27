@@ -11,6 +11,22 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
+
+/**
+ * VacuumHistory 서비스
+ *
+ * 주요 책임:
+ * - Vacuum 히스토리 조회
+ * - 히스토리 데이터 변환
+ * - 상태별 필터링
+ *
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-10  김민서    1. 최초작성
+ *
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -18,8 +34,15 @@ import java.util.stream.Collectors;
 public class VacuumHistoryService {
 
     private final VacuumHistoryMapper vacuumHistoryMapper;
-    private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    private static final DateTimeFormatter DATETIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
+    /**
+     * Vacuum 히스토리 조회
+     *
+     * @param request 조회 요청 (databaseId, hours, status)
+     * @return 히스토리 목록
+     */
     public List<VacuumHistoryDto.Response> getVacuumHistory(VacuumHistoryDto.Request request) {
         int hours = request.getHours() != null ? request.getHours() : 168;
         OffsetDateTime endTime = OffsetDateTime.now();
@@ -37,6 +60,10 @@ public class VacuumHistoryService {
                 .collect(Collectors.toList());
     }
 
+    // ========================================================================
+    // Private Helper 메서드
+    // ========================================================================
+
     private VacuumHistoryDto.Response convertToResponse(VacuumHistoryDto.Entity entity) {
         VacuumHistoryDto.Response response = VacuumHistoryDto.Response.builder()
                 .table(entity.getTableName())
@@ -47,12 +74,10 @@ public class VacuumHistoryService {
                 .bloatRatio(formatBloatRatio(entity.getBloatRatioBefore()))
                 .status(entity.getStatus())
                 .build();
-        
-        // 디버깅 로그 추가
-        log.debug("History 변환: table={}, deadTuplesBefore={}, deadTuples={}, durationSeconds={}, bloatRatioBefore={}, bloatRatio={}",
-                entity.getTableName(), entity.getDeadTuplesBefore(), response.getDeadTuples(),
-                response.getDurationSeconds(), entity.getBloatRatioBefore(), response.getBloatRatio());
-        
+
+        log.debug("History 변환: table={}, deadTuples={}, bloatRatio={}",
+                entity.getTableName(), response.getDeadTuples(), response.getBloatRatio());
+
         return response;
     }
 

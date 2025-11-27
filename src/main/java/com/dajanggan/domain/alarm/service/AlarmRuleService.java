@@ -15,6 +15,22 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * AlarmRule 서비스
+ *
+ * 주요 책임:
+ * - 알람 규칙 CRUD
+ * - 규칙 활성화/비활성화
+ * - 레벨 설정 관리
+ * - 중복 규칙 검증
+ *
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-13  김민서    1. 최초작성
+ *
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -26,7 +42,7 @@ public class AlarmRuleService {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     /**
-     * 알림 규칙 목록 조회
+     * 알람 규칙 목록 조회
      */
     public AlarmRuleDto.ListResponse getRuleList(
             Long instanceId, Long databaseId, String metricType, Boolean enabled
@@ -54,39 +70,15 @@ public class AlarmRuleService {
     }
 
     /**
-     * 알림 규칙 상세 조회
+     * 알람 규칙 상세 조회
      */
     public AlarmRuleDto.DetailResponse getRuleDetail(Long alarmRuleId) {
         AlarmRule rule = alarmRuleMapper.selectRuleDetail(alarmRuleId);
         if (rule == null) {
-            throw new IllegalArgumentException("알림 규칙을 찾을 수 없습니다: " + alarmRuleId);
+            throw new IllegalArgumentException("알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
         }
 
-        AlarmRuleDto.Levels levels = null;
-        if (rule.getLevels() != null) {
-            try {
-                levels = objectMapper.readValue(rule.getLevels(), AlarmRuleDto.Levels.class);
-            } catch (Exception e) {
-                log.error("levels JSON 파싱 실패", e);
-                // 파싱 실패시 기본값 (히스테리시스 + 쿨다운 포함)
-                AlarmRuleDto.ThresholdLevel defaultLevel = new AlarmRuleDto.ThresholdLevel(
-                        BigDecimal.valueOf(100000), 1, 2, 15,
-                        BigDecimal.valueOf(80000), 2, 60  // resolveThreshold, resolveDurationMin, cooldownMin
-                );
-                levels = new AlarmRuleDto.Levels(defaultLevel, defaultLevel, defaultLevel);
-            }
-        } else {
-            // levels가 null인 경우 기본값 (히스테리시스 + 쿨다운 포함)
-            AlarmRuleDto.ThresholdLevel defaultLevel = new AlarmRuleDto.ThresholdLevel(
-                    BigDecimal.valueOf(100000), 1, 2, 15,
-                    BigDecimal.valueOf(80000), 2, 60  // resolveThreshold, resolveDurationMin, cooldownMin
-            );
-            levels = new AlarmRuleDto.Levels(defaultLevel, defaultLevel, defaultLevel);
-        }
-
-        String updatedAt = rule.getUpdatedAt() != null
-                ? rule.getUpdatedAt().format(FORMATTER)
-                : "";
+        AlarmRuleDto.Levels levels = parseLevels(rule.getLevels());
 
         return AlarmRuleDto.DetailResponse.builder()
                 .alarmRuleId(rule.getAlarmRuleId())
@@ -97,17 +89,17 @@ public class AlarmRuleService {
                 .databaseName(rule.getDatabaseName() != null ? rule.getDatabaseName() : "Unknown")
                 .section(getSectionFromMetric(rule.getMetricType()))
                 .metricType(rule.getMetricType())
-                .aggregationType(rule.getAggregationType())
-                .updatedAt(updatedAt)
+                .updatedAt(rule.getUpdatedAt() != null ? rule.getUpdatedAt().format(FORMATTER) : "")
                 .levels(levels)
                 .build();
     }
+
     /**
-     * 알림 규칙 생성
+     * 알람 규칙 생성
      */
     @Transactional
     public Long createRule(AlarmRuleDto.CreateRequest request) {
-        // 중복 체크: 동일한 instanceId, databaseId, metricType 조합이 이미 존재하는지 확인
+        // 중복 체크
         int duplicateCount = alarmRuleMapper.countDuplicateRule(
                 request.getInstanceId(),
                 request.getDatabaseId(),
@@ -115,40 +107,16 @@ public class AlarmRuleService {
         );
 
         if (duplicateCount > 0) {
-            log.warn("중복 알림 규칙 생성 시도 - instanceId: {}, databaseId: {}, metricType: {}",
-                    request.getInstanceId(), request.getDatabaseId(), request.getMetricType());
-            throw new IllegalArgumentException("동일한 인스턴스, 데이터베이스, 지표를 가진 알림 규칙이 이미 존재합니다.");
+            throw new IllegalArgumentException("동일한 인스턴스, 데이터베이스, 지표를 가진 알람 규칙이 이미 존재합니다.");
         }
 
-        // levels를 JSON 문자열로 변환
-        String levelsJson = null;
-        if (request.getLevels() != null) {
-            try {
-                ObjectMapper objectMapper = new ObjectMapper();
-                levelsJson = objectMapper.writeValueAsString(request.getLevels());
-            } catch (Exception e) {
-                log.error("levels JSON 변환 실패", e);
-                throw new RuntimeException("levels JSON 변환 실패", e);
-            }
-        }
-
-        // 기본값 설정 (levels가 null인 경우)
-        // 히스테리시스: resolveThreshold는 발생 임계치의 80%, resolveDurationMin은 발생 지속 시간의 1.5배
-        // 쿨다운: critical은 15분, warning은 30분, notice는 60분
-        if (levelsJson == null) {
-            levelsJson = "{\"info\":{\"threshold\":100000,\"minDurationMin\":1,\"occurCount\":2,\"windowMin\":15,"
-                    + "\"resolveThreshold\":80000,\"resolveDurationMin\":2,\"cooldownMin\":60},"
-                    + "\"warn\":{\"threshold\":500000,\"minDurationMin\":5,\"occurCount\":2,\"windowMin\":15,"
-                    + "\"resolveThreshold\":400000,\"resolveDurationMin\":8,\"cooldownMin\":30},"
-                    + "\"critical\":{\"threshold\":1000000,\"minDurationMin\":10,\"occurCount\":1,\"windowMin\":10,"
-                    + "\"resolveThreshold\":800000,\"resolveDurationMin\":15,\"cooldownMin\":15}}";
-        }
+        // Levels JSON 변환
+        String levelsJson = convertLevelsToJson(request.getLevels());
 
         AlarmRule rule = AlarmRule.builder()
                 .instanceId(request.getInstanceId())
                 .databaseId(request.getDatabaseId())
                 .metricType(request.getMetricType())
-                .aggregationType(request.getAggregationType())
                 .enabled(request.getEnabled() != null ? request.getEnabled() : true)
                 .levels(levelsJson)
                 .createdAt(OffsetDateTime.now())
@@ -159,69 +127,92 @@ public class AlarmRuleService {
 
         return rule.getAlarmRuleId();
     }
+
     /**
-     * 알림 규칙 수정
+     * 알람 규칙 수정
      */
     @Transactional
     public void updateRule(AlarmRuleDto.UpdateRequest request) {
         AlarmRule existing = alarmRuleMapper.selectRuleDetail(request.getAlarmRuleId());
         if (existing == null) {
-            throw new IllegalArgumentException("알림 규칙을 찾을 수 없습니다: " + request.getAlarmRuleId());
+            throw new IllegalArgumentException("알람 규칙을 찾을 수 없습니다: " + request.getAlarmRuleId());
         }
 
-        // levels를 JSON 문자열로 변환
-        String levelsJson = null;
-        if (request.getLevels() != null) {
-            try {
-                levelsJson = objectMapper.writeValueAsString(request.getLevels());
-            } catch (Exception e) {
-                log.error("levels JSON 변환 실패", e);
-                throw new RuntimeException("levels JSON 변환 실패", e);
-            }
-        }
+        String levelsJson = request.getLevels() != null
+                ? convertLevelsToJson(request.getLevels())
+                : null;
 
-        // updateRuleLevels 호출 (updateRule이 아닌!)
         AlarmRule rule = AlarmRule.builder()
                 .alarmRuleId(request.getAlarmRuleId())
                 .enabled(request.getEnabled() != null ? request.getEnabled() : existing.getEnabled())
-                .aggregationType(request.getAggregationType() != null ? request.getAggregationType() : existing.getAggregationType())
-                .operator(request.getOperator() != null ? request.getOperator() : existing.getOperator())  // operator 업데이트 지원
+                .operator(request.getOperator() != null ? request.getOperator() : existing.getOperator())
                 .levels(levelsJson)
                 .build();
 
         int updated = alarmRuleMapper.updateRuleLevels(rule);
         if (updated == 0) {
-            throw new IllegalArgumentException("알림 규칙 수정에 실패했습니다: " + request.getAlarmRuleId());
+            throw new IllegalArgumentException("알람 규칙 수정에 실패했습니다: " + request.getAlarmRuleId());
         }
-
-        log.info("알림 규칙 수정 완료 - alarmRuleId: {}", request.getAlarmRuleId());
     }
 
     /**
-     * 알림 규칙 삭제
+     * 알람 규칙 삭제
      */
     @Transactional
     public void deleteRule(Long alarmRuleId) {
         int deleted = alarmRuleMapper.deleteRule(alarmRuleId);
         if (deleted == 0) {
-            throw new IllegalArgumentException("알림 규칙을 찾을 수 없습니다: " + alarmRuleId);
+            throw new IllegalArgumentException("알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
         }
     }
 
     /**
-     * 알림 규칙 활성화/비활성화
+     * 알람 규칙 활성화/비활성화
      */
     @Transactional
     public void toggleRuleEnabled(Long alarmRuleId, Boolean enabled) {
         int updated = alarmRuleMapper.updateRuleEnabled(alarmRuleId, enabled);
         if (updated == 0) {
-            throw new IllegalArgumentException("알림 규칙을 찾을 수 없습니다: " + alarmRuleId);
+            throw new IllegalArgumentException("알람 규칙을 찾을 수 없습니다: " + alarmRuleId);
         }
     }
 
-    /**
-     * Metric으로부터 Section 추출
-     */
+    // ========== Private Helper 메서드 ==========
+
+    private AlarmRuleDto.Levels parseLevels(String levelsJson) {
+        if (levelsJson == null) {
+            return getDefaultLevels();
+        }
+
+        try {
+            return objectMapper.readValue(levelsJson, AlarmRuleDto.Levels.class);
+        } catch (Exception e) {
+            log.error("levels JSON 파싱 실패", e);
+            return getDefaultLevels();
+        }
+    }
+
+    private String convertLevelsToJson(AlarmRuleDto.Levels levels) {
+        if (levels == null) {
+            return null;
+        }
+
+        try {
+            return objectMapper.writeValueAsString(levels);
+        } catch (Exception e) {
+            log.error("levels JSON 변환 실패", e);
+            throw new RuntimeException("levels JSON 변환 실패", e);
+        }
+    }
+
+    private AlarmRuleDto.Levels getDefaultLevels() {
+        AlarmRuleDto.ThresholdLevel defaultLevel = new AlarmRuleDto.ThresholdLevel(
+                BigDecimal.valueOf(100000), 1, 2, 15,
+                BigDecimal.valueOf(80000), 2, 60
+        );
+        return new AlarmRuleDto.Levels(defaultLevel, defaultLevel, defaultLevel);
+    }
+
     private String getSectionFromMetric(String metricType) {
         if (metricType == null) return "session";
 
