@@ -26,7 +26,7 @@ public class CommonMetricsCollector {
     private final VacuumMetricsCollector vacuumMetricsCollector;
 
     /** 1분마다 전체 활성화된 데이터베이스의 메트릭 수집 */
-    @Scheduled(fixedRate = 60000)  // 60,000ms = 1분
+    @Scheduled(cron = "0 * * * * *")
     public void collectAllDatabases() {
         long startTime = System.currentTimeMillis();
         OffsetDateTime collectedAt = OffsetDateTime.now();
