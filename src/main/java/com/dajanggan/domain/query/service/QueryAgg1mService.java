@@ -16,7 +16,7 @@ import java.util.Map;
  * - TPS 계산: DML 쿼리만 (INSERT + UPDATE + DELETE)
  * - QPS 계산: 전체 쿼리
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Slf4j
 @Service

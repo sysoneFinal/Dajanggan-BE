@@ -12,7 +12,7 @@ import java.util.Map;
  * - 슬로우 쿼리 분석 및 요약 통계 제공
  * - query_metrics_agg_5m 테이블 접근
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Mapper
 public interface QueryAgg5mRepository {

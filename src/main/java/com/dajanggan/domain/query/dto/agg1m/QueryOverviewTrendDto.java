@@ -13,7 +13,7 @@ import java.util.List;
  * - QueryOverview의 TPS/QPS 차트용
  * - 시간대별 TPS/QPS 추이 데이터 제공
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @Builder
