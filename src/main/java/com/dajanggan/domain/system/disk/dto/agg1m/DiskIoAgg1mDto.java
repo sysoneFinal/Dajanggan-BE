@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.dto.agg1m;
 
 import lombok.AllArgsConstructor;
@@ -20,6 +21,7 @@ public class DiskIoAgg1mDto {
     private String backendType;
     private String databaseName;
 }
+
 
 
 

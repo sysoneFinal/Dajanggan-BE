@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.repository;
 
 import com.dajanggan.domain.system.cpu.domain.CpuAgg;

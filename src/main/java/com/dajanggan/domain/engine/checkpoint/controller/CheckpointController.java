@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.checkpoint.controller;
 
 import com.dajanggan.domain.engine.checkpoint.dto.*;
@@ -19,8 +20,6 @@ public class CheckpointController {
 
     /**
      * Checkpoint 대시보드 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID (optional, 기본값은 설정된 기본 인스턴스)
-     * @return Checkpoint 대시보드 데이터
      */
     @GetMapping
     public ResponseEntity<CheckpointDashboardResponse> getCheckpointDashboard(
@@ -34,12 +33,6 @@ public class CheckpointController {
 
     /**
      * Checkpoint 리스트 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID (optional)
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d) - 기본값: 24h
-     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
-     * @param page 페이지 번호 (0부터 시작) - 기본값: 0
-     * @param size 페이지당 항목 수 - 기본값: 20
-     * @return Checkpoint 리스트 데이터
      */
     @GetMapping("/list")
     public ResponseEntity<CheckpointListResponse> getCheckpointList(

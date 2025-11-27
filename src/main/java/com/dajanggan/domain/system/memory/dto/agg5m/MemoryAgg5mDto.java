@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.dto.agg5m;
 
 import lombok.AllArgsConstructor;
@@ -40,6 +41,7 @@ public class MemoryAgg5mDto {
     private Double avgIoWaitTimeMs;
     private Long recordCount;
 }
+
 
 
 

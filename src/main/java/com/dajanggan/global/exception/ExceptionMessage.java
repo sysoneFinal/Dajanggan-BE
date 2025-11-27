@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.global.exception;
 
 import lombok.Getter;

@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.service;
 
 import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
@@ -24,13 +25,6 @@ import java.util.stream.Collectors;
 
 /**
  * Disk I/O 모니터링 서비스
- *
- * 데이터 소스:
- * 1. Redis (실시간 위젯) - OS 메트릭
- * 2. disk_io_agg_1m (1분) - PostgreSQL 메트릭
- * 3. disk_io_agg_5m (5분) - 6시간 차트
- * 4. disk_io_agg_30m (30분) - 24시간 차트
- * 5. os_metric_agg - OS 메트릭 집계
  */
 @Slf4j
 @Service

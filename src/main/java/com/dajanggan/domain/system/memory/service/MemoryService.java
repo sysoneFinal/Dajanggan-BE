@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.service;
 
 import com.dajanggan.domain.instance.domain.Instance;
@@ -26,12 +27,6 @@ import java.util.stream.Collectors;
 
 /**
  * Memory 모니터링 서비스
- *
- * 데이터 소스:
- * 1. Redis (실시간 위젯) - OS 메트릭
- * 2. memory_agg_1m (1분) - PostgreSQL 메트릭, 위젯, 1시간 차트
- * 3. memory_agg_5m (5분) - 6시간 차트
- * 4. memory_agg_30m (30분) - 24시간 차트
  */
 @Slf4j
 @Service

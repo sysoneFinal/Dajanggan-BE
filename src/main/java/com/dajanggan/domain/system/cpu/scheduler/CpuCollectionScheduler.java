@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.scheduler;
 
 import com.dajanggan.domain.common.util.MetricCollectionUtils;
@@ -21,10 +22,6 @@ import java.util.Map;
 
 /**
  * CPU 메트릭 수집 스케줄러 (pg_stat_activity 기반)
- * 1분마다 실행:
- * 1. pg_stat_activity에서 연결 및 활동 상태 데이터 수집
- * 2. Raw 데이터 저장
- * 3. Agg 데이터 저장 (Raw 데이터를 그대로 복사)
  */
 @Slf4j
 @Component

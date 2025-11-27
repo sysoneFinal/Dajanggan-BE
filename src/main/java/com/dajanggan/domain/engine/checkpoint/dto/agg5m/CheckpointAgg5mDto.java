@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.checkpoint.dto.agg5m;
 
 import lombok.AllArgsConstructor;
@@ -29,6 +30,7 @@ public class CheckpointAgg5mDto {
     private String status;
     private Long recordCount;
 }
+
 
 
 
