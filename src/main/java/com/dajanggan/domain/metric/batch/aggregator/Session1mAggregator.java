@@ -1,3 +1,4 @@
+/** 작성자 : 서샘이 */
 package com.dajanggan.domain.metric.batch.aggregator;
 
 import com.dajanggan.domain.session.dto.agg1m.SessionAgg1mDto;

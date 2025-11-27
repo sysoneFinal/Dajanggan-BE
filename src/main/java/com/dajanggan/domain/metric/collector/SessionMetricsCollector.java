@@ -1,3 +1,4 @@
+/** 작성자 : 서샘이 */
 package com.dajanggan.domain.metric.collector;
 
 import com.dajanggan.domain.event.detector.SessionEventDetector;
