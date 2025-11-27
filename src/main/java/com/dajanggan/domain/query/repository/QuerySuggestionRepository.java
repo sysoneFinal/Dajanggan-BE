@@ -12,7 +12,7 @@ import java.util.List;
  * - LLM 기반 쿼리 최적화 제안 저장 및 조회
  * - 캐싱 기능을 통한 중복 제안 방지
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Mapper
 public interface QuerySuggestionRepository {

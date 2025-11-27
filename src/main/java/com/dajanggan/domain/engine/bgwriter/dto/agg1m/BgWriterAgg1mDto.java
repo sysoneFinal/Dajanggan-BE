@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.bgwriter.dto.agg1m;
 
 import lombok.AllArgsConstructor;
@@ -18,6 +19,7 @@ public class BgWriterAgg1mDto {
     private Long instanceId;
     private OffsetDateTime collectedAt;
 }
+
 
 
 

@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.service;
 
 import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
@@ -33,9 +34,6 @@ public class OsMetricSseService {
 
     /**
      * SSE 연결 생성
-     *
-     * @param instanceId 인스턴스 ID
-     * @return SseEmitter
      */
     public SseEmitter createEmitter(Long instanceId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
@@ -76,8 +74,6 @@ public class OsMetricSseService {
 
     /**
      * 특정 인스턴스의 실시간 메트릭 데이터를 모든 연결된 클라이언트에게 전송
-     *
-     * @param instanceId 인스턴스 ID
      */
     public void broadcastMetrics(Long instanceId) {
         List<SseEmitter> instanceEmitters = emitters.get(instanceId);

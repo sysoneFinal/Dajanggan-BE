@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.global.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

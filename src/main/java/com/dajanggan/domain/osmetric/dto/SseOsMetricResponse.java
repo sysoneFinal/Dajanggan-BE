@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;

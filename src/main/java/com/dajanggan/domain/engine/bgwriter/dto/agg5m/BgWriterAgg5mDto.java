@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.bgwriter.dto.agg5m;
 
 import lombok.AllArgsConstructor;
@@ -27,6 +28,7 @@ public class BgWriterAgg5mDto {
     private Double avgCycleTimeMs;
     private Long recordCount;
 }
+
 
 
 

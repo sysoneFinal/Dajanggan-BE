@@ -14,7 +14,7 @@ import java.util.List;
  * - explainResult: 쿼리 실행 계획 분석 결과
  * - suggestions: AI 또는 규칙 기반 최적화 제안 리스트
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @Builder

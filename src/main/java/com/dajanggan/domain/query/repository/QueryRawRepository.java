@@ -12,7 +12,7 @@ import java.util.List;
  * - 대상 PostgreSQL 인스턴스에서 pg_stat_statements 기반 메트릭 수집
  * - MyBatis(모니터링 DB 저장)와 JdbcTemplate(대상 DB 조회) 혼용
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Mapper
 public interface QueryRawRepository {

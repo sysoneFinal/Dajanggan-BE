@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.dto.agg5m;
 
 import lombok.AllArgsConstructor;

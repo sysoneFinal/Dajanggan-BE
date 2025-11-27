@@ -9,7 +9,7 @@ import java.time.OffsetDateTime;
  * - 시간대별 쿼리 타입(SELECT, INSERT, UPDATE, DELETE) 실행 건수 추이
  * - ExecutionStatus 차트용
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @NoArgsConstructor
 @AllArgsConstructor

@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
  * 쿼리 메트릭스 원시 데이터 서비스 구현체
  * - query_metrics_raw 테이블 CRUD 및 조회 기능
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Service
 @Transactional(readOnly = true)

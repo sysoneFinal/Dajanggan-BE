@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.scheduler;
 
 import com.dajanggan.domain.common.util.MetricCollectionUtils;
@@ -23,11 +24,6 @@ import java.util.Map;
 
 /**
  * Disk I/O 메트릭 수집 스케줄러 (pg_stat_io 기반)
- * 1분마다 실행:
- * 1. pg_stat_io에서 I/O 통계 수집
- * 2. Raw 데이터 저장 (backend_type별로 여러 row)
- * 3. 이전 Raw 데이터와 비교하여 증분(delta) 계산
- * 4. Agg 데이터 저장
  */
 @Slf4j
 @Component

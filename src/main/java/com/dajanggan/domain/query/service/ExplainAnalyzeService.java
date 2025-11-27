@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * - PostgreSQL EXPLAIN ANALYZE 실행
  * - 실패 시 자동으로 EXPLAIN만 실행 (fallback)
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Slf4j
 @Service

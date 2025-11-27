@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.dto;
 
 import lombok.AllArgsConstructor;
@@ -9,16 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * CPU 페이지 DTO (2025-11-16 개편)
- * 
- * 데이터 소스:
- * - PostgreSQL Metrics: cpu_agg_1m (1분 집계), cpu_agg_5m (5분 집계)
- * - OS Metrics: Redis 실시간 (5초마다), os_metric_agg (1분 집계)
- * 
- * 프론트엔드 구조:
- * - CPU 게이지 (실시간 SSE)
- * - 차트 6개 (PostgreSQL + OS 통합)
- * - 리스트 페이지
+ * CPU 페이지 DTO
  */
 public class CpuDto {
 

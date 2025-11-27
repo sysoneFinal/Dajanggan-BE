@@ -12,7 +12,7 @@ import java.util.Map;
  * - QueryOverview 및 ExecutionStatus 페이지의 실시간 모니터링 데이터 제공
  * - query_metrics_agg_1m 테이블 접근
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Mapper
 public interface QueryAgg1mRepository {

@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.repository;
 
 import com.dajanggan.domain.osmetric.domain.OsMetricAgg;
@@ -66,12 +67,6 @@ public interface OsMetricMapper {
 
     /**
      * 집계된 메트릭 조회 (차트용)
-     * 
-     * @param instanceId 인스턴스 ID
-     * @param metricType 메트릭 타입 (DISK_READ, DISK_WRITE, DISK_USAGE, CPU_USAGE, MEMORY_USAGE 등)
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @return 집계 데이터 (Map 형태)
      */
     List<java.util.Map<String, Object>> selectAggregatedMetrics(
             @Param("instanceId") Long instanceId,

@@ -8,7 +8,7 @@ import java.time.OffsetDateTime;
  * - 실시간 모니터링용 데이터 (쿼리 성능, 실행 횟수 중심)
  * - QueryOverview 및 ExecutionStatus 페이지에서 사용
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @Builder

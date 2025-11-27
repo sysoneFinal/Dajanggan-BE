@@ -11,7 +11,7 @@ import lombok.*;
  * - QueryDetails 화면의 Top Slow Query 섹션용
  * - 쿼리문과 실행 시간만 포함 (간단한 요약)
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Builder
 @NoArgsConstructor
