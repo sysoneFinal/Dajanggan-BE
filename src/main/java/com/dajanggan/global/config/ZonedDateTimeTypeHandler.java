@@ -1,4 +1,4 @@
-package com.dajanggan.global.config.mybatis;
+package com.dajanggan.global.config;
 
 import org.apache.ibatis.type.BaseTypeHandler;
 import org.apache.ibatis.type.JdbcType;

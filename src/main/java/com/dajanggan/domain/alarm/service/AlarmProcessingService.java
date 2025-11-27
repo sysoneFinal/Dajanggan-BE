@@ -23,12 +23,12 @@ import java.time.OffsetDateTime;
  * - 메트릭 히스토리 저장
  * - Slack 알림 전송
  *
- * <pre>
+ *
  * ----------  ------  --------------------------------------------------
  * 작업일자      작성자    Description
  * ----------  ------  --------------------------------------------------
  * 2025-11-14  김민서    1. 최초작성
- * </pre>
+ *
  */
 @Slf4j
 @Service
@@ -129,7 +129,7 @@ public class AlarmProcessingService {
         // 6. Slack 알림 전송
         sendSlackNotification(tracking.getInstanceId(), metricType, level, currentValue, thresholdValue, tracking.getConsecutiveCount());
 
-        log.warn("🚨 알람 발생: ruleId={}, trackingId={}, feedId={}, level={}",
+        log.warn("알람 발생: ruleId={}, trackingId={}, feedId={}, level={}",
                 alarmRuleId, alarmTrackingId, feedId, level);
     }
 
@@ -141,7 +141,7 @@ public class AlarmProcessingService {
      */
     @Transactional
     public void resolveAlarm(Long alarmTrackingId, String metricType) {
-        log.info("✅ 알람 해제: trackingId={}, metric={}", alarmTrackingId, metricType);
+        log.info("알람 해제: trackingId={}, metric={}", alarmTrackingId, metricType);
 
         AlarmTracking tracking = alarmTrackingMapper.selectById(alarmTrackingId);
         if (tracking == null) {

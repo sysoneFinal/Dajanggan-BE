@@ -18,12 +18,12 @@ import java.util.Map;
  * - 인스턴스별 Slack 설정 관리
  * - 알림 포맷팅
  *
- * <pre>
+ *
  * ----------  ------  --------------------------------------------------
  * 작업일자      작성자    Description
  * ----------  ------  --------------------------------------------------
  * 2025-11-20  김민서    1. 최초작성
- * </pre>
+ *
  */
 @Slf4j
 @Service
@@ -57,12 +57,12 @@ public class SlackNotificationService {
             String instanceName,
             String databaseName
     ) {
-        log.info("📤 Slack 알림 전송 시도: instanceId={}, title={}", instanceId, title);
+        log.info("Slack 알림 전송 시도: instanceId={}, title={}", instanceId, title);
 
         // 인스턴스별 Slack 설정 조회
         var slackSettings = slackSettingsService.getSlackSettingsById(instanceId);
         if (slackSettings == null) {
-            log.warn("❌ Slack 설정을 찾을 수 없습니다: instanceId={}", instanceId);
+            log.warn("Slack 설정을 찾을 수 없습니다: instanceId={}", instanceId);
             return;
         }
 
@@ -77,16 +77,16 @@ public class SlackNotificationService {
         String mention = slackSettings.getMention();
 
         if (!enabled) {
-            log.warn("⚠️ Slack 알림이 비활성화되어 있습니다: instanceId={}", instanceId);
+            log.warn("Slack 알림이 비활성화되어 있습니다: instanceId={}", instanceId);
             return;
         }
 
         if (webhookUrl == null || webhookUrl.isEmpty()) {
-            log.warn("❌ Slack Webhook URL이 설정되지 않았습니다: instanceId={}", instanceId);
+            log.warn("Slack Webhook URL이 설정되지 않았습니다: instanceId={}", instanceId);
             return;
         }
 
-        log.info("✅ Slack 알림 전송 진행: instanceId={}, channel={}", instanceId, channel);
+        log.info("Slack 알림 전송 진행: instanceId={}, channel={}", instanceId, channel);
         sendSlackNotification(webhookUrl, channel, mention, title, severity, description, instanceName, databaseName);
     }
 
@@ -165,12 +165,12 @@ public class SlackNotificationService {
                     .retrieve()
                     .bodyToMono(String.class)
                     .subscribe(
-                            response -> log.info("✅ Slack 알림 전송 성공: channel={}", channel),
-                            error -> log.error("❌ Slack 알림 전송 실패: channel={}, error={}", channel, error.getMessage())
+                            response -> log.info("Slack 알림 전송 성공: channel={}", channel),
+                            error -> log.error("Slack 알림 전송 실패: channel={}, error={}", channel, error.getMessage())
                     );
 
         } catch (Exception e) {
-            log.error("❌ Slack 알림 전송 중 예외 발생: {}", e.getMessage(), e);
+            log.error("Slack 알림 전송 중 예외 발생: {}", e.getMessage(), e);
         }
     }
 

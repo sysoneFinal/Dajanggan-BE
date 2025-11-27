@@ -17,6 +17,21 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * VacuumMaintenance 서비스
+ *
+ * 주요 책임:
+ * - Vacuum 유지보수 대시보드 데이터 조회
+ * - KPI 계산 (Blocked 세션, 평균 실행 시간, Dead Tuples, Active Workers)
+ * - 현재 Vacuum 세션 조회
+ * - Dead Tuple/Autovacuum/Latency 트렌드 생성
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-04  김민서    1. 최초작성
+ */
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -36,7 +51,7 @@ public class VacuumMaintenanceService {
         OffsetDateTime endTime = OffsetDateTime.now();
         OffsetDateTime startTime = endTime.minusHours(hours);
 
-        log.info("🔍 Vacuum Dashboard: databaseId={}, instanceId={}, hours={}",
+        log.info("Vacuum Dashboard: databaseId={}, instanceId={}, hours={}",
                 databaseId, instanceId, hours);
 
         return VacuumMaintenanceDto.Response.builder()
@@ -49,37 +64,32 @@ public class VacuumMaintenanceService {
     }
 
     /**
-     * KPI 지표 생성 (수정됨)
-     *
-     * - blockedSessions: 차단된 세션 수
-     * - avgRunningTime: 실행 중인 vacuum의 평균 실행 시간
-     * - totalDeadTuples: 총 dead tuple 수
-     * - activeWorkers: 활성 워커 / 최대 워커
+     * KPI 지표 생성
      */
     private VacuumMaintenanceDto.Kpi buildKpiMetrics(
             OffsetDateTime start, OffsetDateTime end,
             Long databaseId, Long instanceId, int hours) {
 
         try {
-            log.info("🔍 KPI 조회 시작 - databaseId: {}, instanceId: {}, hours: {}, start: {}, end: {}",
+            log.info("KPI 조회 시작 - databaseId: {}, instanceId: {}, hours: {}, start: {}, end: {}",
                     databaseId, instanceId, hours, start, end);
 
             if (hours <= 1) {
                 VacuumAgg1mDto summary = repository.getKpiFrom1m(databaseId, instanceId, start, end);
 
-                log.info("📊 1분 집계 조회 결과: {}", summary != null ? "데이터 존재" : "NULL");
+                log.info("1분 집계 조회 결과: {}", summary != null ? "데이터 존재" : "NULL");
 
                 if (summary == null) {
-                    log.warn("⚠️ 1분 집계 데이터 없음 - 기본값 반환");
+                    log.warn("1분 집계 데이터 없음 - 기본값 반환");
                     return getDefaultKpi();
                 }
 
                 // 각 필드 상세 로깅
-                log.info("📈 blockedVacuumCount: {}", summary.getBlockedVacuumCount());
-                log.info("📈 avgElapsedSeconds: {}", summary.getAvgElapsedSeconds());
-                log.info("📈 totalDeadTuples: {}", summary.getTotalDeadTuples());
-                log.info("📈 activeVacuumSessions: {}", summary.getActiveVacuumSessions());
-                log.info("📈 maxWorkersConfigured: {}", summary.getMaxWorkersConfigured());
+                log.info("blockedVacuumCount: {}", summary.getBlockedVacuumCount());
+                log.info("avgElapsedSeconds: {}", summary.getAvgElapsedSeconds());
+                log.info("totalDeadTuples: {}", summary.getTotalDeadTuples());
+                log.info("activeVacuumSessions: {}", summary.getActiveVacuumSessions());
+                log.info("maxWorkersConfigured: {}", summary.getMaxWorkersConfigured());
 
                 // Active Workers 문자열 생성
                 int activeWorkerCount = summary.getActiveVacuumSessions() != null ? summary.getActiveVacuumSessions() : 0;
@@ -88,7 +98,7 @@ public class VacuumMaintenanceService {
                     ? summary.getMaxWorkersConfigured() : 3;
                 String activeWorkersStr = activeWorkerCount + "/" + maxWorkers;
                 
-                log.info("📊 1분 집계 Active Workers 계산: active={}, max={}, result={}", 
+                log.info("1분 집계 Active Workers 계산: active={}, max={}, result={}",
                         activeWorkerCount, summary.getMaxWorkersConfigured(), activeWorkersStr);
 
                 VacuumMaintenanceDto.Kpi kpi = VacuumMaintenanceDto.Kpi.builder()
@@ -98,7 +108,7 @@ public class VacuumMaintenanceService {
                         .activeWorkers(activeWorkersStr)
                         .build();
 
-                log.info("✅ KPI 생성 완료: blockedSessions={}, avgRunningTime={}, totalDeadTuples={}, activeWorkers={}",
+                log.info("KPI 생성 완료: blockedSessions={}, avgRunningTime={}, totalDeadTuples={}, activeWorkers={}",
                         kpi.getBlockedSessions(), kpi.getAvgRunningTime(), kpi.getTotalDeadTuples(), kpi.getActiveWorkers());
 
                 return kpi;
@@ -107,7 +117,7 @@ public class VacuumMaintenanceService {
                 VacuumAgg5mDto summary = repository.getKpiFrom5m(databaseId, instanceId, start, end);
 
                 if (summary == null) {
-                    log.warn("⚠️ 5분 집계 데이터 없음 - 기본값 반환");
+                    log.warn("5분 집계 데이터 없음 - 기본값 반환");
                     return getDefaultKpi();
                 }
 
@@ -118,10 +128,10 @@ public class VacuumMaintenanceService {
                     ? summary.getMaxWorkersConfigured() : 3;
                 String activeWorkersStr = activeWorkerCount + "/" + maxWorkers;
                 
-                log.info("📊 5분 집계 Active Workers 계산: active={}, max={}, result={}", 
+                log.info("5분 집계 Active Workers 계산: active={}, max={}, result={}",
                         activeWorkerCount, summary.getMaxWorkersConfigured(), activeWorkersStr);
                 
-                log.info("📈 5분 집계 KPI 값: blockedVacuumCount={}, avgElapsedSeconds={}, totalDeadTuples={}, activeVacuumSessions={}, maxWorkersConfigured={}",
+                log.info("5분 집계 KPI 값: blockedVacuumCount={}, avgElapsedSeconds={}, totalDeadTuples={}, activeVacuumSessions={}, maxWorkersConfigured={}",
                         summary.getBlockedVacuumCount(), summary.getAvgElapsedSeconds(), 
                         summary.getTotalDeadTuples(), summary.getActiveVacuumSessions(), summary.getMaxWorkersConfigured());
 
@@ -133,7 +143,7 @@ public class VacuumMaintenanceService {
                         .build();
             }
         } catch (Exception e) {
-            log.error("❌ KPI 조회 실패", e);
+            log.error("KPI 조회 실패", e);
             return getDefaultKpi();
         }
     }
@@ -149,7 +159,6 @@ public class VacuumMaintenanceService {
 
     /**
      * Dead Tuple 차트 데이터 생성
-     * - 증가율 vs 감소율 (vacuum 처리 속도)
      */
     private VacuumMaintenanceDto.Chart buildDeadTupleChart(
             OffsetDateTime start, OffsetDateTime end,
@@ -164,7 +173,7 @@ public class VacuumMaintenanceService {
                 List<VacuumAgg1mDto> trends = repository.getTimeSeriesFrom1m(databaseId, instanceId, start, end);
 
                 if (trends == null || trends.isEmpty()) {
-                    log.warn("⚠️ 1분 집계 시계열 데이터 없음");
+                    log.warn("1분 집계 시계열 데이터 없음");
                     return getEmptyChart();
                 }
 
@@ -179,7 +188,7 @@ public class VacuumMaintenanceService {
                 List<VacuumAgg5mDto> trends = repository.getTimeSeriesFrom5m(databaseId, instanceId, start, end);
 
                 if (trends == null || trends.isEmpty()) {
-                    log.warn("⚠️ 5분 집계 시계열 데이터 없음");
+                    log.warn("5분 집계 시계열 데이터 없음");
                     return getEmptyChart();
                 }
 
@@ -193,12 +202,12 @@ public class VacuumMaintenanceService {
             }
 
             if (labels.isEmpty()) {
-                log.warn("⚠️ 유효한 시계열 데이터가 없음");
+                log.warn("유효한 시계열 데이터가 없음");
                 return getEmptyChart();
             }
 
         } catch (Exception e) {
-            log.error("❌ Dead Tuple 차트 생성 실패", e);
+            log.error("Dead Tuple 차트 생성 실패", e);
             return getEmptyChart();
         }
 
@@ -232,7 +241,7 @@ public class VacuumMaintenanceService {
                 List<VacuumAgg1mDto> trends = repository.getTimeSeriesFrom1m(databaseId, instanceId, start, end);
 
                 if (trends == null || trends.isEmpty()) {
-                    log.warn("⚠️ 1분 집계 Autovacuum 데이터 없음");
+                    log.warn("1분 집계 Autovacuum 데이터 없음");
                     return getEmptyChart();
                 }
 
@@ -246,7 +255,7 @@ public class VacuumMaintenanceService {
                 List<VacuumAgg5mDto> trends = repository.getTimeSeriesFrom5m(databaseId, instanceId, start, end);
 
                 if (trends == null || trends.isEmpty()) {
-                    log.warn("⚠️ 5분 집계 Autovacuum 데이터 없음");
+                    log.warn("5분 집계 Autovacuum 데이터 없음");
                     return getEmptyChart();
                 }
 
@@ -259,16 +268,16 @@ public class VacuumMaintenanceService {
             }
 
             if (labels.isEmpty()) {
-                log.warn("⚠️ Autovacuum 차트: 유효한 시계열 데이터가 없음 (labels={}, costDelay={}, activeWorkers={})",
+                log.warn("Autovacuum 차트: 유효한 시계열 데이터가 없음 (labels={}, costDelay={}, activeWorkers={})",
                         labels.size(), costDelay.size(), activeWorkers.size());
                 return getEmptyChart();
             }
 
-            log.info("✅ Autovacuum 차트 생성 완료: labels={}, costDelay={}, activeWorkers={}",
+            log.info("Autovacuum 차트 생성 완료: labels={}, costDelay={}, activeWorkers={}",
                     labels.size(), costDelay.size(), activeWorkers.size());
 
         } catch (Exception e) {
-            log.error("❌ Autovacuum 차트 생성 실패", e);
+            log.error("Autovacuum 차트 생성 실패", e);
             return getEmptyChart();
         }
 
@@ -294,7 +303,7 @@ public class VacuumMaintenanceService {
                 List<VacuumAgg1mDto> trends = repository.getTimeSeriesFrom1m(databaseId, instanceId, start, end);
 
                 if (trends == null || trends.isEmpty()) {
-                    log.warn("⚠️ 1분 집계 Latency 데이터 없음");
+                    log.warn("1분 집계 Latency 데이터 없음");
                     return getEmptyChart();
                 }
 
@@ -311,7 +320,7 @@ public class VacuumMaintenanceService {
                 List<VacuumAgg5mDto> trends = repository.getTimeSeriesFrom5m(databaseId, instanceId, start, end);
 
                 if (trends == null || trends.isEmpty()) {
-                    log.warn("⚠️ 5분 집계 Latency 데이터 없음");
+                    log.warn("5분 집계 Latency 데이터 없음");
                     return getEmptyChart();
                 }
 
@@ -326,7 +335,7 @@ public class VacuumMaintenanceService {
                 }
             }
         } catch (Exception e) {
-            log.error("❌ Latency 차트 생성 실패", e);
+            log.error("Latency 차트 생성 실패", e);
             return getEmptyChart();
         }
 
@@ -346,7 +355,7 @@ public class VacuumMaintenanceService {
                 repository.getCurrentVacuumSessions(databaseId, tableName);
 
         if (rawSessions == null || rawSessions.isEmpty()) {
-            log.warn("⚠️ Vacuum 세션 데이터가 없습니다");
+            log.warn("Vacuum 세션 데이터가 없습니다");
             return new ArrayList<>();
         }
 

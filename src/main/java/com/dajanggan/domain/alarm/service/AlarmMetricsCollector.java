@@ -150,11 +150,4 @@ public class AlarmMetricsCollector {
         }
     }
 
-    /**
-     * 테스트 모드 설정
-     */
-    public void setTestMode(boolean enabled) {
-        this.testMode = enabled;
-        log.info("테스트 모드: {}", enabled ? "활성화" : "비활성화");
-    }
 }

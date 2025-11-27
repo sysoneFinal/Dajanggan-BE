@@ -1,4 +1,3 @@
-// 작성자: 김민서
 package com.dajanggan.global.crypto;
 
 import javax.crypto.*;
@@ -11,6 +10,34 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.util.*;
+
+
+/**
+ * AES-GCM 암호화 서비스
+ *
+ * 주요 책임:
+ * - AES-GCM 모드를 사용한 문자열 암호화/복호화
+ * - PBKDF2를 통한 키 유도 (Key Derivation)
+ * - 다중 마스터 키 관리 및 키 로테이션 지원
+ * - Base64 인코딩된 암호문 생성
+ *
+ * 암호문 구조:
+ * - version(1) + keyId(2) + salt(16) + iv(12) + ciphertext + tag(16)
+ * - 총 최소 47바이트 + 암호문 길이
+ *
+ * 보안 특성:
+ * - AES-256-GCM 사용 (인증 암호화)
+ * - PBKDF2-HMAC-SHA256 키 유도 (기본 200,000 반복)
+ * - 암호문 무결성 검증 (GCM 태그)
+ * - 키 버전 관리 (키 로테이션 지원)
+ *
+ *
+ * ----------  ------  --------------------------------------------------
+ * 작업일자      작성자    Description
+ * ----------  ------  --------------------------------------------------
+ * 2025-11-11  김민서    1. 최초작성
+ *
+ */
 
 public final class AesGcmService {
     private static final String CIPHER = "AES/GCM/NoPadding";

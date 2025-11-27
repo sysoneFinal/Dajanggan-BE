@@ -214,7 +214,7 @@ public class DatabaseSyncService {
                 .databaseId(database.getDatabaseId())
                 .instanceId(database.getInstanceId())
                 .databaseName(database.getDatabaseName())
-                .status(database.getStatus())  // ⚠️ 누락된 필드 추가
+                .status(database.getStatus())
                 .connections(database.getConnections())
                 .sizeBytes(database.getSizeBytes())
                 .cacheHitRate(database.getCacheHitRate())
