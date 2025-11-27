@@ -5,6 +5,9 @@ import com.dajanggan.domain.instance.repository.InstanceRepository;
 import com.dajanggan.domain.osmetric.dto.AgentOsMetricRequest;
 import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
 import com.dajanggan.domain.osmetric.service.OsMetricRedisService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +21,7 @@ import java.util.Optional;
  * - Agent는 5초마다 이 엔드포인트로 데이터 전송
  */
 @Slf4j
+@Tag(name = "Agent OS Metrics", description = "Agent로부터 OS 메트릭 데이터 수신 API")
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -30,8 +34,17 @@ public class AgentOsMetricController {
      * Agent로부터 OS 메트릭 데이터 수신 (5초마다 호출됨)
      * 경로: /api/os-metrics (Agent 전송 경로와 일치)
      */
+    @Operation(
+        summary = "Agent로부터 OS 메트릭 데이터 수신", 
+        description = "Agent가 5초마다 전송하는 OS 메트릭 데이터를 수신하여 Redis에 저장"
+    )
     @PostMapping("/os-metrics")
-    public ResponseEntity<String> receiveMetrics(@RequestBody AgentOsMetricRequest request) {
+    public ResponseEntity<String> receiveMetrics(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                description = "Agent가 전송하는 OS 메트릭 데이터 (instanceName, metricType, details, timestamp 포함)",
+                required = true
+            )
+            @RequestBody AgentOsMetricRequest request) {
         try {
             log.info("========== Agent 데이터 수신: instanceName={}, metricType={}, timestamp={} ==========", 
                     request.getInstanceName(),
@@ -85,6 +98,7 @@ public class AgentOsMetricController {
     /**
      * Agent 연결 상태 확인용 헬스체크 엔드포인트
      */
+    @Operation(summary = "Agent 헬스체크", description = "Agent 연결 상태 확인용 엔드포인트")
     @GetMapping("/os-metrics/health")
     public ResponseEntity<String> healthCheck() {
         return ResponseEntity.ok("OK");
