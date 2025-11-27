@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
  * - 대표 쿼리 정보 + 개별 실행 메트릭 + 그룹 집계 메트릭
  * - SlowQuery 화면에서 쿼리별 성능 분석용
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Builder
 @NoArgsConstructor

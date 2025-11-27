@@ -10,7 +10,7 @@ import java.util.Map;
  * 쿼리 상세 정보 조회 Service
  * - QueryOverview 페이지의 모든 데이터 통합 제공
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Slf4j
 @Service

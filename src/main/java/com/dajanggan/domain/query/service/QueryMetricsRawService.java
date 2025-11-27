@@ -9,7 +9,7 @@ import java.util.Map;
  * 쿼리 메트릭스 원시 데이터 서비스 인터페이스
  * - query_metrics_raw 테이블 데이터 조회 비즈니스 로직
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 public interface QueryMetricsRawService {
 

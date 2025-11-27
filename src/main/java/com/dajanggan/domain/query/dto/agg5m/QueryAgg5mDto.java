@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
  * - Top 5 슬로우 쿼리 정보 포함
  * - query_metrics_agg_5m 테이블과 매핑
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @Builder

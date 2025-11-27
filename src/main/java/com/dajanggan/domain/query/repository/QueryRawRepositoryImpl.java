@@ -16,7 +16,7 @@ import java.util.List;
  * - 대상 PostgreSQL 인스턴스에 동적으로 연결하여 메트릭 수집
  * - pg_stat_statements와 pg_stat_activity 조인하여 상세 정보 수집
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Repository
 @RequiredArgsConstructor

@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
  * - 쿼리 해시(MD5)를 기준으로 동일 쿼리 그룹화
  * - ExecutionStatus 화면에서 쿼리 성능 분석용
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 public class QueryExecutionStatDto {

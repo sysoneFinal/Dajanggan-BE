@@ -15,7 +15,7 @@ import java.time.OffsetDateTime;
  * - instance_id 포함하여 다중 인스턴스 지원
  * - 정적 팩토리 메서드(from)로 Entity -> DTO 변환
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @NoArgsConstructor
