@@ -12,7 +12,7 @@ import java.util.Map;
  * - query_metrics_raw 테이블 접근
  * - 기본 CRUD 및 다양한 조회 기능 제공
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Mapper
 public interface QueryMetricsRawRepository {

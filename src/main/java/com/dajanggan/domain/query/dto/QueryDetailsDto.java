@@ -14,7 +14,7 @@ import java.util.List;
  * - 요약 정보, Top 슬로우 쿼리, 트렌드 차트 데이터 포함
  * - 1분/5분 단위 집계 데이터 조합
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Builder
 @NoArgsConstructor

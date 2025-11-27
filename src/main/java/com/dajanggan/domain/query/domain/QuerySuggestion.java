@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * - OpenAI API 사용 토큰 수 추적
  * - 개선율 예측 및 제안 레벨(높음/경고/정보) 관리
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Getter
 @Setter

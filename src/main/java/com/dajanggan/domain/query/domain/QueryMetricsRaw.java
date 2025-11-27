@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
  * - CPU, 메모리, I/O 등 리소스 사용량 추적
  * - TIMESTAMPTZ 타입은 OffsetDateTime으로 매핑
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 public class QueryMetricsRaw {
 

@@ -20,7 +20,7 @@ import java.util.Map;
  * 쿼리 디테일 페이지 Controller
  * - 쿼리 상세 정보 조회
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Slf4j
 @RestController

@@ -12,7 +12,7 @@ import java.util.Map;
  * 5분 집계 데이터 Service
  * - 슬로우 쿼리 분석 기능 제공
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Slf4j
 @Service

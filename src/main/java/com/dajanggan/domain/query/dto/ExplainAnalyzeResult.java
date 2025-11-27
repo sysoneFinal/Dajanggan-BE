@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
  * - 실행 모드(ANALYZE/EXPLAIN), 실행 계획, 시간, 리소스 정보 포함
  * - SELECT는 실제 실행, DML은 안전 모드로 실행
  *
- * @author 이해든
+ * 작성자: 이해든
  */
 @Data
 @Builder
