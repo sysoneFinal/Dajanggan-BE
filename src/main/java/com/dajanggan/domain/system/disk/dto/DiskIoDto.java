@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.dto;
 
 import lombok.AllArgsConstructor;
@@ -10,10 +11,6 @@ import java.util.List;
 
 /**
  * Disk I/O 모니터링 DTO
- * 
- * 데이터 소스:
- * 1. PostgreSQL 메트릭 (disk_io_raw, disk_io_agg) - 1분마다
- * 2. OS 메트릭 (Redis, os_metric_agg) - 5초마다
  */
 public class DiskIoDto {
 

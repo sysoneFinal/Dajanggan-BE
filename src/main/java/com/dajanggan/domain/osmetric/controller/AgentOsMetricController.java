@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.controller;
 
 import com.dajanggan.domain.instance.repository.InstanceRepository;
@@ -28,9 +29,6 @@ public class AgentOsMetricController {
     /**
      * Agent로부터 OS 메트릭 데이터 수신 (5초마다 호출됨)
      * 경로: /api/os-metrics (Agent 전송 경로와 일치)
-     * 
-     * @param request Agent 메트릭 요청 데이터
-     * @return 성공 응답
      */
     @PostMapping("/os-metrics")
     public ResponseEntity<String> receiveMetrics(@RequestBody AgentOsMetricRequest request) {

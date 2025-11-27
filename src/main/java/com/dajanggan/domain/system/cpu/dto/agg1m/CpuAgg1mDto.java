@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.dto.agg1m;
 
 import lombok.AllArgsConstructor;
@@ -19,6 +20,7 @@ public class CpuAgg1mDto {
     private OffsetDateTime collectedAt;
     private OffsetDateTime createdAt;
 }
+
 
 
 

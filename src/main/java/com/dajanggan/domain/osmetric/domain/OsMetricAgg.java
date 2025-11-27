@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.domain;
 
 import lombok.AllArgsConstructor;
@@ -10,7 +11,6 @@ import java.time.OffsetDateTime;
 /**
  * OS 메트릭 집계 데이터 엔티티
  * 테이블: os_metric_agg
- * 1분 단위로 집계된 OS 레벨 메트릭
  */
 @Data
 @Builder

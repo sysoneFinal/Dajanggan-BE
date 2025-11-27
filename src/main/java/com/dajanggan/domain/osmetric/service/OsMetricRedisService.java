@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.service;
 
 import com.dajanggan.domain.osmetric.dto.RedisOsMetricData;
@@ -220,10 +221,6 @@ public class OsMetricRedisService {
 
     /**
      * CPU, MEMORY, DISK 최신 데이터를 배치로 조회 (SSE용 최적화)
-     * Redis Pipeline을 사용하여 네트워크 왕복을 1회로 줄임
-     * 
-     * @param instanceId 인스턴스 ID
-     * @return 메트릭 타입별 최신 데이터 맵 (key: "CPU", "MEMORY", "DISK")
      */
     public Map<String, RedisOsMetricData> getLatestMetricsBatch(Long instanceId) {
         try {
@@ -267,12 +264,6 @@ public class OsMetricRedisService {
 
     /**
      * 특정 메트릭 타입의 시간 범위 데이터 조회
-     * 
-     * @param instanceId 인스턴스 ID
-     * @param metricType 메트릭 타입 (CPU, MEMORY, DISK)
-     * @param startTime 조회 시작 시간
-     * @param endTime 조회 종료 시간
-     * @return 메트릭 데이터 리스트
      */
     public List<RedisOsMetricData> getRecentMetricsByType(Long instanceId, String metricType,
                                                             OffsetDateTime startTime, OffsetDateTime endTime) {

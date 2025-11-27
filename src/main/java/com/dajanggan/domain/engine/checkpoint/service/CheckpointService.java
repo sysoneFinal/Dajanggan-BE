@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.checkpoint.service;
 
 import com.dajanggan.domain.engine.checkpoint.dto.*;
@@ -21,8 +22,6 @@ public class CheckpointService {
 
     /**
      * Checkpoint 대시보드 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID
-     * @return Checkpoint 대시보드 데이터
      */
     public CheckpointDashboardResponse getCheckpointDashboard(Long instanceId) {
         log.debug("Checkpoint 대시보드 데이터 조회 시작 - instanceId: {}", instanceId);
@@ -430,10 +429,6 @@ public class CheckpointService {
 
     /**
      * Checkpoint 리스트 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
-     * @param statusList 상태 필터 리스트
-     * @return Checkpoint 리스트 데이터
      */
     public CheckpointListResponse getCheckpointList(Long instanceId, String timeRange, List<String> statusList, Integer page, Integer size) {
         log.debug("Checkpoint 리스트 데이터 조회 시작 - instanceId: {}, timeRange: {}, statusList: {}, page: {}, size: {}",
@@ -504,9 +499,6 @@ public class CheckpointService {
 
     /**
      * 시간 범위 문자열을 기준으로 시작 시간 계산
-     * @param endTime 종료 시간
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d)
-     * @return 시작 시간
      */
     private LocalDateTime calculateStartTime(LocalDateTime endTime, String timeRange) {
         if (timeRange == null || timeRange.isEmpty()) {
@@ -530,8 +522,6 @@ public class CheckpointService {
 
     /**
      * Map 데이터를 ListItem DTO로 변환
-     * @param data Map 데이터
-     * @return ListItem DTO
      */
     private CheckpointListItem convertToListItem(Map<String, Object> data) {
         return CheckpointListItem.builder()
@@ -663,12 +653,6 @@ public class CheckpointService {
 
     /**
      * 시간 범위에 따라 집계 간격 결정
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @return 집계 간격 (분 단위: 1, 5, 또는 30)
-     * - 1시간 이내: 1분 집계
-     * - 6시간 이내: 5분 집계
-     * - 24시간: 30분 집계 (없으면 5분 집계로 fallback)
      */
     private int determineIntervalMinutes(LocalDateTime startTime, LocalDateTime endTime) {
         long hours = java.time.Duration.between(startTime, endTime).toHours();

@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.controller;
 
 import com.dajanggan.domain.system.memory.dto.*;
@@ -20,8 +21,6 @@ public class MemoryController {
 
     /**
      * Memory 대시보드 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID
-     * @return Memory 대시보드 데이터
      */
     @GetMapping
     public ResponseEntity<MemoryDashboardResponse> getMemoryDashboard(
@@ -35,12 +34,6 @@ public class MemoryController {
 
     /**
      * Memory 리스트 데이터 조회
-     * @param instanceId PostgreSQL 인스턴스 ID
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d) - 기본값: 24h
-     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
-     * @param page 페이지 번호 (0부터 시작) - 기본값: 0
-     * @param size 페이지당 항목 수 - 기본값: 20
-     * @return Memory 리스트 데이터
      */
     @GetMapping("/list")
     public ResponseEntity<MemoryListResponse> getMemoryList(
@@ -65,11 +58,6 @@ public class MemoryController {
 
     /**
      * 낮은 캐시 히트율 리스트 조회
-     * @param instanceId PostgreSQL 인스턴스 ID
-     * @param timeRange 시간 범위 (1h, 6h, 24h, 7d) - 기본값: 24h
-     * @param status 상태 필터 (정상, 주의, 위험) - 콤마로 구분
-     * @param type 타입 필터 (table, index) - 콤마로 구분
-     * @return 낮은 캐시 히트율 리스트
      */
     @GetMapping("/list/low-cache-hit")
     public ResponseEntity<List<MemoryListResponse.LowCacheHitItem>> getLowCacheHitList(

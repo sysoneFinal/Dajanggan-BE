@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.checkpoint.scheduler;
 
 import com.dajanggan.domain.engine.checkpoint.domain.CheckpointAgg1m;
@@ -26,12 +27,6 @@ import java.util.Map;
 /**
  * Checkpoint 메트릭 수집 스케줄러
  * Raw 데이터만 수집 (집계는 Batch Aggregator에서 수행)
- * 
- * 주의: 아래 메서드들은 현재 사용되지 않지만 향후 사용을 위해 보존:
- * - calculateAggregation1m()
- * - calculateAggregation5m()
- * - determineCheckpointStatus()
- * - calculateSafeDelta()
  */
 @Slf4j
 @Component
@@ -48,9 +43,7 @@ public class CheckpointCollectionScheduler {
     }
 
     /**
-     * 1분마다 실행 (매분 5초) - metric/batch 스타일에 맞춤
-     * 수집이 완료된 후 집계되도록 시간 조정
-     * 1분 집계 데이터 수집
+     * 1분마다 실행 (매분 5초)
      */
     @Scheduled(cron = "5 * * * * *")
     public void collectCheckpoint1mMetrics() {
@@ -82,9 +75,7 @@ public class CheckpointCollectionScheduler {
     }
 
     /**
-     * 5분마다 실행 (매 5분의 10초) - metric/batch 스타일에 맞춤
-     * 0:10, 5:10, 10:10, 15:10, ... 형식으로 실행
-     * 5분 집계 데이터 수집
+     * 5분마다 실행 (매 5분의 10초)
      */
     @Scheduled(cron = "10 */5 * * * *")
     public void collectCheckpoint5mMetrics() {
@@ -257,8 +248,6 @@ public class CheckpointCollectionScheduler {
                 avgBuffersPerSec = (deltaBuffers * 1000.0) / deltaTime; // 밀리초를 초로 변환
             }
         }
-
-        // WAL 파일 추가/제거는 pg_stat_archiver에서 가져와야 하지만, 여기서는 간단히 wal_write/sync로 추정
         Long walFilesAdded = walWrite;
         Long walFilesRemoved = 0L; // 실제로는 pg_stat_archiver에서 가져와야 함
 
@@ -427,9 +416,6 @@ public class CheckpointCollectionScheduler {
 
     /**
      * LocalDateTime을 시스템 시간대 기준으로 UTC OffsetDateTime으로 변환
-     * 
-     * 예: 한국 시간(KST, UTC+9) 2025-11-22 21:26:05 
-     *    → UTC 2025-11-22 12:26:05
      */
     private OffsetDateTime toUtcOffsetDateTime(LocalDateTime localDateTime) {
         // LocalDateTime을 시스템 시간대(한국 시간)로 해석

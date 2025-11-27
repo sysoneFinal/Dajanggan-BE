@@ -1,6 +1,6 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.bgwriter.repository;
 
-import com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg;
 import com.dajanggan.domain.engine.bgwriter.domain.BgWriterRaw;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -14,11 +14,6 @@ public interface BgWriterMapper {
 
     /**
      * Clean Rate 시계열 데이터 조회
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @param intervalMinutes 집계 간격 (1, 5, 30)
-     * @return Clean Rate 시계열 데이터
      */
     List<Map<String, Object>> selectCleanRateTimeSeries(
             @Param("instanceId") Long instanceId,
@@ -29,11 +24,6 @@ public interface BgWriterMapper {
 
     /**
      * Maxwritten Clean 시계열 데이터 조회
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @param intervalMinutes 집계 간격 (1, 5, 30)
-     * @return Maxwritten Clean 시계열 데이터
      */
     List<Map<String, Object>> selectMaxwrittenCleanTimeSeries(
             @Param("instanceId") Long instanceId,
@@ -44,11 +34,6 @@ public interface BgWriterMapper {
 
     /**
      * BGWriter vs Checkpoint 비교 데이터 조회
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @param intervalMinutes 집계 간격 (1, 5, 30)
-     * @return BGWriter vs Checkpoint 시계열 데이터
      */
     List<Map<String, Object>> selectBgwriterVsCheckpointTimeSeries(
             @Param("instanceId") Long instanceId,
@@ -59,11 +44,6 @@ public interface BgWriterMapper {
 
     /**
      * Buffer 재사용률 시계열 데이터 조회
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @param intervalMinutes 집계 간격 (1, 5, 30)
-     * @return Buffer 재사용률 시계열 데이터
      */
     List<Map<String, Object>> selectBufferReuseRateTimeSeries(
             @Param("instanceId") Long instanceId,
@@ -74,11 +54,6 @@ public interface BgWriterMapper {
 
     /**
      * Buffer Flush 비율 시계열 데이터 조회
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @param intervalMinutes 집계 간격 (1, 5, 30)
-     * @return Buffer Flush 비율 시계열 데이터
      */
     List<Map<String, Object>> selectBufferFlushRatioTimeSeries(
             @Param("instanceId") Long instanceId,
@@ -89,17 +64,11 @@ public interface BgWriterMapper {
 
     /**
      * 최근 통계 조회
-     * @param instanceId 인스턴스 ID
-     * @return 최근 통계 데이터
      */
     Map<String, Object> selectRecentStats(@Param("instanceId") Long instanceId);
 
     /**
      * 최근 통계 조회 (15분, bgwriter_agg_1m 사용)
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @return 최근 통계 데이터
      */
     Map<String, Object> selectRecentStats15m(
             @Param("instanceId") Long instanceId,
@@ -109,11 +78,6 @@ public interface BgWriterMapper {
 
     /**
      * BGWriter 리스트 데이터 조회
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @param statusList 상태 필터 리스트
-     * @return BGWriter 리스트 데이터
      */
     List<Map<String, Object>> selectBgWriterList(
             @Param("instanceId") Long instanceId,
@@ -126,24 +90,16 @@ public interface BgWriterMapper {
 
     /**
      * 활성화된 인스턴스 ID 목록 조회
-     * @return 인스턴스 ID 리스트
      */
     List<Long> selectActiveInstanceIds();
 
     /**
      * 이전 Raw 데이터 조회 (증분 계산용)
-     * @param instanceId 인스턴스 ID
-     * @param collectedAt 현재 수집 시각 (이 시각보다 이전 데이터 조회)
-     * @return 이전 Raw 데이터
      */
     BgWriterRaw selectPreviousRaw(@Param("instanceId") Long instanceId, @Param("collectedAt") OffsetDateTime collectedAt);
 
     /**
      * 이전 1분 집계 데이터 조회 (5분 집계 계산용)
-     * @param instanceId 인스턴스 ID
-     * @param startTime 시작 시간
-     * @param endTime 종료 시간
-     * @return 1분 집계 데이터 리스트
      */
     List<com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m> selectPreviousAgg1m(
             @Param("instanceId") Long instanceId,
@@ -153,19 +109,16 @@ public interface BgWriterMapper {
 
     /**
      * Raw 데이터 삽입
-     * @param raw Raw 데이터
      */
     void insertRaw(BgWriterRaw raw);
 
     /**
      * 1분 집계 데이터 삽입
-     * @param agg1m 1분 집계 데이터
      */
     void insertAgg1m(com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m agg1m);
 
     /**
      * 5분 집계 데이터 삽입
-     * @param agg5m 5분 집계 데이터
      */
     void insertAgg5m(com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg5m agg5m);
 }

@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.engine.bgwriter.scheduler;
 
 import com.dajanggan.domain.engine.bgwriter.domain.BgWriterAgg1m;
@@ -22,12 +23,6 @@ import java.util.Map;
 /**
  * BGWriter 메트릭 수집 스케줄러
  * Raw 데이터만 수집 (집계는 Batch Aggregator에서 수행)
- * 
- * 주의: 아래 메서드들은 현재 사용되지 않지만 향후 사용을 위해 보존:
- * - calculateAggregation1m()
- * - calculateAggregation5m()
- * - determineBgWriterStatus()
- * - calculateSafeDelta()
  */
 @Slf4j
 @Component

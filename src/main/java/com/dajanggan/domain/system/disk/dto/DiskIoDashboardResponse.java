@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.dto;
 
 import lombok.AllArgsConstructor;
@@ -187,6 +188,7 @@ public class DiskIoDashboardResponse {
         private List<Double> writeMBps;
     }
 }
+
 
 
 

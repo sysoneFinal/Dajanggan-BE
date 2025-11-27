@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.service;
 
 import com.dajanggan.domain.system.cpu.domain.CpuAgg;
@@ -23,8 +24,6 @@ import java.util.stream.Collectors;
 /**
  * 데이터 흐름:
  * 1. 실시간 CPU: SSE로 직접 전송 (OsMetricSseService)
- * 2. PostgreSQL 메트릭: cpu_agg_1m (1분), cpu_agg_5m (5분)
- * 3. OS 메트릭 집계: os_metric_agg (1분)
  */
 @Slf4j
 @Service
@@ -208,12 +207,6 @@ public class CpuService {
 
     /**
      * 위젯5: Load Average
-     * 
-     * 주의: 이 위젯은 SSE 실시간 데이터만 사용합니다.
-     * 백엔드 API에서는 빈 값을 반환하며, 프론트엔드에서 SSE로 받은 실시간 데이터를 사용합니다.
-     * 
-     * Redis에 저장된 Load Average 형식: {"1m":0.01,"5m":0.1,"15m":0.07}
-     * SSE로 전송되는 형식: [1m, 5m, 15m] 리스트
      */
     private CpuDto.LoadAverageWidget buildLoadAverageWidget(Long instanceId) {
         // SSE 실시간 데이터만 사용하므로 백엔드 API에서는 빈 값 반환

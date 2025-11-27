@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.memory.controller;
 
 import com.dajanggan.domain.system.memory.service.MemorySseService;

@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.disk.dto.agg5m;
 
 import lombok.AllArgsConstructor;
@@ -39,6 +40,7 @@ public class DiskIoAgg5mDto {
     private Double minBufferHitRatio;
     private String status;
 }
+
 
 
 

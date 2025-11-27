@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.system.cpu.dto;
 
 import lombok.AllArgsConstructor;
@@ -31,6 +32,7 @@ public class CpuListItem {
     private Long contextSwitches;
     private String status;
 }
+
 
 
 

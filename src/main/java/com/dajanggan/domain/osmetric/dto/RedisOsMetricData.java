@@ -1,3 +1,4 @@
+// 작성자 : 김동현
 package com.dajanggan.domain.osmetric.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -57,7 +58,7 @@ public class RedisOsMetricData implements Serializable {
      * 집계를 위한 대표값 추출
      * - CPU: totalUsage
      * - MEMORY: usagePercent
-     * - DISK: filesystem.usagePercent (우선), readSpeedMBps + writeSpeedMBps (없으면 0)
+     * - DISK: filesystem.usagePercent, readSpeedMBps + writeSpeedMBps (없으면 0)
      */
     public Double getValue() {
         if (details == null || details.isEmpty()) {
